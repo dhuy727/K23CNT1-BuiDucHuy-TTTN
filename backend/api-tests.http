@@ -1,0 +1,367 @@
+### Biến môi trường dùng cho REST Client
+@baseUrl = http://localhost:5000/api
+@contentType = application/json
+
+### 1. Health Check
+GET {{baseUrl}}/health
+Content-Type: {{contentType}}
+
+### 2. Đăng Ký Tài Khoản Người Dùng (User 1)
+# @name registerUser
+POST {{baseUrl}}/auth/register
+Content-Type: {{contentType}}
+
+{
+  "name": "Bùi Đức Huy",
+  "email": "duchuy@example.com",
+  "password": "password123",
+  "phone": "0987654321",
+  "role": "admin"
+}
+
+### 3. Đăng Nhập
+# @name login
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "duchuy@example.com",
+  "password": "password123"
+}
+
+### Lưu token từ kết quả đăng nhập
+@secretToken = {{login.response.body.data.tokens.secretToken}}
+@refreshToken = {{login.response.body.data.tokens.refreshToken}}
+@userId = {{login.response.body.data.user._id}}
+
+# =========================================================
+# 👤 CÁC API DÀNH CHO NGƯỜI DÙNG (USER PROFILE & ACCOUNT)
+# =========================================================
+
+### 4. Lấy Thông Tin Cá Nhân (Profile / Me)
+# Có thể dùng GET /users/profile hoặc GET /auth/me
+GET {{baseUrl}}/users/profile
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 5. Sửa Thông Tin Cá Nhân (Tên, SĐT, Email)
+# Không cần truyền ID, hệ thống tự nhận diện từ secretToken
+PUT {{baseUrl}}/users/profile
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+{
+  "name": "Bùi Đức Huy (Đã Cập Nhật)",
+  "phone": "0912345678"
+}
+
+### 6. Đổi Mật Khẩu
+# Yêu cầu nhập mật khẩu hiện tại và mật khẩu mới
+PATCH {{baseUrl}}/users/change-password
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+{
+  "currentPassword": "password123",
+  "newPassword": "newpassword456"
+}
+
+### 7. Đăng Nhập Lại Với Mật Khẩu Mới
+# @name loginAfterChangePass
+POST {{baseUrl}}/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "duchuy@example.com",
+  "password": "newpassword456"
+}
+
+### Cập nhật lại token mới sau khi đổi mật khẩu
+@newSecretToken = {{loginAfterChangePass.response.body.data.tokens.secretToken}}
+@newRefreshToken = {{loginAfterChangePass.response.body.data.tokens.refreshToken}}
+
+### 8. Đăng Xuất (Vô Hiệu Hóa refreshToken)
+# Có thể gọi POST /auth/logout hoặc POST /users/logout
+POST {{baseUrl}}/users/logout
+Authorization: Bearer {{newSecretToken}}
+Content-Type: {{contentType}}
+
+# =========================================================
+# 🔑 CÁC API TOKEN & QUẢN TRỊ (ADMIN / TOKEN REFRESH)
+# =========================================================
+
+### 9. Cấp Lại secretToken Bằng refreshToken
+POST {{baseUrl}}/auth/refresh-token
+Content-Type: {{contentType}}
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### 10. Lấy Danh Sách Người Dùng (Chỉ Admin/Manager)
+GET {{baseUrl}}/users?page=1&limit=10&search=Huy
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 11. Xem Chi Tiết Người Dùng Theo ID
+GET {{baseUrl}}/users/{{userId}}
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+# =========================================================
+# 📁 CÁC API QUẢN LÝ THƯ MỤC (FOLDER MANAGEMENT)
+# =========================================================
+
+### 12. Tạo Thư Mục Gốc (Root)
+# @name createRootFolder
+POST {{baseUrl}}/folders
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+{
+  "name": "Dự Án AI File Manager",
+  "color": "#10B981",
+  "description": "Thư mục gốc chứa tài liệu dự án AI"
+}
+
+### Lưu ID thư mục vừa tạo
+@rootFolderId = {{createRootFolder.response.body.data._id}}
+
+### 13. Tạo Thư Mục Con (Subfolder trong thư mục cha)
+# @name createSubfolder
+POST {{baseUrl}}/folders
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+{
+  "name": "Báo Cáo & Nghiên Cứu",
+  "parentId": "{{rootFolderId}}",
+  "color": "#3B82F6",
+  "description": "Thư mục con cấp 2"
+}
+
+### Lưu ID thư mục con
+@subfolderId = {{createSubfolder.response.body.data._id}}
+
+### 14. Lấy Danh Sách Thư Mục (Lọc theo parentId hoặc tìm kiếm)
+GET {{baseUrl}}/folders?parentId={{rootFolderId}}
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 15. Lấy Toàn Bộ Cây Thư Mục Phân Cấp (Folder Tree)
+GET {{baseUrl}}/folders/tree
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 16. Xem Chi Tiết Thư Mục (Kèm Breadcrumb & Thống kê)
+GET {{baseUrl}}/folders/{{subfolderId}}
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 17. Đổi Tên Thư Mục
+PATCH {{baseUrl}}/folders/{{subfolderId}}/rename
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+{
+  "name": "Báo Cáo Tiến Độ (Đã Đổi Tên)"
+}
+
+### 18. Di Chuyển Thư Mục (Chuyển sang vị trí cha khác hoặc về root)
+# Có thuật toán chặn di chuyển thư mục cha vào thư mục con của chính nó!
+PATCH {{baseUrl}}/folders/{{subfolderId}}/move
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+{
+  "targetParentId": "root"
+}
+
+### 19. Lấy Danh Sách File Con Nằm Trong Thư Mục
+GET {{baseUrl}}/folders/{{subfolderId}}/files
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 20. Xóa Thư Mục (Mặc định chuyển vào thùng rác, hoặc thêm ?permanent=true để xóa vĩnh viễn)
+DELETE {{baseUrl}}/folders/{{subfolderId}}?permanent=true
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+# =========================================================
+# 📄 CÁC API QUẢN LÝ TÀI LIỆU (FILE/DOCUMENT MANAGEMENT)
+# =========================================================
+
+### 21. Tải Lên 1 Tệp Tin (Single File Upload)
+# Chú ý: Dùng Multipart Form Data
+# @name uploadFile
+POST {{baseUrl}}/files/upload
+Authorization: Bearer {{secretToken}}
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW
+
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="folderId"
+
+{{rootFolderId}}
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="aiCategory"
+
+Đồ án
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="aiSummary"
+
+Báo cáo tóm tắt đề tài thực tập tốt nghiệp K23
+------WebKitFormBoundary7MA4YWxkTrZu0gW
+Content-Disposition: form-data; name="file"; filename="BaoCaoThucTap.txt"
+Content-Type: text/plain
+
+Đây là nội dung tài liệu báo cáo thực tập tốt nghiệp ngành CNTT của sinh viên Bùi Đức Huy.
+------WebKitFormBoundary7MA4YWxkTrZu0gW--
+
+### Lưu ID tệp tin vừa tải lên
+@fileId = {{uploadFile.response.body.data._id}}
+
+### 22. Lấy Danh Sách Tệp Tin (Hỗ trợ lọc theo folder, phân loại, tìm kiếm, phân trang)
+GET {{baseUrl}}/files?folderId={{rootFolderId}}&page=1&limit=10
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 23. Tìm Kiếm Tệp Tin Theo Từ Khóa
+GET {{baseUrl}}/files?search=BaoCao&page=1&limit=10
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 24. Lọc Tệp Tin Theo Danh Mục AI
+GET {{baseUrl}}/files?aiCategory=Đồ án
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 25. Xem Chi Tiết Thông Tin Tệp Tin
+GET {{baseUrl}}/files/{{fileId}}
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 26. Tải Tệp Tin Về Máy (Download)
+GET {{baseUrl}}/files/{{fileId}}/download
+Authorization: Bearer {{secretToken}}
+
+### 27. Xem Trước Tệp Tin Inline Trên Trình Duyệt (Preview)
+GET {{baseUrl}}/files/{{fileId}}/preview
+Authorization: Bearer {{secretToken}}
+
+### 28. Đổi Tên Tệp Tin (Rename)
+PATCH {{baseUrl}}/files/{{fileId}}/rename
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+{
+  "name": "BaoCaoThucTap_ChinhThuc.txt"
+}
+
+### 29. Đánh Dấu Sao Yêu Thích / Bỏ Yêu Thích (Toggle Star)
+PATCH {{baseUrl}}/files/{{fileId}}/star
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 30. Sao Chép Tệp Tin (Copy sang cùng thư mục hoặc thư mục khác)
+# @name copyFile
+POST {{baseUrl}}/files/{{fileId}}/copy
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+{
+  "targetFolderId": "{{rootFolderId}}"
+}
+
+### Lưu ID tệp tin bản sao
+@copiedFileId = {{copyFile.response.body.data._id}}
+
+### 31. Di Chuyển Tệp Tin Sang Thư Mục Khác (hoặc ra 'root')
+PATCH {{baseUrl}}/files/{{fileId}}/move
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+{
+  "targetFolderId": "root"
+}
+
+### 32. Chuyển Tệp Tin Vào Thùng Rác (Soft Delete)
+DELETE {{baseUrl}}/files/{{fileId}}
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 33. Lấy Danh Sách Tệp Tin Trong Thùng Rác (Trash List)
+GET {{baseUrl}}/files/trash?page=1&limit=10
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 34. Khôi Phục Tệp Tin Từ Thùng Rác (Restore)
+PATCH {{baseUrl}}/files/{{fileId}}/restore
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 35. Xóa Vĩnh Viễn Tệp Tin (Xóa DB & Xóa file vật lý trên đĩa)
+DELETE {{baseUrl}}/files/{{fileId}}/permanent
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 36. Dọn Sạch Toàn Bộ Thùng Rác (Empty Trash)
+DELETE {{baseUrl}}/files/trash/empty
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+# =========================================================
+# 🔍 CÁC API TÌM KIẾM VÀ LỌC (SEARCH & FILTER APIS)
+# =========================================================
+
+### 37. Tìm Kiếm Toàn Cục Cả File & Folder Theo Từ Khóa
+GET {{baseUrl}}/search?q=BaoCao&page=1&limit=20
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 38. Lọc Chỉ Tìm Tệp Tin (target=files) Hoặc Chỉ Thư Mục (target=folders)
+GET {{baseUrl}}/search?q=Dự Án&target=folders
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 39. Lọc Tệp Tin Theo Nhóm Định Dạng (type: document, image, video, audio, archive, code)
+GET {{baseUrl}}/search?type=document&page=1&limit=10
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 40. Lọc Tệp Tin Theo Khoảng Kích Thước (sizePreset: tiny, small, medium, large)
+GET {{baseUrl}}/search?sizePreset=tiny
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 41. Lọc Theo Khoảng Thời Gian Tạo (datePreset: today, yesterday, last7days, last30days, thisYear)
+GET {{baseUrl}}/search?datePreset=today
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 42. Lọc Theo Danh Mục AI & Thẻ Tags
+GET {{baseUrl}}/search?aiCategory=Đồ án&page=1&limit=10
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 43. Tìm Kiếm & Lọc Đệ Quy Trong Thư Mục Cha (Tìm cả con cháu)
+GET {{baseUrl}}/search?folderId={{rootFolderId}}&recursive=true&page=1&limit=20
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 44. Lọc Tệp Tin Đã Được Đánh Dấu Sao (Favorites / Starred)
+GET {{baseUrl}}/search?isStarred=true
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 45. Gợi Ý Tìm Kiếm Nhanh (Autocomplete Suggestions)
+GET {{baseUrl}}/search/suggestions?q=Bao
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 46. Lấy Metadata Hỗ Trợ Bộ Lọc Giao Diện (Categories, Tags, File Types, Presets)
+GET {{baseUrl}}/search/filters-metadata
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+
+
