@@ -54,8 +54,9 @@ Hệ thống bảo vệ tài nguyên theo tiêu chuẩn an toàn cao nhất vớ
    - Giúp giảm thiểu rủi ro bảo mật nếu token bị rò rỉ.
 2. **`refreshToken` (Dài hạn)**:
    - Thời gian tồn tại: **7 ngày** (cấu hình qua `JWT_REFRESH_EXPIRES_IN`).
-   - Được lưu trữ an toàn trong MongoDB gắn liền với tài khoản của người dùng.
+   - Chỉ hash của token được lưu trong MongoDB; token gốc không xuất hiện trong database.
    - Dùng để gọi API `/api/auth/refresh-token` để cấp mới `secretToken` mà người dùng không cần đăng nhập lại.
+   - Mỗi lần làm mới sẽ cấp một refresh token mới và vô hiệu hóa token cũ (token rotation).
    - Khi người dùng đăng xuất (`/api/auth/logout`) hoặc đổi mật khẩu, `refreshToken` trong database sẽ bị xóa/vô hiệu hóa ngay lập tức.
 
 ---
@@ -126,9 +127,14 @@ Kết quả kiểm thử:
 | Method | Endpoint | Mô tả | Quyền |
 | :--- | :--- | :--- | :--- |
 | `POST` | `/api/auth/register` | Đăng ký tài khoản mới | Public |
+| `POST` | `/api/auth/verify-email` | Xác thực email bằng mã OTP 6 số gửi qua email | Public |
+| `POST` | `/api/auth/resend-verification-code` | Gửi lại mã OTP xác thực email | Public |
 | `POST` | `/api/auth/login` | Đăng nhập (nhận `secretToken` & `refreshToken`) | Public |
 | `POST` | `/api/auth/refresh-token` | Làm mới `secretToken` bằng `refreshToken` | Public |
 | `POST` | `/api/auth/logout` | Đăng xuất (thu hồi `refreshToken`) | Authenticated |
+| `POST` | `/api/auth/forgot-password` | Gửi hướng dẫn đặt lại mật khẩu | Public |
+| `POST` | `/api/auth/verify-forgot-password` | Kiểm tra token đặt lại mật khẩu | Public |
+| `POST` | `/api/auth/reset-password` | Đặt lại mật khẩu và thu hồi phiên cũ | Public |
 
 ---
 
@@ -497,7 +503,42 @@ Tất cả các endpoint bên dưới đều yêu cầu Header: `Authorization: 
 
 ---
 
-## 8. Tiêu Chuẩn Phản Hồi Dữ Liệu (Standardized Response Format)
+---
+
+## 8. Danh Sách Chi Tiết API Chia Sẻ & Phân Quyền (Share & Permissions Module)
+
+Module hỗ trợ hai hình thức chia sẻ: **Chia sẻ nội bộ cho người dùng khác** (yêu cầu đăng nhập) và **Chia sẻ qua liên kết công khai (Public Link)** có bảo mật mật khẩu và hạn sử dụng.
+
+### Bảng tổng hợp Endpoints
+
+| STT | Phương thức | Endpoint | Chức năng | Xác thực | Tham số / Body |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| 1 | `POST` | `/api/shares` | Chia sẻ tệp/thư mục qua Email | `Bearer Token` | `{ "itemType": "file"\|"folder", "itemId": "...", "email": "...", "role": "viewer"\|"editor" }` |
+| 2 | `PATCH` | `/api/shares/:shareId/role` | Đổi vai trò cộng tác viên | `Bearer Token` | `{ "role": "viewer" \| "editor" }` |
+| 3 | `DELETE` | `/api/shares/:shareId` | Thu hồi quyền cộng tác viên | `Bearer Token` | Param: `shareId` |
+| 4 | `GET` | `/api/shares/item/:itemType/:itemId` | Xem danh sách chia sẻ của mục | `Bearer Token` | Params: `itemType`, `itemId` |
+| 5 | `POST` | `/api/shares/public-link` | Tạo/Cập nhật liên kết công khai | `Bearer Token` | `{ "itemType": "file"\|"folder", "itemId": "...", "role": "viewer", "password": "...", "allowDownload": true, "expiresAt": "..." }` |
+| 6 | `DELETE` | `/api/shares/public-link/:itemType/:itemId` | Tắt liên kết công khai | `Bearer Token` | Params: `itemType`, `itemId` |
+| 7 | `GET` | `/api/shares/public/:shareToken` | Truy cập xem mục qua Public Link | **Public** | Header `x-share-password` (nếu có pass) |
+| 8 | `GET` | `/api/shares/public/:shareToken/download` | Tải file qua Public Link | **Public** | Header `x-share-password` (nếu có pass) |
+| 9 | `GET` | `/api/shares/public/:shareToken/preview` | Xem trước file qua Public Link | **Public** | Header `x-share-password` (nếu có pass) |
+| 10 | `GET` | `/api/shares/shared-with-me` | Danh sách được chia sẻ với tôi | `Bearer Token` | Query: `itemType`, `page`, `limit` |
+| 11 | `GET` | `/api/shares/shared-by-me` | Danh sách do tôi chia sẻ | `Bearer Token` | Query: `shareType`, `page`, `limit` |
+
+### Phân quyền (Roles)
+
+- **`viewer` (Người xem)**: Cho phép xem thông tin tệp/thư mục, xem trước nội dung trực tiếp (preview) và tải xuống (nếu được người chia sẻ cho phép qua `allowDownload = true`).
+- **`editor` (Người chỉnh sửa)**: Cho phép xem, tải xuống, đổi tên và tải thêm các tệp tin mới vào thư mục được chia sẻ.
+
+### Cơ chế Bảo mật Liên kết Công khai (Public Link Security)
+
+1. **Mật khẩu bảo vệ (`password`)**: Mật khẩu được mã hóa an toàn bằng `bcrypt`. Khi truy cập, nếu link yêu cầu mật khẩu, hệ thống trả về mã `{ requiresPassword: true }`. Client truyền mật khẩu qua Header `x-share-password` hoặc query param `password` để mở khóa.
+2. **Thời hạn hết hạn (`expiresAt`)**: Link tự động vô hiệu hóa sau thời gian quy định (trả về mã lỗi HTTP 410 Gone).
+3. **Chặn tải xuống (`allowDownload: false`)**: Chủ sở hữu có thể chỉ cho xem trước (preview inline) mà không cho phép tải file gốc về máy tính.
+
+---
+
+## 9. Tiêu Chuẩn Phản Hồi Dữ Liệu (Standardized Response Format)
 
 ### Khi thành công:
 ```json
@@ -518,6 +559,5 @@ Tất cả các endpoint bên dưới đều yêu cầu Header: `Authorization: 
   "message": "Thông điệp lỗi chi tiết rõ ràng"
 }
 ```
-
 
 

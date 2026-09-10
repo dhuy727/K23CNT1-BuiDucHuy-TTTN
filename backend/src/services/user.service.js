@@ -80,6 +80,7 @@ const updateUser = async (id, updateData, currentUser) => {
   // Không cho phép đổi password qua hàm này (dùng changeUserPassword)
   delete updateData.password;
   delete updateData.refreshToken;
+  delete updateData.refreshTokenHash;
 
   // Nếu không phải admin, không được tự nâng role của mình
   if (currentUser.role !== 'admin') {
@@ -129,8 +130,8 @@ const changePassword = async (userId, { currentPassword, newPassword }) => {
     throw new ApiError(400, 'Vui lòng cung cấp đầy đủ mật khẩu hiện tại và mật khẩu mới');
   }
 
-  if (newPassword.length < 6) {
-    throw new ApiError(400, 'Mật khẩu mới phải có ít nhất 6 ký tự');
+  if (newPassword.length < 8) {
+    throw new ApiError(400, 'Mật khẩu mới phải có ít nhất 8 ký tự');
   }
 
   const user = await User.findById(userId).select('+password');
@@ -144,8 +145,8 @@ const changePassword = async (userId, { currentPassword, newPassword }) => {
   }
 
   user.password = newPassword;
-  // Xóa refreshToken cũ để buộc các phiên đăng nhập khác phải đăng nhập lại
-  user.refreshToken = null;
+  // Thu hồi phiên đăng nhập đang tồn tại sau khi đổi mật khẩu.
+  user.refreshTokenHash = null;
   await user.save();
 
   return { message: 'Đổi mật khẩu thành công. Vui lòng đăng nhập lại trên các thiết bị.' };
@@ -176,6 +177,7 @@ const updateProfile = async (userId, updateData) => {
   delete updateData.role;
   delete updateData.isActive;
   delete updateData.refreshToken;
+  delete updateData.refreshTokenHash;
 
   // Kiểm tra email nếu người dùng thay đổi email
   if (updateData.email && updateData.email.toLowerCase() !== user.email) {
@@ -205,4 +207,3 @@ module.exports = {
   deleteUser,
   changePassword
 };
-

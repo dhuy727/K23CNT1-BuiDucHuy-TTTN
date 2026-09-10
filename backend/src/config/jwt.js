@@ -13,7 +13,7 @@ const jwtConfig = {
  * @returns {string} Token JWT
  */
 const generateSecretToken = (payload) => {
-  return jwt.sign(payload, jwtConfig.secret, {
+  return jwt.sign({ ...payload, type: 'access' }, jwtConfig.secret, {
     expiresIn: jwtConfig.expiresIn
   });
 };
@@ -24,7 +24,7 @@ const generateSecretToken = (payload) => {
  * @returns {string} Token JWT
  */
 const generateRefreshToken = (payload) => {
-  return jwt.sign(payload, jwtConfig.refreshSecret, {
+  return jwt.sign({ ...payload, type: 'refresh' }, jwtConfig.refreshSecret, {
     expiresIn: jwtConfig.refreshExpiresIn
   });
 };

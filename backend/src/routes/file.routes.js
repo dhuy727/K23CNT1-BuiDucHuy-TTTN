@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const fileController = require('../controllers/file.controller');
+const versionRoutes = require('./version.routes');
 const { verifyAuth } = require('../middlewares/auth.middleware');
 const { validateObjectId } = require('../middlewares/validate.middleware');
 const { uploadSingle, uploadMultiple } = require('../middlewares/upload.middleware');
@@ -119,5 +120,10 @@ router.delete('/:id', validateObjectId('id'), fileController.deleteFile);
  * @access  Private
  */
 router.get('/:id', validateObjectId('id'), fileController.getFileById);
+
+/**
+ * Mount nested version routes: /api/files/:id/versions/...
+ */
+router.use('/:id/versions', versionRoutes);
 
 module.exports = router;

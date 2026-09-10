@@ -47,6 +47,57 @@ const refreshToken = async (req, res, next) => {
   }
 };
 
+const verifyEmail = async (req, res, next) => {
+  try {
+    await authService.verifyEmail(req.body);
+    return sendSuccess(res, { message: 'Xác thực email thành công. Bạn có thể đăng nhập.', data: null });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const resendVerificationCode = async (req, res, next) => {
+  try {
+    await authService.resendVerificationCode(req.body.email);
+    return sendSuccess(res, {
+      message: 'Nếu tài khoản chưa xác thực, hệ thống đã gửi mã xác thực mới.', data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const forgotPassword = async (req, res, next) => {
+  try {
+    await authService.forgotPassword(req.body.email);
+    return sendSuccess(res, {
+      message: 'Nếu email tồn tại, hệ thống đã gửi hướng dẫn đặt lại mật khẩu.', data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const verifyForgotPassword = async (req, res, next) => {
+  try {
+    const valid = await authService.verifyForgotPassword(req.body.token);
+    return sendSuccess(res, { message: 'Đã kiểm tra token đặt lại mật khẩu', data: { valid } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const resetPassword = async (req, res, next) => {
+  try {
+    await authService.resetPassword(req.body.token, req.body.newPassword);
+    return sendSuccess(res, {
+      message: 'Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.', data: null
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /**
  * Controller đăng xuất
  */
@@ -111,6 +162,11 @@ module.exports = {
   register,
   login,
   refreshToken,
+  verifyEmail,
+  resendVerificationCode,
+  forgotPassword,
+  verifyForgotPassword,
+  resetPassword,
   logout,
   getMe,
   updateProfile,

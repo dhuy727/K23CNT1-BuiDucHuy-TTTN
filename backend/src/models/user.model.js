@@ -23,7 +23,7 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: [true, 'Vui lòng nhập mật khẩu'],
-      minlength: [6, 'Mật khẩu phải có ít nhất 6 ký tự'],
+      minlength: [8, 'Mật khẩu phải có ít nhất 8 ký tự'],
       select: false // Mặc định không trả về password trong query
     },
     role: {
@@ -40,11 +40,39 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true
     },
-    // Lưu trữ refreshToken dài hạn trong Database để kiểm tra tính hợp lệ và thu hồi khi logout
-    refreshToken: {
+    isEmailVerified: {
+      type: Boolean,
+      default: false
+    },
+    emailVerifyToken: {
+      type: String,
+      select: false
+    },
+    emailVerifyExpires: {
+      type: Date,
+      select: false
+    },
+    emailVerifyAttempts: {
+      type: Number,
+      default: 0,
+      select: false
+    },
+    // Chỉ lưu hash để refresh token không bị lộ nếu database bị truy cập trái phép.
+    refreshTokenHash: {
       type: String,
       default: null,
       select: false
+    },
+    passwordResetTokenHash: {
+      type: String,
+      select: false
+    },
+    passwordResetExpires: {
+      type: Date,
+      select: false
+    },
+    lastLoginAt: {
+      type: Date
     }
   },
   {
@@ -73,6 +101,12 @@ userSchema.methods.toJSON = function () {
   const userObject = this.toObject();
   delete userObject.password;
   delete userObject.refreshToken;
+  delete userObject.refreshTokenHash;
+  delete userObject.emailVerifyToken;
+  delete userObject.emailVerifyExpires;
+  delete userObject.emailVerifyAttempts;
+  delete userObject.passwordResetTokenHash;
+  delete userObject.passwordResetExpires;
   return userObject;
 };
 

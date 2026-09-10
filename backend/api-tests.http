@@ -15,11 +15,28 @@ Content-Type: {{contentType}}
   "name": "Bùi Đức Huy",
   "email": "duchuy@example.com",
   "password": "password123",
-  "phone": "0987654321",
-  "role": "admin"
+  "phone": "0987654321"
 }
 
-### 3. Đăng Nhập
+### 3. Xác Minh Email
+# Nhập mã 6 số được gửi tới email vừa đăng ký.
+POST {{baseUrl}}/auth/verify-email
+Content-Type: {{contentType}}
+
+{
+  "email": "duchuy@example.com",
+  "code": "123456"
+}
+
+### 3.1. Gửi Lại Mã Xác Minh Khi Mã Hết Hạn
+POST {{baseUrl}}/auth/resend-verification-code
+Content-Type: {{contentType}}
+
+{
+  "email": "duchuy@example.com"
+}
+
+### 4. Đăng Nhập (sau khi xác minh email)
 # @name login
 POST {{baseUrl}}/auth/login
 Content-Type: {{contentType}}
@@ -38,7 +55,7 @@ Content-Type: {{contentType}}
 # 👤 CÁC API DÀNH CHO NGƯỜI DÙNG (USER PROFILE & ACCOUNT)
 # =========================================================
 
-### 4. Lấy Thông Tin Cá Nhân (Profile / Me)
+### 5. Lấy Thông Tin Cá Nhân (Profile / Me)
 # Có thể dùng GET /users/profile hoặc GET /auth/me
 GET {{baseUrl}}/users/profile
 Authorization: Bearer {{secretToken}}
@@ -363,5 +380,92 @@ GET {{baseUrl}}/search/filters-metadata
 Authorization: Bearer {{secretToken}}
 Content-Type: {{contentType}}
 
+# =========================================================
+# 🤝 CÁC API CHIA SẺ & PHÂN QUYỀN (SHARE & PERMISSIONS APIS)
+# =========================================================
+
+### 47. Chia Sẻ Tệp Tin Cho Người Dùng Khác Qua Email
+# @name shareUser
+POST {{baseUrl}}/shares
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+{
+  "itemType": "file",
+  "itemId": "{{fileId}}",
+  "email": "duchuy@example.com",
+  "role": "viewer"
+}
+
+### Lưu ID bản ghi chia sẻ
+@shareId = {{shareUser.response.body.data._id}}
+
+### 48. Lấy Danh Sách Tài Liệu & Thư Mục Được Chia Sẻ Với Tôi
+GET {{baseUrl}}/shares/shared-with-me
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 49. Cập Nhật Quyền Của Cộng Tác Viên (viewer ↔ editor)
+PATCH {{baseUrl}}/shares/{{shareId}}/role
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+{
+  "role": "editor"
+}
+
+### 50. Xem Danh Sách Chia Sẻ Của Một Tệp Tin
+GET {{baseUrl}}/shares/item/file/{{fileId}}
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 51. Tạo / Cập Nhật Liên Kết Chia Sẻ Công Khai (Public Link)
+# Có thể đặt mật khẩu (password) và ngày hết hạn (expiresAt)
+# @name createPublicLink
+POST {{baseUrl}}/shares/public-link
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+{
+  "itemType": "file",
+  "itemId": "{{fileId}}",
+  "role": "viewer",
+  "password": "MySecretPass@123",
+  "allowDownload": true,
+  "expiresAt": "2026-12-31T23:59:59.000Z"
+}
+
+### Lưu Public Token
+@shareToken = {{createPublicLink.response.body.data.shareToken}}
+
+### 52. Truy Cập Public Link Khi Chưa Có Mật Khẩu (Sẽ yêu cầu nhập mật khẩu)
+GET {{baseUrl}}/shares/public/{{shareToken}}
+
+### 53. Truy Cập Public Link Với Mật Khẩu Chính Xác
+GET {{baseUrl}}/shares/public/{{shareToken}}
+x-share-password: MySecretPass@123
+
+### 54. Tải Tệp Tin Qua Public Link
+GET {{baseUrl}}/shares/public/{{shareToken}}/download
+x-share-password: MySecretPass@123
+
+### 55. Xem Trước Tệp Tin Trực Tiếp Qua Public Link
+GET {{baseUrl}}/shares/public/{{shareToken}}/preview
+x-share-password: MySecretPass@123
+
+### 56. Lấy Danh Sách Các Mục Do Tôi Đang Chia Sẻ
+GET {{baseUrl}}/shares/shared-by-me
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 57. Tắt Liên Kết Chia Sẻ Công Khai Của Tệp Tin
+DELETE {{baseUrl}}/shares/public-link/file/{{fileId}}
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
+
+### 58. Thu Hồi Quyền Chia Sẻ Của Cộng Tác Viên
+DELETE {{baseUrl}}/shares/{{shareId}}
+Authorization: Bearer {{secretToken}}
+Content-Type: {{contentType}}
 
 

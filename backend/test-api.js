@@ -1,7 +1,9 @@
 require('dotenv').config();
+process.env.NODE_ENV = 'test';
 const mongoose = require('mongoose');
 const app = require('./src/app');
 const User = require('./src/models/user.model');
+const { hashToken } = require('./src/utils/otp');
 
 const PORT = 5001; // Dùng port riêng để test không bị xung đột
 const BASE_URL = `http://localhost:${PORT}/api`;
@@ -79,9 +81,19 @@ async function runTests() {
       }
     });
     assert(resRegister.status === 201, 'Đăng ký trả về status 201');
-    assert(resRegister.data.data.tokens.secretToken, 'Có secretToken ngắn hạn');
-    assert(resRegister.data.data.tokens.refreshToken, 'Có refreshToken dài hạn');
-    userId = resRegister.data.data.user._id;
+    assert(resRegister.data.data.isEmailVerified === false, 'Tài khoản mới cần xác thực email');
+    userId = resRegister.data.data._id;
+    // Test tích hợp không gửi email thật; thay mã đã gửi bằng mã biết trước để kiểm tra API OTP.
+    await User.findByIdAndUpdate(userId, {
+      emailVerifyToken: hashToken('123456'),
+      emailVerifyExpires: new Date(Date.now() + 15 * 60 * 1000),
+      emailVerifyAttempts: 0,
+      role: 'admin'
+    });
+    const resVerifyEmail = await request('/auth/verify-email', {
+      method: 'POST', body: { email: testEmail, code: '123456' }
+    });
+    assert(resVerifyEmail.status === 200, 'Xác thực email bằng mã OTP 6 số thành công');
 
     // Test 3: Đăng nhập
     console.log('\n[3] Kiểm tra Đăng Nhập (/auth/login)');
@@ -113,6 +125,11 @@ async function runTests() {
     });
     assert(resRefresh.status === 200, 'Cấp lại token thành công 200');
     assert(resRefresh.data.data.secretToken, 'Nhận được secretToken mới');
+    assert(resRefresh.data.data.refreshToken !== refreshToken, 'Refresh token được xoay sau mỗi lần làm mới');
+    const resOldRefresh = await request('/auth/refresh-token', {
+      method: 'POST', body: { refreshToken }
+    });
+    assert(resOldRefresh.status === 401, 'Refresh token cũ bị từ chối sau khi xoay');
     const newSecretToken = resRefresh.data.data.secretToken;
 
     // Test 6: Lấy thông tin cá nhân người dùng (/users/profile)
@@ -546,8 +563,13 @@ async function runTests() {
       }
     });
     assert(resRegisterCollab.status === 201, 'Đăng ký tài khoản cộng tác viên thành công');
-    const collabToken = resRegisterCollab.data.data.tokens.secretToken;
-    const collabUserId = resRegisterCollab.data.data.user._id;
+    const collabUserId = resRegisterCollab.data.data._id;
+    await User.findByIdAndUpdate(collabUserId, { isEmailVerified: true });
+    const resLoginCollab = await request('/auth/login', {
+      method: 'POST', body: { email: collabEmail, password: 'password123' }
+    });
+    assert(resLoginCollab.status === 200, 'Cộng tác viên đăng nhập sau khi xác thực email');
+    const collabToken = resLoginCollab.data.data.tokens.secretToken;
 
     // Test 43: Chia sẻ tệp tin cho người dùng phụ qua Email (/api/shares)
     console.log('\n[43] Kiểm tra Chia sẻ tệp tin cho người dùng phụ (/api/shares)');
@@ -709,17 +731,122 @@ async function runTests() {
     assert(resEmptyTrash.status === 200, 'Dọn sạch thùng rác thành công');
     assert(resEmptyTrash.data.data.deletedCount >= 1, 'Số file bị xóa vĩnh viễn >= 1');
 
+    // ── FILE VERSIONING TESTS ──────────────────────────────────────────────────
+    console.log('\n[59] Kiểm tra Tạo phiên bản mới (POST /files/:id/versions)');
+    // Upload thêm một file mới để test versioning (dùng FormData global như test 24)
+    const vFormData = new FormData();
+    vFormData.append('file', new Blob(['Version test content v1'], { type: 'text/plain' }), 'version_test.txt');
+
+    const resVUpload = await request('/files/upload', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${userToken}` },
+      body: vFormData,
+      isFormData: true
+    });
+    assert(resVUpload.status === 201, 'Upload file để test version thành công');
+    const vFileId = resVUpload.data.data._id;
+
+
+    // Test 59: Tạo version (snapshot)
+    const resCreateV1 = await request(`/files/${vFileId}/versions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${userToken}` },
+      body: { note: 'Phiên bản đầu tiên', changeType: 'manual' }
+    });
+    assert(resCreateV1.status === 201, 'Tạo version v1 thành công');
+    assert(resCreateV1.data.data.versionNumber === 1, 'Version number đúng là 1');
+    assert(resCreateV1.data.data.changeType === 'manual', 'changeType lưu đúng');
+    const versionId1 = resCreateV1.data.data._id;
+
+    // Test 60: Tạo version thứ hai (số thứ tự tự tăng)
+    console.log('\n[60] Kiểm tra Tạo phiên bản thứ hai (số thứ tự tự tăng)');
+    const resCreateV2 = await request(`/files/${vFileId}/versions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${userToken}` },
+      body: { note: 'Phiên bản thứ hai', changeType: 'update' }
+    });
+    assert(resCreateV2.status === 201, 'Tạo version v2 thành công');
+    assert(resCreateV2.data.data.versionNumber === 2, 'Version number tự tăng lên 2');
+    const versionId2 = resCreateV2.data.data._id;
+
+    // Test 61: Lấy danh sách phiên bản (GET /files/:id/versions)
+    console.log('\n[61] Kiểm tra Lấy danh sách phiên bản (GET /files/:id/versions)');
+    const resListV = await request(`/files/${vFileId}/versions`, {
+      headers: { Authorization: `Bearer ${userToken}` }
+    });
+    assert(resListV.status === 200, 'Lấy danh sách version thành công');
+    assert(resListV.data.data.length === 2, 'Danh sách trả về đúng 2 phiên bản');
+    assert(resListV.data.metadata.total === 2, 'metadata.total === 2');
+
+    // Test 62: Xem chi tiết một phiên bản (GET /files/:id/versions/:versionId)
+    console.log('\n[62] Kiểm tra Xem chi tiết phiên bản (GET /files/:id/versions/:versionId)');
+    const resGetV1 = await request(`/files/${vFileId}/versions/${versionId1}`, {
+      headers: { Authorization: `Bearer ${userToken}` }
+    });
+    assert(resGetV1.status === 200, 'Xem chi tiết version thành công');
+    assert(resGetV1.data.data.versionNumber === 1, 'Chi tiết trả về đúng version v1');
+    assert(resGetV1.data.data.note === 'Phiên bản đầu tiên', 'Ghi chú version lưu đúng');
+
+    // Test 63: Tải xuống phiên bản (GET /files/:id/versions/:versionId/download)
+    console.log('\n[63] Kiểm tra Tải xuống phiên bản (GET /files/:id/versions/:versionId/download)');
+    const resDownloadV = await request(`/files/${vFileId}/versions/${versionId1}/download`, {
+      headers: { Authorization: `Bearer ${userToken}` },
+      isRaw: true
+    });
+    assert(resDownloadV.status === 200, 'Download version trả về 200');
+    assert(resDownloadV.headers.get('content-disposition') !== null, 'Response có header Content-Disposition');
+
+    // Test 64: Khôi phục file về phiên bản cũ (POST /files/:id/versions/:versionId/restore)
+    console.log('\n[64] Kiểm tra Khôi phục file về phiên bản cũ (POST /files/:id/versions/:versionId/restore)');
+    const resVersionRestore = await request(`/files/${vFileId}/versions/${versionId1}/restore`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${userToken}` }
+    });
+    assert(resVersionRestore.status === 200, 'Khôi phục về version v1 thành công');
+    assert(resVersionRestore.data.data.restoredVersion === 1, 'restoredVersion === 1');
+    assert(resVersionRestore.data.data.file._id === vFileId, 'File gốc trả về đúng ID');
+
+    // Kiểm tra sau restore đã tạo thêm 1 version auto (v3)
+    const resListAfterRestore = await request(`/files/${vFileId}/versions`, {
+      headers: { Authorization: `Bearer ${userToken}` }
+    });
+    assert(resListAfterRestore.data.data.length === 3, 'Sau restore tự động tạo thêm version (tổng 3)');
+
+    // Test 65: Xóa một phiên bản (DELETE /files/:id/versions/:versionId)
+    console.log('\n[65] Kiểm tra Xóa một phiên bản (DELETE /files/:id/versions/:versionId)');
+    const resDeleteV = await request(`/files/${vFileId}/versions/${versionId2}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${userToken}` }
+    });
+    assert(resDeleteV.status === 200, 'Xóa version v2 thành công');
+    assert(resDeleteV.data.data.versionId === versionId2, 'versionId trả về khớp');
+
+    // Xác nhận sau khi xóa còn lại 2 versions
+    const resListFinal = await request(`/files/${vFileId}/versions`, {
+      headers: { Authorization: `Bearer ${userToken}` }
+    });
+    assert(resListFinal.data.data.length === 2, 'Sau khi xóa v2 còn lại 2 versions');
+
+    // Dọn dẹp file version test
+    await request(`/files/${vFileId}/permanent`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${userToken}` }
+    });
+    // ── KẾT THÚC VERSIONING TESTS ─────────────────────────────────────────────
+
     // Dọn dẹp dữ liệu test
     const Folder = require('./src/models/folder.model');
     const Share = require('./src/models/share.model');
+    const Version = require('./src/models/version.model');
     await Share.deleteMany({ $or: [{ owner: userId }, { sharedWith: userId }, { sharedWith: collabUserId }] });
+    await Version.deleteMany({ user: userId });
     await Folder.deleteMany({ user: userId });
     await File.deleteMany({ user: userId });
     await User.findByIdAndDelete(userId);
     await User.findByIdAndDelete(collabUserId);
-    console.log('\n-> Đã dọn dẹp toàn bộ dữ liệu kiểm thử User, Folders, Files, Shares thành công');
+    console.log('\n-> Đã dọn dẹp toàn bộ dữ liệu kiểm thử User, Folders, Files, Shares, Versions thành công');
 
-    console.log('\n🎉 TẤT CẢ 58 BƯỚC KIỂM THỬ ĐÃ THÀNH CÔNG RỰC RỠ! 🎉\n');
+    console.log('\n🎉 TẤT CẢ 65 BƯỚC KIỂM THỬ ĐÃ THÀNH CÔNG RỰC RỠ! 🎉\n');
   } catch (error) {
     console.error('Lỗi khi chạy test:', error);
   } finally {
@@ -730,4 +857,3 @@ async function runTests() {
 }
 
 runTests();
-

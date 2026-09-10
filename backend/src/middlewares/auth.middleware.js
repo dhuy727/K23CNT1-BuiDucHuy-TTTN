@@ -32,6 +32,10 @@ const verifyAuth = async (req, res, next) => {
       throw new ApiError(401, 'Token xác thực không hợp lệ hoặc bị giả mạo');
     }
 
+    if (decoded.type !== 'access') {
+      throw new ApiError(401, 'Token dùng để truy cập tài nguyên không hợp lệ');
+    }
+
     // Kiểm tra xem User có còn tồn tại không
     const currentUser = await User.findById(decoded.userId);
     if (!currentUser) {

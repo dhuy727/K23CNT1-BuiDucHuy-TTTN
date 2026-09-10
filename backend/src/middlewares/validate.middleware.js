@@ -20,8 +20,8 @@ const validateRegister = (req, res, next) => {
     return next(new ApiError(400, 'Định dạng email không hợp lệ'));
   }
 
-  if (!password || typeof password !== 'string' || password.length < 6) {
-    return next(new ApiError(400, 'Mật khẩu phải có độ dài ít nhất 6 ký tự'));
+  if (!password || typeof password !== 'string' || password.length < 8) {
+    return next(new ApiError(400, 'Mật khẩu phải có độ dài ít nhất 8 ký tự'));
   }
 
   next();
@@ -53,6 +53,40 @@ const validateRefreshToken = (req, res, next) => {
   next();
 };
 
+const validateToken = (field = 'token') => (req, res, next) => {
+  if (!req.body[field] || typeof req.body[field] !== 'string') {
+    return next(new ApiError(400, `Vui lòng cung cấp ${field} hợp lệ`));
+  }
+  next();
+};
+
+const validateVerificationCode = (req, res, next) => {
+  const { email, code } = req.body;
+  if (!email || typeof email !== 'string' || !/^\S+@\S+\.\S+$/.test(email)) {
+    return next(new ApiError(400, 'Vui lòng cung cấp email hợp lệ'));
+  }
+  if (!code || typeof code !== 'string' || !/^\d{6}$/.test(code)) {
+    return next(new ApiError(400, 'Mã xác thực phải gồm đúng 6 chữ số'));
+  }
+  next();
+};
+
+const validateForgotPassword = (req, res, next) => {
+  const { email } = req.body;
+  if (!email || typeof email !== 'string') {
+    return next(new ApiError(400, 'Vui lòng cung cấp email hợp lệ'));
+  }
+  next();
+};
+
+const validateResetPassword = (req, res, next) => {
+  const { token, newPassword } = req.body;
+  if (!token || typeof token !== 'string' || !newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+    return next(new ApiError(400, 'Token và mật khẩu mới (ít nhất 8 ký tự) là bắt buộc'));
+  }
+  next();
+};
+
 /**
  * Kiểm tra định dạng Mongo ObjectId trong route params
  */
@@ -70,5 +104,9 @@ module.exports = {
   validateRegister,
   validateLogin,
   validateRefreshToken,
+  validateToken,
+  validateVerificationCode,
+  validateForgotPassword,
+  validateResetPassword,
   validateObjectId
 };
