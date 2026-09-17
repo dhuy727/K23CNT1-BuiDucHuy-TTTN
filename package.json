@@ -1,0 +1,23 @@
+{
+  "name": "google-drive-management-system",
+  "version": "1.0.0",
+  "description": "Tích hợp Backend và Frontend chạy cùng 1 port (3000)",
+  "scripts": {
+    "build": "npm run build --prefix frontend",
+    "start": "npm run build && npm start --prefix backend",
+    "dev": "npm run build && npm run dev --prefix backend",
+    "server": "npm start --prefix backend",
+    "server:dev": "npm run dev --prefix backend",
+    "client": "npm run dev --prefix frontend",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend"
+  },
+  "keywords": [
+    "express",
+    "react",
+    "mongodb",
+    "single-port",
+    "vite"
+  ],
+  "author": "Bui Duc Huy",
+  "license": "ISC"
+}

@@ -6,6 +6,9 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "build:frontend": "npm run build --prefix ../frontend",
+    "start:all": "npm run build --prefix ../frontend && node server.js",
+    "dev:all": "npm run build --prefix ../frontend && nodemon server.js",
     "test:api": "node test-api.js"
   },
   "keywords": [
