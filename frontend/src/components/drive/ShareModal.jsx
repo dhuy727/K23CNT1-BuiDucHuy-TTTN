@@ -193,42 +193,50 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
               Chưa có người nào được chia sẻ riêng biệt.
             </div>
           ) : (
-            shares.map((share) => (
-              <div key={share._id} className="collaborator-item">
-                <div className="collaborator-user-info">
-                  <div className="avatar-circle" style={{ width: 28, height: 28, fontSize: '0.75rem' }}>
-                    {(share.sharedWith?.name || share.sharedWith?.email || 'U')[0].toUpperCase()}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>
-                      {share.sharedWith?.name || 'Người dùng'}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      {share.sharedWith?.email}
-                    </div>
-                  </div>
-                </div>
+            shares.map((share) => {
+              const userObj = share.sharedWith || share.user || {};
+              const shareId = share._id || share.shareId;
+              const displayName = userObj.name || 'Người dùng';
+              const displayEmail = userObj.email || share.sharedEmail || '';
+              const initialLetter = (displayName || displayEmail || 'U')[0].toUpperCase();
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <select
-                    className="form-select"
-                    style={{ padding: '4px 8px', fontSize: '0.75rem' }}
-                    value={share.role}
-                    onChange={(e) => handleUpdateRole(share._id, e.target.value)}
-                  >
-                    <option value="viewer">Người xem</option>
-                    <option value="editor">Chỉnh sửa</option>
-                  </select>
-                  <button
-                    className="btn-icon"
-                    title="Xóa quyền chia sẻ"
-                    onClick={() => handleRemoveCollaborator(share._id)}
-                  >
-                    <UserMinus size={16} />
-                  </button>
+              return (
+                <div key={shareId} className="collaborator-item">
+                  <div className="collaborator-user-info">
+                    <div className="avatar-circle" style={{ width: 28, height: 28, fontSize: '0.75rem' }}>
+                      {initialLetter}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>
+                        {displayName}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        {displayEmail}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <select
+                      className="form-select"
+                      style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                      value={share.role}
+                      onChange={(e) => handleUpdateRole(shareId, e.target.value)}
+                    >
+                      <option value="viewer">Người xem</option>
+                      <option value="editor">Chỉnh sửa</option>
+                    </select>
+                    <button
+                      className="btn-icon"
+                      title="Xóa quyền chia sẻ"
+                      onClick={() => handleRemoveCollaborator(shareId)}
+                    >
+                      <UserMinus size={16} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

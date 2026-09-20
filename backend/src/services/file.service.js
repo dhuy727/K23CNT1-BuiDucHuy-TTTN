@@ -4,6 +4,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const File = require('../models/file.model');
 const Folder = require('../models/folder.model');
+const Share = require('../models/share.model');
 const ApiError = require('../utils/apiError');
 const { UPLOAD_DIR } = require('../middlewares/upload.middleware');
 
@@ -269,6 +270,57 @@ const getFiles = async (userId, query = {}) => {
 };
 
 /**
+ * Kiểm tra quyền truy cập file (Chủ sở hữu hoặc Người dùng được chia sẻ)
+ */
+const checkFileAccess = async (userId, fileId) => {
+  if (!mongoose.Types.ObjectId.isValid(fileId)) {
+    return null;
+  }
+
+  const file = await File.findOne({ _id: fileId, isTrash: false });
+  if (!file) return null;
+
+  // 1. Là chủ sở hữu
+  if (file.user.toString() === userId.toString()) {
+    return { file, role: 'owner' };
+  }
+
+  // 2. Được chia sẻ trực tiếp với userId
+  const directShare = await Share.findOne({
+    file: fileId,
+    itemType: 'file',
+    shareType: 'user',
+    sharedWith: userId
+  });
+  if (directShare) {
+    return { file, role: directShare.role, share: directShare };
+  }
+
+  // 3. Nằm trong thư mục được chia sẻ với userId
+  if (file.folder) {
+    const parentFolder = await Folder.findOne({ _id: file.folder, isTrash: false });
+    if (parentFolder) {
+      const pathIds = (parentFolder.path || '')
+        .split('/')
+        .filter((id) => id && mongoose.Types.ObjectId.isValid(id));
+      pathIds.push(parentFolder._id.toString());
+
+      const folderShare = await Share.findOne({
+        folder: { $in: pathIds },
+        itemType: 'folder',
+        shareType: 'user',
+        sharedWith: userId
+      });
+      if (folderShare) {
+        return { file, role: folderShare.role, share: folderShare };
+      }
+    }
+  }
+
+  return null;
+};
+
+/**
  * 4. Xem chi tiết thông tin tệp tin
  */
 const getFileById = async (userId, fileId) => {
@@ -276,18 +328,20 @@ const getFileById = async (userId, fileId) => {
     throw new ApiError(400, 'ID tệp tin không hợp lệ');
   }
 
-  const file = await File.findOne({ _id: fileId, user: userId })
+  const access = await checkFileAccess(userId, fileId);
+  if (!access) {
+    throw new ApiError(404, 'Không tìm thấy tệp tin hoặc bạn không có quyền truy cập');
+  }
+
+  const file = await File.findById(fileId)
     .populate('folder', '_id name path color')
     .populate('user', '_id name email')
     .lean();
 
-  if (!file) {
-    throw new ApiError(404, 'Không tìm thấy tệp tin');
-  }
-
   return {
     ...file,
-    formattedSize: formatFileSize(file.size)
+    formattedSize: formatFileSize(file.size),
+    accessRole: access.role
   };
 };
 
@@ -299,10 +353,12 @@ const getFileForDownload = async (userId, fileId) => {
     throw new ApiError(400, 'ID tệp tin không hợp lệ');
   }
 
-  const file = await File.findOne({ _id: fileId, user: userId });
-  if (!file) {
-    throw new ApiError(404, 'Không tìm thấy tệp tin');
+  const access = await checkFileAccess(userId, fileId);
+  if (!access) {
+    throw new ApiError(404, 'Không tìm thấy tệp tin hoặc bạn không có quyền truy cập');
   }
+
+  const file = access.file;
 
   // Kiểm tra file vật lý trên đĩa
   if (!file.storagePath || !fs.existsSync(file.storagePath)) {
@@ -325,10 +381,12 @@ const getFileForPreview = async (userId, fileId) => {
     throw new ApiError(400, 'ID tệp tin không hợp lệ');
   }
 
-  const file = await File.findOne({ _id: fileId, user: userId });
-  if (!file) {
-    throw new ApiError(404, 'Không tìm thấy tệp tin');
+  const access = await checkFileAccess(userId, fileId);
+  if (!access) {
+    throw new ApiError(404, 'Không tìm thấy tệp tin hoặc bạn không có quyền truy cập');
   }
+
+  const file = access.file;
 
   if (!file.storagePath || !fs.existsSync(file.storagePath)) {
     throw new ApiError(404, 'Tệp tin vật lý không tồn tại trên hệ thống lưu trữ');
@@ -674,6 +732,7 @@ const toggleStar = async (userId, fileId) => {
 
 module.exports = {
   formatFileSize,
+  checkFileAccess,
   uploadFile,
   uploadMultipleFiles,
   getFiles,

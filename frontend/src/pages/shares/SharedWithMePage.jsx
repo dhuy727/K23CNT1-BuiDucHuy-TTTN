@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Eye, Download, Shield } from 'lucide-react';
+import { Users, Eye, Download, Shield, Folder as FolderIcon } from 'lucide-react';
 import FileIcon from '../../components/drive/FileIcon';
 import EmptyState from '../../components/common/EmptyState';
 import FilePreviewModal from '../../components/drive/FilePreviewModal';
@@ -81,23 +81,29 @@ const SharedWithMePage = () => {
             </thead>
             <tbody>
               {shares.map((share) => {
-                const item = share.file || share.folder || {};
-                const isFile = Boolean(share.file);
-                const owner = share.sharedBy || {};
+                const item = share.file || share.folder || share.item || {};
+                const isFile = share.itemType === 'file' || Boolean(share.file);
+                const owner = share.sharedBy || share.owner || {};
+                const shareId = share._id || share.shareId;
 
                 return (
-                  <tr key={share._id}>
+                  <tr key={shareId}>
                     <td>
                       <div
                         className="table-name-cell"
                         onClick={() => isFile && setPreviewFile(item)}
+                        style={{ cursor: isFile ? 'pointer' : 'default' }}
                       >
-                        <FileIcon
-                          mimeType={item.mimeType}
-                          extension={item.extension}
-                          size={20}
-                        />
-                        <span title={item.name}>{item.name}</span>
+                        {isFile ? (
+                          <FileIcon
+                            mimeType={item.mimeType}
+                            extension={item.extension}
+                            size={20}
+                          />
+                        ) : (
+                          <FolderIcon size={20} style={{ color: item.color || '#3b82f6' }} />
+                        )}
+                        <span title={item.name}>{item.name || 'Không có tên'}</span>
                       </div>
                     </td>
                     <td>
@@ -105,7 +111,7 @@ const SharedWithMePage = () => {
                         {owner.name || 'Người dùng'}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {owner.email}
+                        {owner.email || ''}
                       </div>
                     </td>
                     <td>
@@ -124,7 +130,7 @@ const SharedWithMePage = () => {
                     </td>
                     <td>
                       <div className="table-action-btns" style={{ justifyContent: 'flex-end' }}>
-                        {isFile && (
+                        {isFile ? (
                           <>
                             <button
                               className="btn-icon"
@@ -141,6 +147,8 @@ const SharedWithMePage = () => {
                               <Download size={16} />
                             </button>
                           </>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Thư mục</span>
                         )}
                       </div>
                     </td>

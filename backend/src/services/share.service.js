@@ -279,13 +279,16 @@ const getItemShares = async (ownerId, itemType, itemId) => {
 
   return {
     collaborators: collaborators.map((c) => ({
+      _id: c._id,
       shareId: c._id,
       user: c.sharedWith,
+      sharedWith: c.sharedWith,
       role: c.role,
       createdAt: c.createdAt
     })),
     publicLink: publicLink
       ? {
+          _id: publicLink._id,
           shareToken: publicLink.shareToken,
           shareUrl: `/api/shares/public/${publicLink.shareToken}`,
           role: publicLink.role,
@@ -476,17 +479,27 @@ const getSharedWithMe = async (userId, query = {}) => {
   // Lọc bỏ những share mà file hoặc folder gốc đã bị xóa vào thùng rác
   const activeShares = shares.filter((s) => (s.itemType === 'file' ? s.file : s.folder));
 
-  const formattedShares = activeShares.map((s) => ({
-    shareId: s._id,
-    itemType: s.itemType,
-    role: s.role,
-    owner: s.owner,
-    createdAt: s.createdAt,
-    item: s.itemType === 'file' ? {
+  const formattedShares = activeShares.map((s) => {
+    const fileData = s.itemType === 'file' && s.file ? {
       ...s.file,
       formattedSize: formatFileSize(s.file.size)
-    } : s.folder
-  }));
+    } : null;
+    const folderData = s.itemType === 'folder' ? s.folder : null;
+    const itemData = fileData || folderData;
+
+    return {
+      _id: s._id,
+      shareId: s._id,
+      itemType: s.itemType,
+      role: s.role,
+      owner: s.owner,
+      sharedBy: s.owner,
+      createdAt: s.createdAt,
+      file: fileData,
+      folder: folderData,
+      item: itemData
+    };
+  });
 
   return {
     shares: formattedShares,
@@ -535,23 +548,33 @@ const getSharedByMe = async (userId, query = {}) => {
 
   const activeShares = shares.filter((s) => (s.itemType === 'file' ? s.file : s.folder));
 
-  const formattedShares = activeShares.map((s) => ({
-    shareId: s._id,
-    itemType: s.itemType,
-    shareType: s.shareType,
-    role: s.role,
-    sharedWith: s.sharedWith,
-    shareToken: s.shareToken,
-    shareUrl: s.shareToken ? `/api/shares/public/${s.shareToken}` : null,
-    hasPassword: s.hasPassword,
-    expiresAt: s.expiresAt,
-    allowDownload: s.allowDownload,
-    createdAt: s.createdAt,
-    item: s.itemType === 'file' ? {
+  const formattedShares = activeShares.map((s) => {
+    const fileData = s.itemType === 'file' && s.file ? {
       ...s.file,
       formattedSize: formatFileSize(s.file.size)
-    } : s.folder
-  }));
+    } : null;
+    const folderData = s.itemType === 'folder' ? s.folder : null;
+    const itemData = fileData || folderData;
+
+    return {
+      _id: s._id,
+      shareId: s._id,
+      itemType: s.itemType,
+      shareType: s.shareType,
+      role: s.role,
+      sharedWith: s.sharedWith,
+      user: s.sharedWith,
+      shareToken: s.shareToken,
+      shareUrl: s.shareToken ? `/api/shares/public/${s.shareToken}` : null,
+      hasPassword: s.hasPassword,
+      expiresAt: s.expiresAt,
+      allowDownload: s.allowDownload,
+      createdAt: s.createdAt,
+      file: fileData,
+      folder: folderData,
+      item: itemData
+    };
+  });
 
   return {
     shares: formattedShares,

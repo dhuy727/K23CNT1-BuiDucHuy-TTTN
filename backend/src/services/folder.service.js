@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Folder = require('../models/folder.model');
 const File = require('../models/file.model');
+const Share = require('../models/share.model');
 const ApiError = require('../utils/apiError');
 
 /**
@@ -106,6 +107,41 @@ const getFolders = async (userId, query = {}) => {
 };
 
 /**
+ * Kiểm tra quyền truy cập thư mục (Chủ sở hữu hoặc Người dùng được chia sẻ)
+ */
+const checkFolderAccess = async (userId, folderId) => {
+  if (!mongoose.Types.ObjectId.isValid(folderId)) {
+    return null;
+  }
+
+  const folder = await Folder.findOne({ _id: folderId, isTrash: false });
+  if (!folder) return null;
+
+  if (folder.user.toString() === userId.toString()) {
+    return { folder, role: 'owner' };
+  }
+
+  // Kiểm tra thư mục này hoặc thư mục cha/ông có được chia sẻ không
+  const pathIds = (folder.path || '')
+    .split('/')
+    .filter((id) => id && mongoose.Types.ObjectId.isValid(id));
+  pathIds.push(folder._id.toString());
+
+  const folderShare = await Share.findOne({
+    folder: { $in: pathIds },
+    itemType: 'folder',
+    shareType: 'user',
+    sharedWith: userId
+  });
+
+  if (folderShare) {
+    return { folder, role: folderShare.role, share: folderShare };
+  }
+
+  return null;
+};
+
+/**
  * 3. Chi tiết thư mục (kèm Breadcrumb đường dẫn cha-con và Thống kê)
  */
 const getFolderById = async (userId, folderId) => {
@@ -113,10 +149,12 @@ const getFolderById = async (userId, folderId) => {
     throw new ApiError(400, 'ID thư mục không hợp lệ');
   }
 
-  const folder = await Folder.findOne({ _id: folderId, user: userId, isTrash: false });
-  if (!folder) {
-    throw new ApiError(404, 'Không tìm thấy thư mục');
+  const access = await checkFolderAccess(userId, folderId);
+  if (!access) {
+    throw new ApiError(404, 'Không tìm thấy thư mục hoặc bạn không có quyền truy cập');
   }
+
+  const folder = access.folder;
 
   // Tạo Breadcrumb dựa vào chuỗi path
   const pathIds = (folder.path || '')
@@ -125,7 +163,7 @@ const getFolderById = async (userId, folderId) => {
 
   const ancestorFolders = await Folder.find({
     _id: { $in: pathIds },
-    user: userId
+    isTrash: false
   })
     .select('_id name parent')
     .lean();
@@ -138,10 +176,10 @@ const getFolderById = async (userId, folderId) => {
 
   // Thống kê số lượng thư mục con, số lượng file và tổng dung lượng
   const [subfoldersCount, filesCount, sizeStats] = await Promise.all([
-    Folder.countDocuments({ user: userId, parent: folderId, isTrash: false }),
-    File.countDocuments({ user: userId, folder: folderId, isTrash: false }),
+    Folder.countDocuments({ parent: folderId, isTrash: false }),
+    File.countDocuments({ folder: folderId, isTrash: false }),
     File.aggregate([
-      { $match: { user: new mongoose.Types.ObjectId(userId), folder: new mongoose.Types.ObjectId(folderId), isTrash: false } },
+      { $match: { folder: new mongoose.Types.ObjectId(folderId), isTrash: false } },
       { $group: { _id: null, totalSize: { $sum: '$size' } } }
     ])
   ]);
@@ -149,7 +187,10 @@ const getFolderById = async (userId, folderId) => {
   const totalSize = sizeStats.length > 0 ? sizeStats[0].totalSize : 0;
 
   return {
-    folder,
+    folder: {
+      ...(folder.toObject ? folder.toObject() : folder),
+      accessRole: access.role
+    },
     breadcrumb,
     statistics: {
       subfoldersCount,
