@@ -47,7 +47,7 @@ const fileSchema = new mongoose.Schema(
     // Các trường hỗ trợ phân loại & xử lý tự động bằng AI
     aiStatus: {
       type: String,
-      enum: ['pending', 'processing', 'completed', 'failed'],
+      enum: ['pending', 'processing', 'completed', 'failed', 'skipped'],
       default: 'pending'
     },
     aiCategory: {
@@ -62,6 +62,38 @@ const fileSchema = new mongoose.Schema(
     aiSummary: {
       type: String,
       default: ''
+    },
+    aiConfidence: {
+      type: Number,
+      default: null,
+      min: [0, 'Độ tin cậy AI không được nhỏ hơn 0'],
+      max: [1, 'Độ tin cậy AI không được lớn hơn 1']
+    },
+    aiSuggestedName: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: [255, 'Tên đề xuất không được vượt quá 255 ký tự']
+    },
+    aiSuggestedFolder: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Folder',
+      default: null
+    },
+    aiError: {
+      type: String,
+      default: '',
+      trim: true
+    },
+    extractedText: {
+      type: String,
+      default: '',
+      select: false, // không trả full text ra list/API trừ khi includeText
+      maxlength: [15000, 'Nội dung trích xuất không được vượt quá 15000 ký tự']
+    },
+    aiProcessedAt: {
+      type: Date,
+      default: null
     },
     isStarred: {
       type: Boolean,

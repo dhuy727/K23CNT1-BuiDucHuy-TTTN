@@ -102,6 +102,7 @@ const uploadFile = async (userId, file, body = {}) => {
   });
 
   await newFile.save();
+  require('./ai.service').enqueueProcess(newFile._id);
   await newFile.populate('folder', '_id name path color');
 
   return {
@@ -149,6 +150,7 @@ const uploadMultipleFiles = async (userId, files, body = {}) => {
     });
 
     await newFile.save();
+    require('./ai.service').enqueueProcess(newFile._id);
     uploadedFiles.push({
       ...newFile.toObject(),
       formattedSize: formatFileSize(newFile.size)
@@ -323,7 +325,7 @@ const checkFileAccess = async (userId, fileId) => {
 /**
  * 4. Xem chi tiết thông tin tệp tin
  */
-const getFileById = async (userId, fileId) => {
+const getFileById = async (userId, fileId, query = {}) => {
   if (!mongoose.Types.ObjectId.isValid(fileId)) {
     throw new ApiError(400, 'ID tệp tin không hợp lệ');
   }
@@ -333,10 +335,15 @@ const getFileById = async (userId, fileId) => {
     throw new ApiError(404, 'Không tìm thấy tệp tin hoặc bạn không có quyền truy cập');
   }
 
-  const file = await File.findById(fileId)
+  let fileQuery = File.findById(fileId)
     .populate('folder', '_id name path color')
-    .populate('user', '_id name email')
-    .lean();
+    .populate('user', '_id name email');
+
+  if (query.includeText === 'true' || query.includeText === true) {
+    fileQuery = fileQuery.select('+extractedText');
+  }
+
+  const file = await fileQuery.lean();
 
   return {
     ...file,

@@ -11,7 +11,8 @@ import {
   UploadCloud,
   Shield,
   Cloud,
-  Folder
+  Folder,
+  Home
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import folderService from '../../services/folderService';
@@ -100,6 +101,15 @@ const Sidebar = ({ onOpenUpload, onOpenCreateFolder }) => {
 
       {/* Navigation Links */}
       <nav className="sidebar-nav">
+        <NavLink
+          to="/home"
+          end
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+        >
+          <Home size={18} />
+          <span>Trang chủ</span>
+        </NavLink>
+
         <NavLink
           to="/drive"
           end

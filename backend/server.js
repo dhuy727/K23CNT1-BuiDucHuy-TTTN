@@ -11,11 +11,8 @@ const startServer = async () => {
 
     const server = app.listen(PORT, () => {
       console.log(`==================================================`);
-      console.log(`🚀 Hệ thống (Frontend & Backend) đang chạy tại: http://localhost:${PORT}`);
+      console.log(`🚀 Hệ thống đang chạy tại: http://localhost:${PORT}`);
       console.log(`📡 Health check API: http://localhost:${PORT}/api/health`);
-      console.log(`🔑 Auth API: http://localhost:${PORT}/api/auth`);
-      console.log(`👥 User API: http://localhost:${PORT}/api/users`);
-      console.log(`📁 File & Drive API: http://localhost:${PORT}/api/files`);
       console.log(`==================================================`);
     });
 

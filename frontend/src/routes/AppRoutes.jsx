@@ -13,6 +13,7 @@ import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from '../pages/auth/ResetPasswordPage';
 
 // Drive Pages
+import HomePage from '../pages/drive/HomePage';
 import MyDrivePage from '../pages/drive/MyDrivePage';
 import StarredPage from '../pages/drive/StarredPage';
 import TrashPage from '../pages/drive/TrashPage';
@@ -50,7 +51,8 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/drive" replace />} />
+        <Route index element={<Navigate to="/home" replace />} />
+        <Route path="home" element={<HomePage />} />
         <Route path="drive" element={<MyDrivePage />} />
         <Route path="drive/folder/:folderId" element={<MyDrivePage />} />
         <Route path="starred" element={<StarredPage />} />
@@ -73,7 +75,7 @@ const AppRoutes = () => {
       </Route>
 
       {/* Fallback */}
-      <Route path="*" element={<Navigate to="/drive" replace />} />
+      <Route path="*" element={<Navigate to="/home" replace />} />
     </Routes>
   );
 };

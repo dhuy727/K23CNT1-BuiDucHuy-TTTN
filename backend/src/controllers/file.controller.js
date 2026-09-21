@@ -55,7 +55,7 @@ const getFiles = async (req, res, next) => {
  */
 const getFileById = async (req, res, next) => {
   try {
-    const file = await fileService.getFileById(req.user._id, req.params.id);
+    const file = await fileService.getFileById(req.user._id, req.params.id, req.query);
     return sendSuccess(res, {
       message: 'Lấy thông tin chi tiết tệp tin thành công',
       data: file

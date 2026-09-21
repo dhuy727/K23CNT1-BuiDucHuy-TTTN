@@ -75,6 +75,19 @@ const fileService = {
       responseType: 'blob'
     });
     return response.data;
+  },
+
+  // Lấy file gần đây (tải lên gần đây, sắp xếp theo ngày)
+  getRecentFiles: async (params = {}) => {
+    return await axiosClient.get('/files', {
+      params: {
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+        limit: 20,
+        folderId: 'root',
+        ...params
+      }
+    });
   }
 };
 
