@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Clock,
   Upload,
   Star,
   Download,
@@ -15,23 +14,26 @@ import {
   Folder,
   Sparkles,
   ChevronRight,
-  TrendingUp
+  TrendingUp,
+  HardDrive
 } from 'lucide-react';
 import FileIcon from '../../components/drive/FileIcon';
+import ContextualActionBar from '../../components/drive/ContextualActionBar';
 import FilePreviewModal from '../../components/drive/FilePreviewModal';
+
+
 import RenameModal from '../../components/drive/RenameModal';
 import MoveCopyModal from '../../components/drive/MoveCopyModal';
 import ShareModal from '../../components/drive/ShareModal';
 import FileVersionsModal from '../../components/drive/FileVersionsModal';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
+import InspectorPanel from '../../components/drive/InspectorPanel';
 import fileService from '../../services/fileService';
 import folderService from '../../services/folderService';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 
-/* ─────────────────────────────────────────────────────── */
-/* Dropdown menu 3 chấm                                     */
-/* ─────────────────────────────────────────────────────── */
+/* ── Dropdown menu 3 chấm ── */
 const MoreMenu = ({ items, onClose }) => {
   const ref = useRef(null);
 
@@ -44,7 +46,7 @@ const MoreMenu = ({ items, onClose }) => {
   }, [onClose]);
 
   return (
-    <div className="home-more-menu" ref={ref}>
+    <div className="home-more-menu" ref={ref} onClick={(e) => e.stopPropagation()}>
       {items.map((item, i) =>
         item.divider ? (
           <div key={i} className="home-more-divider" />
@@ -67,189 +69,26 @@ const MoreMenu = ({ items, onClose }) => {
   );
 };
 
-/* ─────────────────────────────────────────────────────── */
-/* Card cho file đề xuất                                    */
-/* ─────────────────────────────────────────────────────── */
-const HomeFileCard = ({
-  file,
-  onPreview,
-  onDownload,
-  onToggleStar,
-  onShare,
-  onRename,
-  onMove,
-  onVersionHistory,
-  onDelete
-}) => {
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  const formatSize = (bytes) => {
-    if (!bytes && bytes !== 0) return '';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(Math.max(bytes, 1)) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now - d;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-    if (diffMins < 1) return 'Vừa xong';
-    if (diffMins < 60) return `${diffMins} phút trước`;
-    if (diffHours < 24) return `${diffHours} giờ trước`;
-    if (diffDays < 7) return `${diffDays} ngày trước`;
-    return d.toLocaleDateString('vi-VN');
-  };
-
-  const moreMenuItems = [
-    { icon: <Share2 size={14} />, label: 'Chia sẻ', onClick: () => onShare && onShare('file', file) },
-    { icon: <Edit2 size={14} />, label: 'Đổi tên', onClick: () => onRename && onRename('file', file) },
-    { icon: <FolderInput size={14} />, label: 'Di chuyển', onClick: () => onMove && onMove('file', file) },
-    { icon: <History size={14} />, label: 'Lịch sử phiên bản', onClick: () => onVersionHistory && onVersionHistory(file) },
-    { divider: true },
-    { icon: <Trash2 size={14} />, label: 'Xóa vào thùng rác', danger: true, onClick: () => onDelete && onDelete('file', file) }
-  ];
-
-  return (
-    <div className="home-file-card" onClick={() => onPreview && onPreview(file)}>
-      {/* Preview area */}
-      <div className="home-file-preview">
-        <FileIcon mimeType={file.mimeType} extension={file.extension} size={40} />
-
-        {/* Hover quick actions - hiển thị khi hover */}
-        <div className="home-file-hover-actions" onClick={(e) => e.stopPropagation()}>
-          <button
-            className="btn-icon home-quick-btn"
-            title={file.isStarred ? 'Bỏ yêu thích' : 'Yêu thích'}
-            onClick={() => onToggleStar && onToggleStar(file._id)}
-          >
-            <Star
-              size={15}
-              style={{ color: file.isStarred ? '#f59e0b' : 'inherit', fill: file.isStarred ? '#f59e0b' : 'none' }}
-            />
-          </button>
-          <button
-            className="btn-icon home-quick-btn"
-            title="Xem trước"
-            onClick={() => onPreview && onPreview(file)}
-          >
-            <Eye size={15} />
-          </button>
-          <button
-            className="btn-icon home-quick-btn"
-            title="Tải xuống"
-            onClick={() => onDownload && onDownload(file)}
-          >
-            <Download size={15} />
-          </button>
-        </div>
-      </div>
-
-      {/* Info */}
-      <div className="home-file-info">
-        <div className="home-file-name" title={file.name}>{file.name}</div>
-        <div className="home-file-meta">
-          <span>{formatSize(file.size)}</span>
-          <span>{formatDate(file.createdAt)}</span>
-        </div>
-
-        {/* Footer: badge + 3 chấm */}
-        <div className="home-file-footer" onClick={(e) => e.stopPropagation()}>
-          {file.aiCategory && file.aiCategory !== 'Chưa phân loại' ? (
-            <span className="badge badge-purple" title="Phân loại AI">
-              <Sparkles size={10} />
-              {file.aiCategory}
-            </span>
-          ) : (
-            <span className="badge badge-slate">{(file.extension || 'file').toUpperCase()}</span>
-          )}
-
-          <div style={{ position: 'relative' }}>
-            <button
-              className="btn-icon home-quick-btn"
-              title="Thêm thao tác"
-              onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-            >
-              <MoreVertical size={15} />
-            </button>
-            {menuOpen && <MoreMenu items={moreMenuItems} onClose={() => setMenuOpen(false)} />}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* ─────────────────────────────────────────────────────── */
-/* Card cho thư mục đề xuất                                 */
-/* ─────────────────────────────────────────────────────── */
-const HomeFolderCard = ({ folder, onOpen, onShare, onRename, onDelete }) => {
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  const moreMenuItems = [
-    { icon: <Share2 size={14} />, label: 'Chia sẻ', onClick: () => onShare && onShare('folder', folder) },
-    { icon: <Edit2 size={14} />, label: 'Đổi tên', onClick: () => onRename && onRename('folder', folder) },
-    { divider: true },
-    { icon: <Trash2 size={14} />, label: 'Xóa vào thùng rác', danger: true, onClick: () => onDelete && onDelete('folder', folder) }
-  ];
-
-  return (
-    <div className="home-folder-card" onClick={() => onOpen && onOpen(folder._id)}>
-      <div className="home-folder-icon">
-        <Folder
-          size={28}
-          style={{ color: folder.color || '#3b82f6', fill: folder.color ? `${folder.color}22` : '#3b82f622' }}
-        />
-      </div>
-      <div className="home-folder-name" title={folder.name}>{folder.name}</div>
-      <div className="home-folder-more" onClick={(e) => e.stopPropagation()}>
-        <button
-          className="btn-icon home-quick-btn"
-          title="Thêm thao tác"
-          onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-        >
-          <MoreVertical size={14} />
-        </button>
-        {menuOpen && <MoreMenu items={moreMenuItems} onClose={() => setMenuOpen(false)} />}
-      </div>
-    </div>
-  );
-};
-
-/* ─────────────────────────────────────────────────────── */
-/* Section wrapper                                          */
-/* ─────────────────────────────────────────────────────── */
-const HomeSection = ({ icon, title, onViewAll, children, emptyText }) => (
-  <section className="home-section">
+/* ── Home Section Container ── */
+const HomeSection = ({ icon, title, count, onViewAll, children, emptyText }) => (
+  <div className="home-section">
     <div className="home-section-header">
       <div className="home-section-title">
         {icon}
         <span>{title}</span>
+        {count !== undefined && <span className="drive-section-count">{count}</span>}
       </div>
       {onViewAll && (
         <button className="home-view-all-btn" onClick={onViewAll}>
-          Xem tất cả <ChevronRight size={14} />
+          <span>Xem tất cả</span>
+          <ChevronRight size={14} />
         </button>
       )}
     </div>
-    <div className="home-section-body">
-      {React.Children.count(children) === 0 ? (
-        <div className="home-empty-hint">{emptyText || 'Chưa có dữ liệu'}</div>
-      ) : (
-        children
-      )}
-    </div>
-  </section>
+    {children}
+  </div>
 );
 
-/* ─────────────────────────────────────────────────────── */
-/* Trang chính: HomePage                                    */
-/* ─────────────────────────────────────────────────────── */
 const HomePage = () => {
   const navigate = useNavigate();
   const toast = useToast();
@@ -259,6 +98,10 @@ const HomePage = () => {
   const [starredFiles, setStarredFiles] = useState([]);
   const [recentFolders, setRecentFolders] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Studio Inspector state
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
 
   // Modals state
   const [previewFile, setPreviewFile] = useState(null);
@@ -279,13 +122,13 @@ const HomePage = () => {
       ]);
 
       if (recentRes.status === 'fulfilled') {
-        setRecentFiles((recentRes.value.data || []).slice(0, 12));
+        setRecentFiles((recentRes.value.data || []).slice(0, 10));
       }
       if (starredRes.status === 'fulfilled') {
-        setStarredFiles((starredRes.value.data || []).slice(0, 8));
+        setStarredFiles((starredRes.value.data || []).slice(0, 6));
       }
       if (folderRes.status === 'fulfilled') {
-        setRecentFolders((folderRes.value.data?.folders || []).slice(0, 8));
+        setRecentFolders((folderRes.value.data?.folders || []).slice(0, 6));
       }
     } catch (err) {
       console.error('Lỗi khi tải trang chủ:', err);
@@ -301,7 +144,13 @@ const HomePage = () => {
     return () => window.removeEventListener('drive:refresh', onRefresh);
   }, [fetchData]);
 
-  /* ── Handlers ── */
+  // Toggle Inspector global event
+  useEffect(() => {
+    const handleToggle = () => setIsInspectorOpen((prev) => !prev);
+    window.addEventListener('drive:toggle-inspector', handleToggle);
+    return () => window.removeEventListener('drive:toggle-inspector', handleToggle);
+  }, []);
+
   const handleDownloadFile = async (file) => {
     try {
       toast.info(`Đang chuẩn bị tải về "${file.name}"...`);
@@ -328,6 +177,12 @@ const HomePage = () => {
         prev.map((f) => (f._id === fileId ? { ...f, isStarred: updated.isStarred } : f));
       setRecentFiles(patcher);
       setStarredFiles(patcher);
+      if (selectedItem?.type === 'file' && selectedItem?.data?._id === fileId) {
+        setSelectedItem((prev) => ({
+          ...prev,
+          data: { ...prev.data, isStarred: updated.isStarred }
+        }));
+      }
       toast.success(updated.isStarred ? 'Đã thêm vào yêu thích' : 'Đã bỏ khỏi yêu thích');
     } catch {
       toast.error('Cập nhật trạng thái yêu thích thất bại');
@@ -346,6 +201,7 @@ const HomePage = () => {
         toast.success(`Đã chuyển tệp tin "${deleteTarget.item.name}" vào thùng rác`);
       }
       setDeleteTarget(null);
+      setSelectedItem(null);
       fetchData();
       window.dispatchEvent(new Event('folder:updated'));
     } catch (err) {
@@ -355,106 +211,240 @@ const HomePage = () => {
     }
   };
 
-  const commonFileProps = {
-    onPreview: (f) => setPreviewFile(f),
-    onDownload: handleDownloadFile,
-    onToggleStar: handleToggleStar,
-    onShare: (type, item) => setShareTarget({ type, item }),
-    onRename: (type, item) => setRenameTarget({ type, item }),
-    onMove: (type, item) => setMoveCopyTarget({ type, item, mode: 'move' }),
-    onVersionHistory: (f) => setVersionsTarget(f),
-    onDelete: (type, item) => setDeleteTarget({ type, item })
-  };
-
-  const commonFolderProps = {
-    onOpen: (id) => navigate(`/drive/folder/${id}`),
-    onShare: (type, item) => setShareTarget({ type, item }),
-    onRename: (type, item) => setRenameTarget({ type, item }),
-    onDelete: (type, item) => setDeleteTarget({ type, item })
-  };
-
-  /* ── Greeting ── */
   const hour = new Date().getHours();
   const greeting =
     hour < 12 ? 'Chào buổi sáng' : hour < 18 ? 'Chào buổi chiều' : 'Chào buổi tối';
-  const firstName = user?.fullName?.split(' ').pop() || user?.email || '';
+  const displayName = user?.name || user?.email || 'bạn';
 
-  return (
-    <div className="home-page">
-      {/* Hero greeting */}
-      <div className="home-hero">
-        <div className="home-hero-text">
-          <h1 className="home-greeting">
-            {greeting}, <span className="home-greeting-name">{firstName}</span> 👋
-          </h1>
-          <p className="home-subtitle">
-            Đây là những file và thư mục được đề xuất cho bạn hôm nay.
-          </p>
-        </div>
-        <div className="home-hero-stat">
-          <TrendingUp size={18} />
-          <span>{recentFiles.length + recentFolders.length} mục trong Drive</span>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="home-loading">
-          <span className="spinner" style={{ width: 36, height: 36 }} />
-          <div style={{ marginTop: 16, fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-            Đang tải dữ liệu trang chủ...
+  /* ── Card thư mục Studio ── */
+  const renderFolderCard = (folder) => {
+    const isSelected = selectedItem?.type === 'folder' && selectedItem?.data?._id === folder._id;
+    return (
+      <div
+        key={folder._id}
+        className={`folder-card ${isSelected ? 'is-selected' : ''}`}
+        onClick={() => setSelectedItem({ type: 'folder', data: folder })}
+        onDoubleClick={() => navigate(`/drive/folder/${folder._id}`)}
+      >
+        <div className="folder-card-main">
+          <div
+            className="folder-card-icon"
+            style={{
+              backgroundColor: folder.color ? `${folder.color}15` : 'var(--bg-surface-hover)',
+              borderColor: folder.color ? `${folder.color}40` : 'var(--border-subtle)'
+            }}
+          >
+            <Folder
+              size={18}
+              style={{
+                color: folder.color || 'var(--primary-600)',
+                fill: folder.color ? `${folder.color}33` : 'var(--primary-200)'
+              }}
+            />
+          </div>
+          <div className="folder-card-info">
+            <span className="folder-card-name" title={folder.name}>
+              {folder.name}
+            </span>
+            <span className="folder-card-sub">Thư mục</span>
           </div>
         </div>
-      ) : (
-        <>
-          {/* Section: Thư mục của bạn */}
-          {recentFolders.length > 0 && (
-            <HomeSection
-              icon={<Folder size={16} />}
-              title="Thư mục của bạn"
-              onViewAll={() => navigate('/drive')}
-              emptyText="Chưa có thư mục nào"
-            >
-              <div className="home-folder-grid">
-                {recentFolders.map((folder) => (
-                  <HomeFolderCard key={folder._id} folder={folder} {...commonFolderProps} />
-                ))}
-              </div>
-            </HomeSection>
+      </div>
+    );
+  };
+
+  /* ── Card tệp tin Studio ── */
+  const renderFileCard = (file) => {
+    const isSelected = selectedItem?.type === 'file' && selectedItem?.data?._id === file._id;
+    const isImage = (
+      file.mimeType?.startsWith('image/') ||
+      ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes((file.extension || '').toLowerCase())
+    );
+
+    return (
+      <div
+        key={file._id}
+        className={`file-card ${isSelected ? 'is-selected' : ''}`}
+        onClick={() => setSelectedItem({ type: 'file', data: file })}
+        onDoubleClick={() => setPreviewFile(file)}
+      >
+        <div className="file-card-preview">
+          <span className="file-ext-tag">
+            .{(file.extension || 'file').toUpperCase()}
+          </span>
+
+          {isImage && file._id ? (
+            <img
+              src={`/api/files/${file._id}/preview`}
+              alt={file.name}
+              className="file-thumbnail"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+          ) : (
+            <FileIcon mimeType={file.mimeType} extension={file.extension} size={40} />
           )}
 
-          {/* Section: Upload gần đây */}
-          <HomeSection
-            icon={<Upload size={16} />}
-            title="Upload gần đây"
-            onViewAll={() => navigate('/drive')}
-            emptyText="Chưa có tệp nào được tải lên. Hãy thử upload file đầu tiên!"
-          >
-            <div className="home-file-grid">
-              {recentFiles.map((file) => (
-                <HomeFileCard key={file._id} file={file} {...commonFileProps} />
-              ))}
+          <div className="file-card-actions-hover" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="btn-icon"
+              title={file.isStarred ? 'Bỏ yêu thích' : 'Yêu thích'}
+              onClick={() => handleToggleStar(file._id)}
+            >
+              <Star
+                size={14}
+                style={{
+                  color: file.isStarred ? '#f59e0b' : 'inherit',
+                  fill: file.isStarred ? '#f59e0b' : 'none'
+                }}
+              />
+            </button>
+            <button className="btn-icon" title="Tải xuống" onClick={() => handleDownloadFile(file)}>
+              <Download size={14} />
+            </button>
+            <button className="btn-icon" title="Xem trước" onClick={() => setPreviewFile(file)}>
+              <Eye size={14} />
+            </button>
+          </div>
+        </div>
+
+        <div className="file-card-body">
+          <div className="file-card-title" title={file.name}>
+            {file.name}
+          </div>
+          <div className="file-card-meta">
+            <span>{file.formattedSize || ''}</span>
+            <span>{file.createdAt ? new Date(file.createdAt).toLocaleDateString('vi-VN') : ''}</span>
+          </div>
+          <div className="file-card-footer">
+            {file.aiCategory && file.aiCategory !== 'Chưa phân loại' && (
+              <span className="badge badge-purple" title="Phân loại AI">
+                <Sparkles size={10} />
+                {file.aiCategory}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <>
+      <main className={`page-body ${isInspectorOpen ? 'has-inspector' : ''}`}>
+        <div className="home-page">
+          {/* Thanh thao tác ngữ cảnh khi chọn tệp/thư mục (Ảnh 1) */}
+          {selectedItem && (
+            <ContextualActionBar
+              selectedItem={selectedItem}
+              onClearSelection={() => setSelectedItem(null)}
+              onShareItem={(type, item) => setShareTarget({ type, item })}
+              onDownloadFile={handleDownloadFile}
+              onRenameItem={(type, item) => setRenameTarget({ type, item })}
+              onToggleStar={handleToggleStar}
+              onPreviewFile={(f) => setPreviewFile(f)}
+              onCopyItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'copy' })}
+              onMoveItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'move' })}
+              onVersionHistory={(f) => setVersionsTarget(f)}
+              onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
+            />
+          )}
+
+          {/* Studio Workspace Header Hero */}
+
+          <div className="home-studio-hero">
+            <div>
+              <h1 className="home-studio-greeting-title">
+                {greeting}, {displayName}
+              </h1>
+              <p className="home-studio-subtitle">
+                Chào mừng bạn trở lại không gian lưu trữ và quản lý tài liệu thông minh.
+              </p>
             </div>
-          </HomeSection>
-
-          {/* Section: Yêu thích */}
-          {starredFiles.length > 0 && (
-            <HomeSection
-              icon={<Star size={16} />}
-              title="Yêu thích"
-              onViewAll={() => navigate('/starred')}
-              emptyText="Chưa có tệp nào được đánh dấu yêu thích"
-            >
-              <div className="home-file-grid">
-                {starredFiles.map((file) => (
-                  <HomeFileCard key={file._id} file={file} {...commonFileProps} />
-                ))}
+            <div className="home-studio-stats">
+              <div className="home-stat-chip">
+                <TrendingUp size={14} style={{ color: 'var(--primary-600)' }} />
+                <span>{recentFiles.length + recentFolders.length} mục gần đây</span>
               </div>
-            </HomeSection>
-          )}
-        </>
-      )}
+              <div className="home-stat-chip">
+                <Star size={14} style={{ color: 'var(--accent-amber)', fill: 'var(--accent-amber)' }} />
+                <span>{starredFiles.length} yêu thích</span>
+              </div>
+            </div>
+          </div>
 
-      {/* ── Modals ── */}
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
+              <span className="spinner" style={{ width: 32, height: 32, margin: '0 auto' }} />
+              <div style={{ marginTop: '14px', fontSize: '0.835rem' }}>Đang nạp dữ liệu không gian làm việc...</div>
+            </div>
+          ) : (
+            <>
+              {/* Thư mục gần đây */}
+              {recentFolders.length > 0 && (
+                <HomeSection
+                  icon={<Folder size={15} style={{ color: 'var(--primary-600)' }} />}
+                  title="Thư mục làm việc"
+                  count={recentFolders.length}
+                  onViewAll={() => navigate('/drive')}
+                >
+                  <div className="folder-grid">
+                    {recentFolders.map(renderFolderCard)}
+                  </div>
+                </HomeSection>
+              )}
+
+              {/* Tệp tin gần đây */}
+              {recentFiles.length > 0 && (
+                <HomeSection
+                  icon={<Upload size={15} style={{ color: 'var(--accent-blue)' }} />}
+                  title="Tài liệu gần đây"
+                  count={recentFiles.length}
+                  onViewAll={() => navigate('/drive')}
+                >
+                  <div className="file-grid">
+                    {recentFiles.map(renderFileCard)}
+                  </div>
+                </HomeSection>
+              )}
+
+              {/* Mục yêu thích */}
+              {starredFiles.length > 0 && (
+                <HomeSection
+                  icon={<Star size={15} style={{ color: 'var(--accent-amber)', fill: 'var(--accent-amber)' }} />}
+                  title="Tài liệu yêu thích"
+                  count={starredFiles.length}
+                  onViewAll={() => navigate('/starred')}
+                >
+                  <div className="file-grid">
+                    {starredFiles.map(renderFileCard)}
+                  </div>
+                </HomeSection>
+              )}
+            </>
+          )}
+        </div>
+      </main>
+
+      {/* Studio Right Inspector Panel */}
+      <InspectorPanel
+        isOpen={isInspectorOpen}
+        onClose={() => setIsInspectorOpen(false)}
+        selectedItem={selectedItem}
+        onOpenFolder={(id) => navigate(`/drive/folder/${id}`)}
+        onPreviewFile={(f) => setPreviewFile(f)}
+        onDownloadFile={handleDownloadFile}
+        onToggleStar={handleToggleStar}
+        onShareItem={(type, item) => setShareTarget({ type, item })}
+        onRenameItem={(type, item) => setRenameTarget({ type, item })}
+        onMoveItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'move' })}
+        onCopyItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'copy' })}
+        onVersionHistory={(f) => setVersionsTarget(f)}
+        onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
+      />
+
+      {/* Modals */}
       <FilePreviewModal
         file={previewFile}
         isOpen={Boolean(previewFile)}
@@ -498,7 +488,7 @@ const HomePage = () => {
         isDanger={true}
         loading={deleting}
       />
-    </div>
+    </>
   );
 };
 

@@ -88,7 +88,13 @@ const fileService = {
         ...params
       }
     });
+  },
+
+  // Lấy thống kê dung lượng thực tế của người dùng (Giới hạn 10GB)
+  getStorageStats: async () => {
+    return await axiosClient.get('/files/storage-stats');
   }
 };
 
 export default fileService;
+

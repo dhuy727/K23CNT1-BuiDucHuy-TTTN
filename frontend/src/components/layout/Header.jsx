@@ -9,12 +9,13 @@ import {
   Key,
   Shield,
   File,
-  Folder
+  Folder,
+  PanelRight
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import searchService from '../../services/searchService';
 
-const Header = () => {
+const Header = ({ isSidebarCollapsed, onToggleSidebar }) => {
   const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -25,6 +26,7 @@ const Header = () => {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
   const [showUserMenu, setShowUserMenu] = useState(false);
 
+  const searchInputRef = useRef(null);
   const searchContainerRef = useRef(null);
   const userMenuRef = useRef(null);
 
@@ -34,8 +36,24 @@ const Header = () => {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
+  // Global Ctrl+K / Cmd+K listener to focus search
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
+  const toggleInspector = () => {
+    window.dispatchEvent(new CustomEvent('drive:toggle-inspector'));
   };
 
   // Close dropdowns on outside click
@@ -93,61 +111,74 @@ const Header = () => {
 
   return (
     <header className="app-header">
-      {/* Search Bar */}
-      <div className="search-container" ref={searchContainerRef}>
-        <form onSubmit={handleSearchSubmit}>
-          <div className="search-input-wrapper">
-            <Search size={18} style={{ color: 'var(--text-muted)' }} />
-            <input
-              type="text"
-              placeholder="Tìm kiếm tệp, thư mục, thẻ phân loại AI..."
-              className="search-input"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => {
-                if (suggestions.length > 0) setShowSuggestions(true);
-              }}
-            />
-          </div>
-        </form>
-
-        {/* Autocomplete Suggestions */}
-        {showSuggestions && suggestions.length > 0 && (
-          <div className="search-suggestions-dropdown">
-            <div style={{ padding: '6px 18px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
-              Gợi ý tìm kiếm
+      <div className="header-left">
+        {/* Studio Search Command Bar */}
+        <div className="search-container" ref={searchContainerRef}>
+          <form onSubmit={handleSearchSubmit}>
+            <div className="search-input-wrapper">
+              <Search size={16} style={{ color: 'var(--text-muted)' }} />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Tìm nhanh tệp tin, thư mục, thẻ phân loại AI..."
+                className="search-input"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => {
+                  if (suggestions.length > 0) setShowSuggestions(true);
+                }}
+              />
+              <span className="search-kbd">Ctrl K</span>
             </div>
-            {suggestions.map((item, idx) => {
-              const text = typeof item === 'string' ? item : item.name || item.text;
-              const type = item.type || 'file';
-              return (
-                <div
-                  key={idx}
-                  className="suggestion-item"
-                  onClick={() => handleSelectSuggestion(item)}
-                >
-                  {type === 'folder' ? (
-                    <Folder size={16} style={{ color: 'var(--primary-600)' }} />
-                  ) : (
-                    <File size={16} style={{ color: 'var(--text-muted)' }} />
-                  )}
-                  <span>{text}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
+          </form>
+
+          {/* Autocomplete Suggestions */}
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="search-suggestions-dropdown">
+              <div style={{ padding: '4px 14px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Gợi ý kết quả
+              </div>
+              {suggestions.map((item, idx) => {
+                const text = typeof item === 'string' ? item : item.name || item.text;
+                const type = item.type || 'file';
+                return (
+                  <div
+                    key={idx}
+                    className="suggestion-item"
+                    onClick={() => handleSelectSuggestion(item)}
+                  >
+                    {type === 'folder' ? (
+                      <Folder size={15} style={{ color: 'var(--primary-600)' }} />
+                    ) : (
+                      <File size={15} style={{ color: 'var(--text-muted)' }} />
+                    )}
+                    <span>{text}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Header Actions */}
       <div className="header-actions">
+        {/* Toggle Inspector Panel */}
+        <button
+          className="btn-icon"
+          onClick={toggleInspector}
+          title="Bật / tắt bảng chi tiết Inspector"
+        >
+          <PanelRight size={17} />
+        </button>
+
         {/* Theme Toggle */}
         <button
           className="btn-icon"
           onClick={toggleTheme}
           title={theme === 'light' ? 'Chuyển sang chế độ tối' : 'Chuyển sang chế độ sáng'}
         >
-          {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+          {theme === 'light' ? <Moon size={17} /> : <Sun size={17} />}
         </button>
 
         {/* User Profile Menu */}
@@ -155,11 +186,12 @@ const Header = () => {
           <button
             className="user-avatar-btn"
             onClick={() => setShowUserMenu(!showUserMenu)}
+            title="Tài khoản người dùng"
           >
             <div className="avatar-circle">
               {(user?.name || user?.email || 'U')[0].toUpperCase()}
             </div>
-            <span style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            <span style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               {user?.name || 'Tài khoản'}
             </span>
           </button>
@@ -170,7 +202,7 @@ const Header = () => {
                 <div className="dropdown-name">{user?.name}</div>
                 <div className="dropdown-email">{user?.email}</div>
                 {user?.role && (
-                  <span className="badge badge-purple" style={{ marginTop: '6px' }}>
+                  <span className="badge badge-purple" style={{ marginTop: '5px' }}>
                     {user.role.toUpperCase()}
                   </span>
                 )}
@@ -183,7 +215,7 @@ const Header = () => {
                   navigate('/settings/profile');
                 }}
               >
-                <User size={16} />
+                <User size={15} />
                 <span>Hồ sơ cá nhân</span>
               </button>
 
@@ -194,7 +226,7 @@ const Header = () => {
                   navigate('/settings/change-password');
                 }}
               >
-                <Key size={16} />
+                <Key size={15} />
                 <span>Đổi mật khẩu</span>
               </button>
 
@@ -206,7 +238,7 @@ const Header = () => {
                     navigate('/admin/users');
                   }}
                 >
-                  <Shield size={16} />
+                  <Shield size={15} />
                   <span>Quản trị người dùng</span>
                 </button>
               )}
@@ -214,7 +246,7 @@ const Header = () => {
               <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle)', margin: '4px 0' }} />
 
               <button className="dropdown-item danger" onClick={handleLogout}>
-                <LogOut size={16} />
+                <LogOut size={15} />
                 <span>Đăng xuất</span>
               </button>
             </div>

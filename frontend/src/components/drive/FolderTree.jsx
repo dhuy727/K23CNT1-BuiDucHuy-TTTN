@@ -73,7 +73,23 @@ const TreeNode = ({ node, activeFolderId, onSelectFolder, level = 0 }) => {
   );
 };
 
-const FolderTree = ({ tree = [], activeFolderId = null, onSelectFolder, includeRoot = false }) => {
+const FolderTree = ({
+  tree,
+  folders,
+  activeFolderId = null,
+  onSelectFolder,
+  includeRoot = false
+}) => {
+  const list = (tree && tree.length > 0) ? tree : (folders || []);
+
+  if (list.length === 0 && !includeRoot) {
+    return (
+      <div style={{ padding: '8px 12px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+        Chưa có thư mục
+      </div>
+    );
+  }
+
   return (
     <div className="folder-tree-root">
       {includeRoot && (
@@ -83,11 +99,11 @@ const FolderTree = ({ tree = [], activeFolderId = null, onSelectFolder, includeR
           style={{ paddingLeft: '8px' }}
         >
           <span style={{ width: 14 }} />
-          <HardDrive size={16} style={{ color: 'var(--primary-600)' }} />
+          <HardDrive size={16} style={{ color: 'var(--primary-400)' }} />
           <span style={{ fontSize: '0.8125rem', fontWeight: 600 }}>Drive của tôi (Gốc)</span>
         </div>
       )}
-      {tree.map((node) => (
+      {list.map((node) => (
         <TreeNode
           key={node._id}
           node={node}
@@ -101,3 +117,4 @@ const FolderTree = ({ tree = [], activeFolderId = null, onSelectFolder, includeR
 };
 
 export default FolderTree;
+

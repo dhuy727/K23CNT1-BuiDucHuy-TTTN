@@ -38,11 +38,19 @@ router.get('/trash', fileController.getTrashFiles);
 router.delete('/trash/empty', fileController.emptyTrash);
 
 /**
+ * @route   GET /api/files/storage-stats
+ * @desc    Lấy thống kê dung lượng lưu trữ thực tế của người dùng (giới hạn 10GB)
+ * @access  Private
+ */
+router.get('/storage-stats', fileController.getStorageStats);
+
+/**
  * @route   GET /api/files
  * @desc    Lấy danh sách tệp tin (hỗ trợ lọc theo folderId, tìm kiếm, lọc loại file, phân loại AI, phân trang)
  * @access  Private
  */
 router.get('/', fileController.getFiles);
+
 
 /**
  * @route   GET /api/files/:id/download

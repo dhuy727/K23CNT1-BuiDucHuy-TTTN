@@ -737,6 +737,55 @@ const toggleStar = async (userId, fileId) => {
   };
 };
 
+/**
+ * 15. Lấy thống kê dung lượng lưu trữ của người dùng (Giới hạn 10GB)
+ */
+const getStorageStats = async (userId) => {
+  const stats = await File.aggregate([
+    { $match: { user: new mongoose.Types.ObjectId(userId) } },
+    {
+      $group: {
+        _id: null,
+        totalSize: { $sum: '$size' },
+        totalFiles: { $sum: 1 },
+        trashSize: {
+          $sum: {
+            $cond: [{ $eq: ['$isTrash', true] }, '$size', 0]
+          }
+        },
+        trashFiles: {
+          $sum: {
+            $cond: [{ $eq: ['$isTrash', true] }, 1, 0]
+          }
+        }
+      }
+    }
+  ]);
+
+  const usedBytes = stats.length > 0 ? stats[0].totalSize : 0;
+  const totalFiles = stats.length > 0 ? stats[0].totalFiles : 0;
+  const trashBytes = stats.length > 0 ? stats[0].trashSize : 0;
+  const trashFiles = stats.length > 0 ? stats[0].trashFiles : 0;
+  const limitBytes = 10 * 1024 * 1024 * 1024; // Giới hạn 10 GB
+
+  const percentage = limitBytes > 0 ? Math.min(100, Math.round((usedBytes / limitBytes) * 10000) / 100) : 0;
+
+  return {
+    usedBytes,
+    limitBytes,
+    usedFormatted: formatFileSize(usedBytes),
+    limitFormatted: '10 GB',
+    percentage,
+    totalFiles,
+    trashBytes,
+    trashFiles,
+    trashFormatted: formatFileSize(trashBytes),
+    activeBytes: usedBytes - trashBytes,
+    activeFiles: totalFiles - trashFiles,
+    activeFormatted: formatFileSize(usedBytes - trashBytes)
+  };
+};
+
 module.exports = {
   formatFileSize,
   checkFileAccess,
@@ -753,5 +802,7 @@ module.exports = {
   getTrashFiles,
   restoreFile,
   emptyTrash,
-  toggleStar
+  toggleStar,
+  getStorageStats
 };
+

@@ -226,6 +226,21 @@ const toggleStar = async (req, res, next) => {
   }
 };
 
+/**
+ * Lấy thống kê dung lượng lưu trữ (10GB)
+ */
+const getStorageStats = async (req, res, next) => {
+  try {
+    const stats = await fileService.getStorageStats(req.user._id);
+    return sendSuccess(res, {
+      message: 'Lấy thống kê dung lượng thành công',
+      data: stats
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   uploadFile,
   uploadMultipleFiles,
@@ -240,5 +255,7 @@ module.exports = {
   getTrashFiles,
   restoreFile,
   emptyTrash,
-  toggleStar
+  toggleStar,
+  getStorageStats
 };
+
