@@ -10,7 +10,8 @@ import {
   Shield,
   File,
   Folder,
-  PanelRight
+  PanelRight,
+  PanelLeft
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import searchService from '../../services/searchService';

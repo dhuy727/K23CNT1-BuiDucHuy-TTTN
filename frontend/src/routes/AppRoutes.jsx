@@ -18,6 +18,7 @@ import MyDrivePage from '../pages/drive/MyDrivePage';
 import StarredPage from '../pages/drive/StarredPage';
 import TrashPage from '../pages/drive/TrashPage';
 import SearchPage from '../pages/drive/SearchPage';
+import AutomationPage from '../pages/automation/AutomationPage';
 
 // Share Pages
 import SharedWithMePage from '../pages/shares/SharedWithMePage';
@@ -58,6 +59,7 @@ const AppRoutes = () => {
         <Route path="starred" element={<StarredPage />} />
         <Route path="trash" element={<TrashPage />} />
         <Route path="search" element={<SearchPage />} />
+        <Route path="automation" element={<AutomationPage />} />
         <Route path="shares/shared-with-me" element={<SharedWithMePage />} />
         <Route path="shares/shared-by-me" element={<SharedByMePage />} />
         <Route path="settings/profile" element={<ProfilePage />} />

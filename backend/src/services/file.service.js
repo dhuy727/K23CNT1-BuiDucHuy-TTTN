@@ -103,6 +103,11 @@ const uploadFile = async (userId, file, body = {}) => {
 
   await newFile.save();
   require('./ai.service').enqueueProcess(newFile._id);
+  try {
+    require('./automation.service').run(userId, 'FILE_UPLOADED', newFile);
+  } catch (autoErr) {
+    console.error('[FileService] Lỗi chạy automation sau upload:', autoErr.message);
+  }
   await newFile.populate('folder', '_id name path color');
 
   return {
@@ -151,6 +156,11 @@ const uploadMultipleFiles = async (userId, files, body = {}) => {
 
     await newFile.save();
     require('./ai.service').enqueueProcess(newFile._id);
+    try {
+      require('./automation.service').run(userId, 'FILE_UPLOADED', newFile);
+    } catch (autoErr) {
+      console.error('[FileService] Lỗi chạy automation sau upload multiple:', autoErr.message);
+    }
     uploadedFiles.push({
       ...newFile.toObject(),
       formattedSize: formatFileSize(newFile.size)
@@ -449,6 +459,12 @@ const renameFile = async (userId, fileId, newName) => {
   file.name = trimmedName;
   await file.save();
 
+  try {
+    require('./automation.service').run(userId, 'FILE_UPDATED', file);
+  } catch (autoErr) {
+    console.error('[FileService] Lỗi chạy automation sau rename:', autoErr.message);
+  }
+
   return {
     ...file.toObject(),
     formattedSize: formatFileSize(file.size)
@@ -494,6 +510,12 @@ const moveFile = async (userId, fileId, targetFolderId) => {
   file.folder = normalizedTargetId;
   await file.save();
   await file.populate('folder', '_id name path color');
+
+  try {
+    require('./automation.service').run(userId, 'FILE_MOVED', file);
+  } catch (autoErr) {
+    console.error('[FileService] Lỗi chạy automation sau move:', autoErr.message);
+  }
 
   return {
     ...file.toObject(),

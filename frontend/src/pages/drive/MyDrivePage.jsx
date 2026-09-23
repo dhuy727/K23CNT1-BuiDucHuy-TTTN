@@ -20,6 +20,7 @@ import ConfirmDialog from '../../components/common/ConfirmDialog';
 import InspectorPanel from '../../components/drive/InspectorPanel';
 import folderService from '../../services/folderService';
 import fileService from '../../services/fileService';
+import aiService from '../../services/aiService';
 import { useToast } from '../../contexts/ToastContext';
 
 const MyDrivePage = () => {
@@ -38,7 +39,7 @@ const MyDrivePage = () => {
 
   // Studio 3-column Inspector state
   const [selectedItem, setSelectedItem] = useState(null);
-  const [isInspectorOpen, setIsInspectorOpen] = useState(true);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
   // Modals state
   const [previewFile, setPreviewFile] = useState(null);
@@ -58,8 +59,14 @@ const MyDrivePage = () => {
       if (folderId) {
         try {
           const detailRes = await folderService.getFolderById(folderId);
-          if (detailRes.data?.breadcrumb) {
-            setBreadcrumbs(detailRes.data.breadcrumb);
+          const bList = detailRes.metadata?.breadcrumb || detailRes.data?.breadcrumb;
+          if (bList && bList.length > 0) {
+            setBreadcrumbs(bList);
+          } else if (detailRes.data?.name) {
+            setBreadcrumbs([
+              { _id: 'root', name: 'Drive của tôi' },
+              { _id: detailRes.data._id, name: detailRes.data.name }
+            ]);
           }
         } catch (e) {
           console.error('Không tìm thấy thư mục con:', e);
@@ -98,6 +105,30 @@ const MyDrivePage = () => {
     window.addEventListener('drive:refresh', handleRefresh);
     return () => window.removeEventListener('drive:refresh', handleRefresh);
   }, [fetchDriveContent]);
+
+  // Polling tự động khi có tệp tin đang ở trạng thái pending hoặc processing
+  useEffect(() => {
+    const hasPending = files.some(
+      (f) => f.aiStatus === 'pending' || f.aiStatus === 'processing'
+    );
+    if (!hasPending) return;
+
+    const timer = setInterval(() => {
+      fetchDriveContent();
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [files, fetchDriveContent]);
+
+  const handleRetryAi = async (fileId) => {
+    try {
+      await aiService.processFile(fileId);
+      toast.success('Đã đưa tệp tin vào hàng đợi phân tích lại AI');
+      fetchDriveContent();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Không thể phân tích lại AI');
+    }
+  };
 
   // Toggle Inspector global event
   useEffect(() => {
@@ -304,6 +335,7 @@ const MyDrivePage = () => {
             onCopyItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'copy' })}
             onVersionHistory={(f) => setVersionsTarget(f)}
             onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
+            onRetryAi={handleRetryAi}
           />
         ) : (
           <FileTable
@@ -321,6 +353,7 @@ const MyDrivePage = () => {
             onCopyItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'copy' })}
             onVersionHistory={(f) => setVersionsTarget(f)}
             onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
+            onRetryAi={handleRetryAi}
           />
         )}
       </main>
@@ -348,6 +381,10 @@ const MyDrivePage = () => {
         isOpen={Boolean(previewFile)}
         onClose={() => setPreviewFile(null)}
         onDownload={handleDownloadFile}
+        onFileUpdated={() => {
+          fetchDriveContent();
+          window.dispatchEvent(new Event('file:updated'));
+        }}
       />
 
       <RenameModal

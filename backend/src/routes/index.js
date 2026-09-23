@@ -6,6 +6,8 @@ const folderRoutes = require('./folder.routes');
 const fileRoutes = require('./file.routes');
 const searchRoutes = require('./search.routes');
 const shareRoutes = require('./share.routes');
+const automationRoutes = require('./automation.routes');
+const notificationRoutes = require('./notification.routes');
 
 // Health check endpoint
 router.get('/health', (req, res) => {
@@ -23,6 +25,8 @@ router.use('/folders', folderRoutes);
 router.use('/files', fileRoutes);
 router.use('/search', searchRoutes);
 router.use('/shares', shareRoutes);
+router.use('/automations', automationRoutes);
+router.use('/notifications', notificationRoutes);
 
 module.exports = router;
 

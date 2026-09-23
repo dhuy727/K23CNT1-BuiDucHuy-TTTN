@@ -9,7 +9,13 @@ const AI_CATEGORIES = [
   'Khác'
 ];
 
-const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
+const GEMINI_CANDIDATES = [
+  'gemini-3.5-flash',
+  'gemini-3.6-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-flash-latest'
+];
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1';
 
@@ -96,34 +102,50 @@ const parseModelJson = (rawText, originalName) => {
 };
 
 const callGemini = async ({ apiKey, model, prompt }) => {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: 'application/json'
+  const modelsToTry = Array.from(new Set([model, ...GEMINI_CANDIDATES].filter(Boolean)));
+  let lastError = null;
+
+  for (const currentModel of modelsToTry) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(currentModel)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: 'application/json'
+          }
+        })
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = payload?.error?.message || `Gemini (${currentModel}) trả về HTTP ${response.status}`;
+        console.warn(`[Gemini Provider] Model ${currentModel} lỗi (${response.status}): ${message}. Đang thử model tiếp theo...`);
+        lastError = new Error(message);
+        continue;
       }
-    })
-  });
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const message = payload?.error?.message || `Gemini trả về HTTP ${response.status}`;
-    throw new Error(message);
+      const text = payload?.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text || '')
+        .join('')
+        .trim();
+
+      if (!text) {
+        lastError = new Error(`Gemini (${currentModel}) không trả về nội dung`);
+        continue;
+      }
+
+      return text;
+    } catch (err) {
+      console.warn(`[Gemini Provider] Thất bại khi gọi model ${currentModel}: ${err.message}`);
+      lastError = err;
+    }
   }
 
-  const text = payload?.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || '')
-    .join('')
-    .trim();
-
-  if (!text) {
-    throw new Error('Gemini không trả về nội dung phân loại');
-  }
-  return text;
+  throw lastError || new Error('Tất cả các model Gemini đều không khả dụng lúc này');
 };
 
 const callOpenAiCompatible = async ({ apiKey, model, prompt, baseUrl }) => {

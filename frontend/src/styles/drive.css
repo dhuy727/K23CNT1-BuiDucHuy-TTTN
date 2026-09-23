@@ -298,7 +298,7 @@
   background-color: var(--bg-card);
   border: 1px solid var(--border-main);
   border-radius: var(--radius-md);
-  overflow-x: hidden;
+  overflow: visible;
   box-shadow: var(--shadow-xs);
   position: relative;
   width: 100%;
@@ -334,7 +334,6 @@
   color: var(--text-secondary);
   vertical-align: middle;
   background-color: var(--bg-card);
-  overflow: hidden;
 }
 
 .file-table tr {
@@ -363,6 +362,7 @@
   padding-left: 2px;
   padding-right: 12px;
   white-space: nowrap;
+  overflow: visible !important;
 }
 
 .file-table th.col-actions {
@@ -397,7 +397,24 @@
 
 .file-table th.col-ai,
 .file-table td.col-ai {
-  width: 105px;
+  width: 145px;
+  max-width: 145px;
+  white-space: nowrap;
+  padding-left: 8px;
+  padding-right: 8px;
+  overflow: hidden;
+}
+
+.file-table td.col-ai .badge {
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.file-table td.col-ai .badge span {
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -405,6 +422,8 @@
 .file-table td.col-size {
   width: 95px;
   white-space: nowrap;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 .file-table th.col-date,
@@ -419,9 +438,9 @@
   display: none !important;
 }
 
-.page-body.has-inspector .file-table th.col-actions,
-.page-body.has-inspector .file-table td.col-actions,
-.page-body.has-inspector .file-table td.table-action-cell {
+.page-body.has-inspector .file-table:not(.is-trash) th.col-actions,
+.page-body.has-inspector .file-table:not(.is-trash) td.col-actions,
+.page-body.has-inspector .file-table:not(.is-trash) td.table-action-cell {
   width: 44px !important;
   min-width: 44px !important;
   max-width: 44px !important;
@@ -431,6 +450,100 @@
 
 .page-body.has-inspector .file-table .table-row-hover-actions {
   display: none !important;
+}
+
+/* ── Trash Table Action Column Handling ── */
+.file-table.is-trash th.col-actions,
+.file-table.is-trash td.col-actions,
+.file-table.is-trash td.table-action-cell {
+  width: 140px;
+  min-width: 140px;
+  text-align: right;
+  padding-left: 4px;
+  padding-right: 12px;
+}
+
+.trash-action-btns {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.trash-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+  cursor: pointer;
+}
+
+.trash-action-btn .trash-action-icon {
+  display: none;
+  flex-shrink: 0;
+}
+
+.trash-action-btn .trash-action-text {
+  display: inline;
+}
+
+/* When Inspector is Open in Trash View */
+.page-body.has-inspector .file-table.is-trash th.col-actions,
+.page-body.has-inspector .file-table.is-trash td.col-actions,
+.page-body.has-inspector .file-table.is-trash td.table-action-cell {
+  width: 72px !important;
+  min-width: 72px !important;
+  max-width: 72px !important;
+  padding-left: 2px !important;
+  padding-right: 6px !important;
+}
+
+.page-body.has-inspector .trash-action-btn {
+  width: 28px;
+  height: 28px;
+  padding: 0 !important;
+  border-radius: var(--radius-sm);
+}
+
+.page-body.has-inspector .trash-action-btn .trash-action-text {
+  display: none !important;
+}
+
+.page-body.has-inspector .trash-action-btn .trash-action-icon {
+  display: block !important;
+}
+
+@container file-table-box (max-width: 750px) {
+  .file-table.is-trash th.col-actions,
+  .file-table.is-trash td.col-actions,
+  .file-table.is-trash td.table-action-cell {
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    padding-left: 2px !important;
+    padding-right: 6px !important;
+  }
+
+  .trash-action-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0 !important;
+    border-radius: var(--radius-sm);
+  }
+
+  .trash-action-btn .trash-action-text {
+    display: none !important;
+  }
+
+  .trash-action-btn .trash-action-icon {
+    display: block !important;
+  }
 }
 
 .table-name-cell {
@@ -464,9 +577,9 @@
   .file-table .table-row-hover-actions {
     display: none !important;
   }
-  .file-table th.col-actions,
-  .file-table td.col-actions,
-  .file-table td.table-action-cell {
+  .file-table:not(.is-trash) th.col-actions,
+  .file-table:not(.is-trash) td.col-actions,
+  .file-table:not(.is-trash) td.table-action-cell {
     width: 44px !important;
     min-width: 44px !important;
     max-width: 44px !important;
@@ -501,9 +614,9 @@
   .file-table .table-row-hover-actions {
     display: none !important;
   }
-  .file-table th.col-actions,
-  .file-table td.col-actions,
-  .file-table td.table-action-cell {
+  .file-table:not(.is-trash) th.col-actions,
+  .file-table:not(.is-trash) td.col-actions,
+  .file-table:not(.is-trash) td.table-action-cell {
     width: 44px !important;
     min-width: 44px !important;
     max-width: 44px !important;
@@ -513,6 +626,31 @@
 }
 
 @media (max-width: 768px) {
+  .file-table.is-trash th.col-actions,
+  .file-table.is-trash td.col-actions,
+  .file-table.is-trash td.table-action-cell {
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    padding-left: 2px !important;
+    padding-right: 6px !important;
+  }
+
+  .trash-action-btn {
+    width: 28px;
+    height: 28px;
+    padding: 0 !important;
+    border-radius: var(--radius-sm);
+  }
+
+  .trash-action-btn .trash-action-text {
+    display: none !important;
+  }
+
+  .trash-action-btn .trash-action-icon {
+    display: block !important;
+  }
+
   .file-table .col-date {
     display: none !important;
   }
@@ -1184,5 +1322,29 @@
 .file-table-container {
   min-height: 240px;
 }
+
+/* Elevated z-index when dropdown menu is open in table row */
+.file-table tr.menu-open {
+  position: relative;
+  z-index: 70 !important;
+}
+
+.file-table tr.menu-open td {
+  position: relative;
+  z-index: 70 !important;
+}
+
+.file-table tr.menu-open td.table-action-cell,
+.file-table td.table-action-cell.menu-open {
+  position: relative;
+  z-index: 80 !important;
+}
+
+.file-table tr.menu-open .table-action-btns,
+.table-action-btns.menu-open {
+  position: relative;
+  z-index: 90 !important;
+}
+
 
 

@@ -122,6 +122,8 @@ router.delete('/:id/permanent', validateObjectId('id'), (req, res, next) => {
  */
 router.delete('/:id', validateObjectId('id'), fileController.deleteFile);
 
+const aiRoutes = require('./ai.routes');
+
 /**
  * @route   GET /api/files/:id
  * @desc    Xem chi tiết thông tin tệp tin
@@ -133,5 +135,10 @@ router.get('/:id', validateObjectId('id'), fileController.getFileById);
  * Mount nested version routes: /api/files/:id/versions/...
  */
 router.use('/:id/versions', versionRoutes);
+
+/**
+ * Mount nested AI routes: /api/files/:id/ai/...
+ */
+router.use('/:id/ai', validateObjectId('id'), aiRoutes);
 
 module.exports = router;

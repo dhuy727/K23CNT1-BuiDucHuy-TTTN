@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Folder,
   Star,
@@ -11,36 +12,74 @@ import {
   Eye,
   Sparkles,
   Copy,
-  MoreVertical
+  MoreVertical,
+  RefreshCw,
+  Clock,
+  XCircle,
+  RotateCcw
 } from 'lucide-react';
 import FileIcon from './FileIcon';
 
-/* ── Dropdown menu 3 chấm ── */
-const TableMoreMenu = ({ items, onClose }) => {
-  const ref = useRef(null);
-  const [openUpwards, setOpenUpwards] = useState(false);
+/* ── Dropdown menu 3 chấm dùng riêng cho Table qua Portal để chống bị che khuất ── */
+const TableMoreMenu = ({ buttonRef, items, onClose }) => {
+  const menuRef = useRef(null);
+  const [coords, setCoords] = useState(null);
 
-  useEffect(() => {
-    if (ref.current) {
-      const rect = ref.current.getBoundingClientRect();
-      if (window.innerHeight - rect.bottom < 15) {
-        setOpenUpwards(true);
-      }
-    }
-  }, []);
+  useLayoutEffect(() => {
+    if (!buttonRef?.current) return;
+    const btnRect = buttonRef.current.getBoundingClientRect();
+    const menuWidth = 210;
+    const numItems = items.filter((it) => !it.divider).length;
+    const numDividers = items.filter((it) => it.divider).length;
+    const estHeight = numItems * 35 + numDividers * 8 + 12;
+
+    const spaceBelow = window.innerHeight - btnRect.bottom;
+    const openUpwards = spaceBelow < estHeight && btnRect.top > estHeight;
+
+    const top = openUpwards
+      ? Math.max(10, btnRect.top - estHeight - 4)
+      : Math.min(window.innerHeight - estHeight - 10, btnRect.bottom + 4);
+
+    const left = Math.max(10, Math.min(btnRect.right - menuWidth, window.innerWidth - menuWidth - 10));
+
+    setCoords({ top, left });
+  }, [buttonRef, items]);
 
   useEffect(() => {
     const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target) &&
+        buttonRef?.current &&
+        !buttonRef.current.contains(e.target)
+      ) {
+        onClose();
+      }
     };
+    const scrollHandler = () => onClose();
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
+    window.addEventListener('scroll', scrollHandler, true);
+    window.addEventListener('resize', scrollHandler);
 
-  return (
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      window.removeEventListener('scroll', scrollHandler, true);
+      window.removeEventListener('resize', scrollHandler);
+    };
+  }, [onClose, buttonRef]);
+
+  if (!coords) return null;
+
+  return createPortal(
     <div
-      className={`home-more-menu ${openUpwards ? 'open-upwards' : ''}`}
-      ref={ref}
+      className="home-more-menu portal-table-menu"
+      ref={menuRef}
+      style={{
+        position: 'fixed',
+        top: `${coords.top}px`,
+        left: `${coords.left}px`,
+        zIndex: 9999
+      }}
       onClick={(e) => e.stopPropagation()}
     >
       {items.map((item, i) =>
@@ -61,7 +100,8 @@ const TableMoreMenu = ({ items, onClose }) => {
           </button>
         )
       )}
-    </div>
+    </div>,
+    document.body
   );
 };
 
@@ -80,6 +120,7 @@ const FolderRow = ({
   onRestoreItem
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const buttonRef = useRef(null);
 
   const menuItems = [
     onOpenFolder && { icon: <Folder size={14} />, label: 'Mở thư mục', onClick: () => onOpenFolder(folder._id) },
@@ -92,7 +133,7 @@ const FolderRow = ({
 
   return (
     <tr
-      className={isSelected ? 'is-selected' : ''}
+      className={`${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
       onClick={() => onSelectItem && onSelectItem({ type: 'folder', data: folder })}
       onDoubleClick={() => onOpenFolder && onOpenFolder(folder._id)}
     >
@@ -110,14 +151,16 @@ const FolderRow = ({
         </div>
       </td>
       <td className="col-ai">
-        <span className="badge badge-slate">Thư mục</span>
+        <span className="badge badge-slate" title="Thư mục">
+          <span>Thư mục</span>
+        </span>
       </td>
       <td className="col-size table-mono-cell">-</td>
       <td className="col-date table-mono-cell">
         {folder.createdAt ? new Date(folder.createdAt).toLocaleDateString('vi-VN') : '-'}
       </td>
-      <td className="col-actions table-action-cell">
-        <div className="table-action-btns" onClick={(e) => e.stopPropagation()}>
+      <td className={`col-actions table-action-cell ${menuOpen ? 'menu-open' : ''}`}>
+        <div className={`table-action-btns ${menuOpen ? 'menu-open' : ''}`} onClick={(e) => e.stopPropagation()}>
           {!isTrash ? (
             <>
               <div className="table-row-hover-actions">
@@ -147,6 +190,7 @@ const FolderRow = ({
                 )}
               </div>
               <button
+                ref={buttonRef}
                 className={`btn-icon home-quick-btn ${menuOpen ? 'active' : ''}`}
                 title="Thao tác khác"
                 onClick={(e) => {
@@ -156,18 +200,31 @@ const FolderRow = ({
               >
                 <MoreVertical size={15} />
               </button>
-              {menuOpen && <TableMoreMenu items={menuItems} onClose={() => setMenuOpen(false)} />}
+              {menuOpen && <TableMoreMenu buttonRef={buttonRef} items={menuItems} onClose={() => setMenuOpen(false)} />}
             </>
           ) : (
-            onRestoreItem && (
-              <button
-                className="btn btn-secondary"
-                style={{ padding: '3px 8px', fontSize: '0.72rem' }}
-                onClick={() => onRestoreItem('folder', folder)}
-              >
-                Khôi phục
-              </button>
-            )
+            <div className="trash-action-btns">
+              {onRestoreItem && (
+                <button
+                  className="btn btn-secondary trash-action-btn"
+                  title="Khôi phục thư mục"
+                  onClick={() => onRestoreItem('folder', folder)}
+                >
+                  <RotateCcw size={14} className="trash-action-icon" />
+                  <span className="trash-action-text">Khôi phục</span>
+                </button>
+              )}
+              {onDeleteItem && (
+                <button
+                  className="btn btn-danger trash-action-btn"
+                  title="Xóa vĩnh viễn"
+                  onClick={() => onDeleteItem('folder', folder, true)}
+                >
+                  <Trash2 size={14} className="trash-action-icon" />
+                  <span className="trash-action-text">Xóa</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
       </td>
@@ -192,9 +249,11 @@ const FileRow = ({
   onDeleteItem,
   isTrash,
   onRestoreItem,
-  formatSize
+  formatSize,
+  onRetryAi
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const buttonRef = useRef(null);
 
   const menuItems = [
     onPreviewFile && { icon: <Eye size={14} />, label: 'Xem trước', onClick: () => onPreviewFile(file) },
@@ -209,13 +268,18 @@ const FileRow = ({
     onMoveItem && { icon: <FolderInput size={14} />, label: 'Di chuyển', onClick: () => onMoveItem('file', file) },
     onCopyItem && { icon: <Copy size={14} />, label: 'Sao chép vào', onClick: () => onCopyItem('file', file) },
     onVersionHistory && { icon: <History size={14} />, label: 'Lịch sử phiên bản', onClick: () => onVersionHistory(file) },
+    onRetryAi && (file.aiStatus === 'failed' || file.aiStatus === 'skipped') && {
+      icon: <RefreshCw size={14} />,
+      label: 'Phân tích lại AI',
+      onClick: () => onRetryAi(file._id)
+    },
     { divider: true },
     onDeleteItem && { icon: <Trash2 size={14} />, label: 'Xóa vào thùng rác', danger: true, onClick: () => onDeleteItem('file', file) }
   ].filter(Boolean);
 
   return (
     <tr
-      className={isSelected ? 'is-selected' : ''}
+      className={`${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
       onClick={() => onSelectItem && onSelectItem({ type: 'file', data: file })}
       onDoubleClick={() => onPreviewFile && onPreviewFile(file)}
     >
@@ -227,21 +291,68 @@ const FileRow = ({
             size={18}
             className="table-file-icon"
           />
-          <span title={file.name}>{file.name}</span>
-          {file.isStarred && (
-            <Star size={13} style={{ color: '#f59e0b', fill: '#f59e0b', flexShrink: 0 }} />
-          )}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span title={file.name}>{file.name}</span>
+              {file.isStarred && (
+                <Star size={13} style={{ color: '#f59e0b', fill: '#f59e0b', flexShrink: 0 }} />
+              )}
+            </div>
+            {Array.isArray(file.aiTags) && file.aiTags.length > 0 && (
+              <div style={{ display: 'flex', gap: '4px', marginTop: '2px' }}>
+                {file.aiTags.slice(0, 2).map((t, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                    fontSize: '0.6875rem',
+                    color: 'var(--text-muted)',
+                    background: 'var(--bg-surface-hover)',
+                    padding: '1px 5px',
+                    borderRadius: '4px'
+                  }}
+                >
+                  #{t}
+                </span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </td>
       <td className="col-ai">
-        {file.aiCategory && file.aiCategory !== 'Chưa phân loại' ? (
-          <span className="badge badge-purple" title="Phân loại AI">
-            <Sparkles size={11} />
-            {file.aiCategory}
+        {file.aiStatus === 'processing' ? (
+          <span className="badge badge-ai-processing" title="AI đang phân tích">
+            <RefreshCw size={10} className="spin-animation" style={{ flexShrink: 0 }} />
+            <span>Đang xử lý</span>
+          </span>
+        ) : file.aiStatus === 'pending' ? (
+          <span className="badge badge-ai-pending" title="Đang chờ phân tích AI">
+            <Clock size={10} style={{ flexShrink: 0 }} />
+            <span>Chờ AI</span>
+          </span>
+        ) : file.aiStatus === 'failed' ? (
+          <span
+            className="badge badge-ai-failed"
+            title={`${file.aiError || 'Phân tích AI thất bại'} - Bấm để phân tích lại`}
+            style={{ cursor: onRetryAi ? 'pointer' : 'default' }}
+            onClick={(e) => {
+              if (onRetryAi) {
+                e.stopPropagation();
+                onRetryAi(file._id);
+              }
+            }}
+          >
+            <XCircle size={10} style={{ flexShrink: 0 }} />
+            <span>Lỗi AI</span>
+          </span>
+        ) : file.aiCategory && file.aiCategory !== 'Chưa phân loại' ? (
+          <span className="badge badge-purple" title={`Phân loại AI: ${file.aiCategory}`}>
+            <Sparkles size={11} style={{ flexShrink: 0 }} />
+            <span>{file.aiCategory}</span>
           </span>
         ) : (
-          <span className="badge badge-mono badge-blue">
-            .{(file.extension || 'file').toUpperCase()}
+          <span className="badge badge-mono badge-blue" title={file.extension ? `Định dạng .${file.extension}` : 'Tệp'}>
+            <span>.{(file.extension || 'file').toUpperCase()}</span>
           </span>
         )}
       </td>
@@ -251,8 +362,8 @@ const FileRow = ({
       <td className="col-date table-mono-cell">
         {file.createdAt ? new Date(file.createdAt).toLocaleDateString('vi-VN') : '-'}
       </td>
-      <td className="col-actions table-action-cell">
-        <div className="table-action-btns" onClick={(e) => e.stopPropagation()}>
+      <td className={`col-actions table-action-cell ${menuOpen ? 'menu-open' : ''}`}>
+        <div className={`table-action-btns ${menuOpen ? 'menu-open' : ''}`} onClick={(e) => e.stopPropagation()}>
           {!isTrash ? (
             <>
               <div className="table-row-hover-actions">
@@ -300,6 +411,7 @@ const FileRow = ({
                 )}
               </div>
               <button
+                ref={buttonRef}
                 className={`btn-icon home-quick-btn ${menuOpen ? 'active' : ''}`}
                 title="Thao tác khác"
                 onClick={(e) => {
@@ -309,27 +421,28 @@ const FileRow = ({
               >
                 <MoreVertical size={15} />
               </button>
-              {menuOpen && <TableMoreMenu items={menuItems} onClose={() => setMenuOpen(false)} />}
+              {menuOpen && <TableMoreMenu buttonRef={buttonRef} items={menuItems} onClose={() => setMenuOpen(false)} />}
             </>
           ) : (
-            <div style={{ display: 'flex', gap: '4px' }}>
-
+            <div className="trash-action-btns">
               {onRestoreItem && (
                 <button
-                  className="btn btn-secondary"
-                  style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                  className="btn btn-secondary trash-action-btn"
+                  title="Khôi phục tệp tin"
                   onClick={() => onRestoreItem('file', file)}
                 >
-                  Khôi phục
+                  <RotateCcw size={14} className="trash-action-icon" />
+                  <span className="trash-action-text">Khôi phục</span>
                 </button>
               )}
               {onDeleteItem && (
                 <button
-                  className="btn btn-danger"
-                  style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                  className="btn btn-danger trash-action-btn"
+                  title="Xóa vĩnh viễn"
                   onClick={() => onDeleteItem('file', file, true)}
                 >
-                  Xóa
+                  <Trash2 size={14} className="trash-action-icon" />
+                  <span className="trash-action-text">Xóa</span>
                 </button>
               )}
             </div>
@@ -356,7 +469,8 @@ const FileTable = ({
   onVersionHistory,
   onDeleteItem,
   isTrash = false,
-  onRestoreItem
+  onRestoreItem,
+  onRetryAi
 }) => {
   const formatSize = (bytes) => {
     if (!bytes && bytes !== 0) return '-';
@@ -368,7 +482,7 @@ const FileTable = ({
 
   return (
     <div className="file-table-container">
-      <table className="file-table">
+      <table className={`file-table ${isTrash ? 'is-trash' : ''}`}>
         <thead>
           <tr>
             <th className="col-name">Tên mục</th>
@@ -415,6 +529,7 @@ const FileTable = ({
               isTrash={isTrash}
               onRestoreItem={onRestoreItem}
               formatSize={formatSize}
+              onRetryAi={onRetryAi}
             />
           ))}
         </tbody>

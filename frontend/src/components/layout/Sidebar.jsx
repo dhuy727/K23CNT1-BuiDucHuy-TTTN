@@ -13,7 +13,8 @@ import {
   ChevronDown,
   Home,
   Shield,
-  PanelLeftClose
+  PanelLeftClose,
+  Zap
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import folderService from '../../services/folderService';
@@ -189,6 +190,15 @@ const Sidebar = ({ isCollapsed, onToggleCollapse, onOpenUpload, onOpenCreateFold
         >
           <HardDrive size={17} />
           <span>Drive của tôi</span>
+        </NavLink>
+
+        <NavLink
+          to="/automation"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Tự động hóa & AI"
+        >
+          <Zap size={17} />
+          <span>Tự động hóa</span>
         </NavLink>
 
         <NavLink

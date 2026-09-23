@@ -450,6 +450,10 @@ const HomePage = () => {
         isOpen={Boolean(previewFile)}
         onClose={() => setPreviewFile(null)}
         onDownload={handleDownloadFile}
+        onFileUpdated={() => {
+          fetchData();
+          window.dispatchEvent(new Event('file:updated'));
+        }}
       />
       <RenameModal
         isOpen={Boolean(renameTarget)}

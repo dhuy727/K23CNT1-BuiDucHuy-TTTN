@@ -85,7 +85,8 @@ const UploadModal = ({ isOpen, onClose, currentFolderId, onUploadSuccess }) => {
         });
       }
 
-      toast.success(`Đã tải lên thành công ${selectedFiles.length} tệp tin`);
+      toast.success('Đã tải lên, AI đang xử lý…');
+      window.dispatchEvent(new CustomEvent('drive:refresh-notifications'));
       setSelectedFiles([]);
       setProgress(0);
       onUploadSuccess && onUploadSuccess();

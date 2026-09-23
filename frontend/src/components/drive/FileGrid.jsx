@@ -11,7 +11,10 @@ import {
   History,
   Edit2,
   Sparkles,
-  Copy
+  Copy,
+  RefreshCw,
+  Clock,
+  XCircle
 } from 'lucide-react';
 import FileIcon from './FileIcon';
 
@@ -270,14 +273,48 @@ const FileGrid = ({
             <span>{file.createdAt ? new Date(file.createdAt).toLocaleDateString('vi-VN') : ''}</span>
           </div>
 
+          {Array.isArray(file.aiTags) && file.aiTags.length > 0 && (
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '4px' }}>
+              {file.aiTags.slice(0, 2).map((t, idx) => (
+                <span
+                  key={idx}
+                  style={{
+                    fontSize: '0.6875rem',
+                    color: 'var(--text-muted)',
+                    background: 'var(--bg-surface-hover)',
+                    padding: '1px 5px',
+                    borderRadius: '4px'
+                  }}
+                >
+                  #{t}
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Footer: badge AI + thao tác */}
           <div className="file-card-footer">
-            {file.aiCategory && file.aiCategory !== 'Chưa phân loại' && (
+            {file.aiStatus === 'processing' ? (
+              <span className="badge badge-ai-processing" title="AI đang phân tích">
+                <RefreshCw size={10} className="spin-animation" />
+                <span>Đang xử lý</span>
+              </span>
+            ) : file.aiStatus === 'pending' ? (
+              <span className="badge badge-ai-pending" title="Đang chờ phân tích AI">
+                <Clock size={10} />
+                <span>Chờ AI</span>
+              </span>
+            ) : file.aiStatus === 'failed' ? (
+              <span className="badge badge-ai-failed" title={file.aiError || 'Phân tích AI thất bại'}>
+                <XCircle size={10} />
+                <span>Lỗi AI</span>
+              </span>
+            ) : file.aiCategory && file.aiCategory !== 'Chưa phân loại' ? (
               <span className="badge badge-purple" title="Phân loại AI">
                 <Sparkles size={10} />
                 {file.aiCategory}
               </span>
-            )}
+            ) : null}
 
             {!isTrash ? (
               <div style={{ position: 'relative', marginLeft: 'auto' }} onClick={(e) => e.stopPropagation()}>
