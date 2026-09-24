@@ -9,7 +9,7 @@ const AI_CATEGORIES = [
   'Khác'
 ];
 
-const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash';
+const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
 const GEMINI_CANDIDATES = [
   'gemini-3.5-flash',
   'gemini-3.6-flash',

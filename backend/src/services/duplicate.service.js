@@ -5,6 +5,7 @@ const DuplicateScan = require('../models/duplicateScan.model');
 const fileService = require('./file.service');
 const { calculateFileHash } = require('../utils/fileHash');
 const { compareDocuments } = require('./ai.provider');
+const storageService = require('./storage.service');
 const ApiError = require('../utils/apiError');
 
 /**
@@ -91,9 +92,12 @@ const backfillContentHashes = async (userId) => {
   for (const file of filesWithoutHash) {
     if (file.storagePath) {
       try {
-        const hash = await calculateFileHash(file.storagePath);
-        if (hash) {
-          await File.findByIdAndUpdate(file._id, { contentHash: hash });
+        const localPath = storageService.resolveLocalPath(file.storagePath);
+        if (localPath) {
+          const hash = await calculateFileHash(localPath);
+          if (hash) {
+            await File.findByIdAndUpdate(file._id, { contentHash: hash });
+          }
         }
       } catch (err) {
         console.warn(`[DuplicateService] Không thể tính hash cho file ${file.name}:`, err.message);

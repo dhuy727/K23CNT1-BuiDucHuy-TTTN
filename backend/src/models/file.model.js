@@ -44,6 +44,15 @@ const fileSchema = new mongoose.Schema(
       type: String,
       default: ''
     },
+    storageType: {
+      type: String,
+      enum: ['local', 'minio', 's3'],
+      default: 'local'
+    },
+    storageKey: {
+      type: String,
+      default: ''
+    },
     contentHash: {
       type: String,
       default: '',

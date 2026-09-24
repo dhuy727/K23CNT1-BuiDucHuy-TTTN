@@ -1,6 +1,6 @@
-const fs = require('fs/promises');
-const path = require('path');
 const mammoth = require('mammoth');
+const path = require('path');
+const storageService = require('./storage.service');
 
 const MAX_EXTRACT_CHARS = 15000;
 const UNSUPPORTED_MESSAGE = 'Không trích xuất được nội dung';
@@ -43,46 +43,49 @@ const clipText = (text) => {
   return normalized.slice(0, MAX_EXTRACT_CHARS);
 };
 
-const readPdfText = async (storagePath) => {
+const readPdfText = async (buffer) => {
   const pdfParse = require('pdf-parse');
-  const buffer = await fs.readFile(storagePath);
   const result = await pdfParse(buffer);
   return result?.text || '';
 };
 
-const readDocxText = async (storagePath) => {
-  const result = await mammoth.extractRawText({ path: storagePath });
+const readDocxText = async (buffer) => {
+  const result = await mammoth.extractRawText({ buffer });
   return result?.value || '';
 };
 
-const readPlainText = async (storagePath) => {
-  return fs.readFile(storagePath, 'utf8');
+const readPlainText = (buffer) => {
+  return buffer.toString('utf8');
 };
 
 /**
- * Đọc storagePath và trả về văn bản đã cắt độ dài.
+ * Đọc nội dung tệp tin (hỗ trợ cả MinIO và Local) và trả về văn bản đã cắt độ dài.
  * Ném UnsupportedExtractError nếu không phải PDF / DOCX / TXT / Markdown.
  */
 const extractText = async (file) => {
-  if (!file?.storagePath) {
+  if (!file) {
     throw new UnsupportedExtractError(UNSUPPORTED_MESSAGE);
   }
 
-  try {
-    await fs.access(file.storagePath);
-  } catch {
-    throw new Error('Không tìm thấy file trên ổ đĩa để trích xuất nội dung');
+  const ext = normalizeExtension(file);
+  if (!isSupportedExtractType(file)) {
+    throw new UnsupportedExtractError(UNSUPPORTED_MESSAGE);
   }
 
-  const ext = normalizeExtension(file);
-  let raw = '';
+  let buffer;
+  try {
+    buffer = await storageService.getFileBuffer(file);
+  } catch (err) {
+    throw new Error(`Không thể đọc dữ liệu file để trích xuất nội dung: ${err.message}`);
+  }
 
+  let raw = '';
   if (PDF_EXTENSIONS.has(ext)) {
-    raw = await readPdfText(file.storagePath);
+    raw = await readPdfText(buffer);
   } else if (DOCX_EXTENSIONS.has(ext)) {
-    raw = await readDocxText(file.storagePath);
+    raw = await readDocxText(buffer);
   } else if (TEXT_EXTENSIONS.has(ext)) {
-    raw = await readPlainText(file.storagePath);
+    raw = readPlainText(buffer);
   } else {
     throw new UnsupportedExtractError(UNSUPPORTED_MESSAGE);
   }

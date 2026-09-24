@@ -9,7 +9,8 @@
     "build:frontend": "npm run build --prefix ../frontend",
     "start:all": "npm run build --prefix ../frontend && node server.js",
     "dev:all": "npm run build --prefix ../frontend && nodemon server.js",
-    "test:api": "node test-api.js"
+    "test:api": "node test-api.js",
+    "migrate:minio": "node scripts/migrate-to-minio.js"
   },
   "keywords": [
     "nodejs",
@@ -29,6 +30,7 @@
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
     "mammoth": "^1.12.3",
+    "minio": "^8.0.7",
     "mongoose": "^8.9.5",
     "morgan": "^1.10.0",
     "multer": "^2.3.0",

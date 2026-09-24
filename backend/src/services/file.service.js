@@ -8,6 +8,7 @@ const Share = require('../models/share.model');
 const ApiError = require('../utils/apiError');
 const { calculateFileHash } = require('../utils/fileHash');
 const { UPLOAD_DIR } = require('../middlewares/upload.middleware');
+const storageService = require('./storage.service');
 
 /**
  * Định dạng kích thước tệp tin sang dạng đọc thân thiện (Bytes, KB, MB, GB)
@@ -87,6 +88,7 @@ const uploadFile = async (userId, file, body = {}) => {
   }
 
   const contentHash = await calculateFileHash(file.path);
+  const storageResult = await storageService.uploadFile(file);
 
   const newFile = new File({
     name: uniqueName,
@@ -96,7 +98,9 @@ const uploadFile = async (userId, file, body = {}) => {
     size: file.size,
     mimeType: file.mimetype || 'application/octet-stream',
     extension: ext.replace('.', ''),
-    storagePath: file.path,
+    storagePath: storageResult.storagePath,
+    storageType: storageResult.storageType,
+    storageKey: storageResult.storageKey,
     contentHash: contentHash || '',
     aiCategory: body.aiCategory || 'Chưa phân loại',
     aiTags: tags,
@@ -145,6 +149,7 @@ const uploadMultipleFiles = async (userId, files, body = {}) => {
     }
 
     const contentHash = await calculateFileHash(file.path);
+    const storageResult = await storageService.uploadFile(file);
 
     const newFile = new File({
       name: uniqueName,
@@ -154,7 +159,9 @@ const uploadMultipleFiles = async (userId, files, body = {}) => {
       size: file.size,
       mimeType: file.mimetype || 'application/octet-stream',
       extension: ext.replace('.', ''),
-      storagePath: file.path,
+      storagePath: storageResult.storagePath,
+      storageType: storageResult.storageType,
+      storageKey: storageResult.storageKey,
       contentHash: contentHash || '',
       aiCategory: body.aiCategory || 'Chưa phân loại',
       aiStatus: 'pending',
@@ -384,17 +391,13 @@ const getFileForDownload = async (userId, fileId) => {
   }
 
   const file = access.file;
-
-  // Kiểm tra file vật lý trên đĩa
-  if (!file.storagePath || !fs.existsSync(file.storagePath)) {
-    throw new ApiError(404, 'Tệp tin vật lý không tồn tại trên hệ thống lưu trữ');
-  }
+  const fileStream = await storageService.getFileStream(file);
 
   return {
     file,
-    filePath: file.storagePath,
+    fileStream,
     downloadName: file.name || file.originalName,
-    mimeType: file.mimeType
+    mimeType: file.mimeType || 'application/octet-stream'
   };
 };
 
@@ -412,14 +415,11 @@ const getFileForPreview = async (userId, fileId) => {
   }
 
   const file = access.file;
-
-  if (!file.storagePath || !fs.existsSync(file.storagePath)) {
-    throw new ApiError(404, 'Tệp tin vật lý không tồn tại trên hệ thống lưu trữ');
-  }
+  const fileStream = await storageService.getFileStream(file);
 
   return {
     file,
-    filePath: file.storagePath,
+    fileStream,
     mimeType: file.mimeType || 'application/octet-stream'
   };
 };
@@ -549,17 +549,8 @@ const copyFile = async (userId, fileId, targetFolderId = undefined) => {
     ? await normalizeAndValidateFolder(userId, targetFolderId)
     : originalFile.folder;
 
-  // Kiểm tra file vật lý
-  if (!originalFile.storagePath || !fs.existsSync(originalFile.storagePath)) {
-    throw new ApiError(404, 'Tệp tin vật lý gốc không tồn tại trên hệ thống lưu trữ');
-  }
-
-  // Tạo file vật lý mới trên ổ đĩa
-  const extWithDot = originalFile.extension ? `.${originalFile.extension}` : '';
-  const newFilename = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${extWithDot}`;
-  const newStoragePath = path.join(UPLOAD_DIR, newFilename);
-
-  await fs.promises.copyFile(originalFile.storagePath, newStoragePath);
+  // Bản sao lưu trữ (hỗ trợ cả MinIO và local)
+  const copyStorage = await storageService.copyFile(originalFile, originalFile.name);
 
   // Tạo tên hiển thị cho bản sao (ví dụ: Bản sao của abc.pdf hoặc abc (Copy).pdf)
   const ext = originalFile.extension ? `.${originalFile.extension}` : '';
@@ -572,28 +563,25 @@ const copyFile = async (userId, fileId, targetFolderId = undefined) => {
     counter++;
   }
 
-    let copyHash = originalFile.contentHash;
-    if (!copyHash && newStoragePath) {
-      copyHash = await calculateFileHash(newStoragePath);
-    }
-
-    const clonedFile = new File({
-      name: copyName,
-      originalName: originalFile.originalName,
-      user: userId,
-      folder: destinationFolderId,
-      size: originalFile.size,
-      mimeType: originalFile.mimeType,
-      extension: originalFile.extension,
-      storagePath: newStoragePath,
-      contentHash: copyHash || '',
-      aiCategory: originalFile.aiCategory,
-      aiTags: originalFile.aiTags,
-      aiSummary: originalFile.aiSummary,
-      aiStatus: originalFile.aiStatus,
-      isStarred: false,
-      isTrash: false
-    });
+  const clonedFile = new File({
+    name: copyName,
+    originalName: originalFile.originalName,
+    user: userId,
+    folder: destinationFolderId,
+    size: originalFile.size,
+    mimeType: originalFile.mimeType,
+    extension: originalFile.extension,
+    storagePath: copyStorage.storagePath,
+    storageType: copyStorage.storageType,
+    storageKey: copyStorage.storageKey,
+    contentHash: originalFile.contentHash || '',
+    aiCategory: originalFile.aiCategory,
+    aiTags: originalFile.aiTags,
+    aiSummary: originalFile.aiSummary,
+    aiStatus: originalFile.aiStatus,
+    isStarred: false,
+    isTrash: false
+  });
 
   await clonedFile.save();
   await clonedFile.populate('folder', '_id name path color');
@@ -618,15 +606,7 @@ const deleteFile = async (userId, fileId, permanent = false) => {
   }
 
   if (permanent) {
-    // Xóa file vật lý trên đĩa
-    if (file.storagePath && fs.existsSync(file.storagePath)) {
-      try {
-        await fs.promises.unlink(file.storagePath);
-      } catch (err) {
-        console.error('Lỗi khi xóa file vật lý:', err);
-      }
-    }
-
+    await storageService.deleteFile(file);
     await File.deleteOne({ _id: fileId, user: userId });
 
     return {
@@ -732,15 +712,9 @@ const restoreFile = async (userId, fileId) => {
 const emptyTrash = async (userId) => {
   const trashFiles = await File.find({ user: userId, isTrash: true });
 
-  // Xóa các file vật lý trên đĩa
+  // Xóa các file vật lý trên hệ thống lưu trữ (MinIO hoặc Local)
   for (const file of trashFiles) {
-    if (file.storagePath && fs.existsSync(file.storagePath)) {
-      try {
-        await fs.promises.unlink(file.storagePath);
-      } catch (err) {
-        console.error(`Lỗi khi xóa file vật lý ${file.storagePath}:`, err);
-      }
-    }
+    await storageService.deleteFile(file);
   }
 
   const deleteResult = await File.deleteMany({ user: userId, isTrash: true });

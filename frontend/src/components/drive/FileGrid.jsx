@@ -220,7 +220,7 @@ const FileGrid = ({
 
           {isImage && file._id ? (
             <img
-              src={`/api/files/${file._id}/preview`}
+              src={`${import.meta.env.VITE_API_URL || '/api'}/files/${file._id}/preview`}
               alt={file.name}
               className="file-thumbnail"
               onError={(e) => {

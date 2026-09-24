@@ -204,7 +204,7 @@ const InspectorPanel = ({
             >
               {isImage && item._id ? (
                 <img
-                  src={`/api/files/${item._id}/preview`}
+                  src={`${import.meta.env.VITE_API_URL || '/api'}/files/${item._id}/preview`}
                   alt={item.name}
                   className="inspector-preview-media"
                   onError={(e) => {

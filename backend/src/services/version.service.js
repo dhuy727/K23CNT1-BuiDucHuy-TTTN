@@ -7,6 +7,7 @@ const File = require('../models/file.model');
 const ApiError = require('../utils/apiError');
 const { UPLOAD_DIR } = require('../middlewares/upload.middleware');
 const { formatFileSize } = require('./file.service');
+const storageService = require('./storage.service');
 
 /**
  * Lấy số thứ tự phiên bản tiếp theo cho một file
@@ -41,17 +42,8 @@ const createVersion = async (userId, fileId, body = {}) => {
     throw new ApiError(404, 'Không tìm thấy tệp tin hoặc tệp tin đã bị xóa');
   }
 
-  // Kiểm tra file vật lý có tồn tại không
-  if (!file.storagePath || !fs.existsSync(file.storagePath)) {
-    throw new ApiError(404, 'Tệp tin vật lý không tồn tại trên hệ thống lưu trữ');
-  }
-
-  // Tạo bản sao vật lý (snapshot) với tên ngẫu nhiên để tránh ghi đè
-  const extWithDot = file.extension ? `.${file.extension}` : '';
-  const snapshotFilename = `ver-${Date.now()}-${crypto.randomBytes(8).toString('hex')}${extWithDot}`;
-  const snapshotPath = path.join(UPLOAD_DIR, snapshotFilename);
-
-  await fs.promises.copyFile(file.storagePath, snapshotPath);
+  // Tạo bản sao lưu trữ (snapshot)
+  const copyStorage = await storageService.copyFile(file, `ver-${file.originalName}`);
 
   const versionNumber = await getNextVersionNumber(fileId);
 
@@ -64,7 +56,9 @@ const createVersion = async (userId, fileId, body = {}) => {
     size: file.size,
     mimeType: file.mimeType,
     extension: file.extension,
-    storagePath: snapshotPath,
+    storagePath: copyStorage.storagePath,
+    storageType: copyStorage.storageType,
+    storageKey: copyStorage.storageKey,
     note: body.note ? body.note.trim() : '',
     changeType: body.changeType || 'manual'
   });
@@ -171,19 +165,15 @@ const getVersionForDownload = async (userId, fileId, versionId) => {
     throw new ApiError(404, 'Không tìm thấy phiên bản');
   }
 
-  // Kiểm tra file snapshot vật lý
-  if (!version.storagePath || !fs.existsSync(version.storagePath)) {
-    throw new ApiError(404, 'Tệp tin vật lý của phiên bản không còn tồn tại trên hệ thống lưu trữ');
-  }
-
+  const fileStream = await storageService.getFileStream(version);
   const ext = version.extension ? `.${version.extension}` : '';
   const downloadName = `${version.name} (v${version.versionNumber})${ext}`;
 
   return {
     version,
-    filePath: version.storagePath,
+    fileStream,
     downloadName,
-    mimeType: version.mimeType
+    mimeType: version.mimeType || 'application/octet-stream'
   };
 };
 
@@ -216,18 +206,9 @@ const restoreVersion = async (userId, fileId, versionId) => {
     throw new ApiError(404, 'Không tìm thấy phiên bản');
   }
 
-  // Kiểm tra file snapshot có tồn tại không
-  if (!targetVersion.storagePath || !fs.existsSync(targetVersion.storagePath)) {
-    throw new ApiError(404, 'File vật lý của phiên bản này không còn tồn tại');
-  }
-
   // Tự động snapshot trạng thái HIỆN TẠI trước khi ghi đè
-  if (file.storagePath && fs.existsSync(file.storagePath)) {
-    const extNow = file.extension ? `.${file.extension}` : '';
-    const snapshotFilename = `ver-${Date.now()}-${crypto.randomBytes(8).toString('hex')}${extNow}`;
-    const snapshotPath = path.join(UPLOAD_DIR, snapshotFilename);
-    await fs.promises.copyFile(file.storagePath, snapshotPath);
-
+  try {
+    const currentSnapshot = await storageService.copyFile(file, `ver-${file.originalName}`);
     const currentVersionNumber = await getNextVersionNumber(fileId);
     const currentVersion = new Version({
       file: fileId,
@@ -238,15 +219,22 @@ const restoreVersion = async (userId, fileId, versionId) => {
       size: file.size,
       mimeType: file.mimeType,
       extension: file.extension,
-      storagePath: snapshotPath,
+      storagePath: currentSnapshot.storagePath,
+      storageType: currentSnapshot.storageType,
+      storageKey: currentSnapshot.storageKey,
       note: `Tự động lưu trước khi khôi phục về phiên bản v${targetVersion.versionNumber}`,
       changeType: 'restore'
     });
     await currentVersion.save();
+  } catch (snapErr) {
+    console.warn('[VersionService] Lỗi tạo snapshot hiện tại trước khi restore:', snapErr.message);
   }
 
-  // Ghi đè file vật lý hiện tại bằng snapshot của version được chọn
-  await fs.promises.copyFile(targetVersion.storagePath, file.storagePath);
+  // Khôi phục bản sao từ targetVersion sang file hiện tại
+  const restoredStorage = await storageService.copyFile(targetVersion, file.originalName);
+  file.storagePath = restoredStorage.storagePath;
+  file.storageType = restoredStorage.storageType;
+  file.storageKey = restoredStorage.storageKey;
 
   // Cập nhật metadata file gốc theo version cũ
   file.size = targetVersion.size;
@@ -293,14 +281,7 @@ const deleteVersion = async (userId, fileId, versionId) => {
     throw new ApiError(404, 'Không tìm thấy phiên bản');
   }
 
-  // Xóa file vật lý snapshot trên đĩa
-  if (version.storagePath && fs.existsSync(version.storagePath)) {
-    try {
-      await fs.promises.unlink(version.storagePath);
-    } catch (err) {
-      console.error('Lỗi khi xóa file snapshot vật lý:', err);
-    }
-  }
+  await storageService.deleteFile(version);
 
   await Version.deleteOne({ _id: versionId });
 

@@ -72,19 +72,27 @@ const getVersionById = async (req, res, next) => {
  */
 const downloadVersion = async (req, res, next) => {
   try {
-    const { filePath, downloadName, mimeType } = await versionService.getVersionForDownload(
+    const { fileStream, downloadName, mimeType, version } = await versionService.getVersionForDownload(
       req.user._id,
       req.params.id,
       req.params.versionId
     );
 
-    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
     res.setHeader(
       'Content-Disposition',
       `attachment; filename="${encodeURIComponent(downloadName)}"`
     );
+    if (version?.size) {
+      res.setHeader('Content-Length', version.size);
+    }
 
-    const fileStream = require('fs').createReadStream(filePath);
+    fileStream.on('error', (err) => {
+      if (!res.headersSent) {
+        next(err);
+      }
+    });
+
     fileStream.pipe(res);
   } catch (error) {
     next(error);

@@ -70,12 +70,22 @@ const getFileById = async (req, res, next) => {
  */
 const downloadFile = async (req, res, next) => {
   try {
-    const { filePath, downloadName } = await fileService.getFileForDownload(req.user._id, req.params.id);
-    return res.download(filePath, downloadName, (err) => {
-      if (err && !res.headersSent) {
+    const { fileStream, downloadName, mimeType, file } = await fileService.getFileForDownload(req.user._id, req.params.id);
+    const encodedFilename = encodeURIComponent(downloadName);
+
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`);
+    if (file?.size) {
+      res.setHeader('Content-Length', file.size);
+    }
+
+    fileStream.on('error', (err) => {
+      if (!res.headersSent) {
         next(err);
       }
     });
+
+    return fileStream.pipe(res);
   } catch (error) {
     next(error);
   }
@@ -86,18 +96,23 @@ const downloadFile = async (req, res, next) => {
  */
 const previewFile = async (req, res, next) => {
   try {
-    const { filePath, mimeType, file } = await fileService.getFileForPreview(req.user._id, req.params.id);
+    const { fileStream, mimeType, file } = await fileService.getFileForPreview(req.user._id, req.params.id);
 
     // Gửi header inline để trình duyệt mở xem trực tiếp thay vì tải về
     const encodedFilename = encodeURIComponent(file.name);
-    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `inline; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`);
+    if (file?.size) {
+      res.setHeader('Content-Length', file.size);
+    }
 
-    return res.sendFile(filePath, (err) => {
-      if (err && !res.headersSent) {
+    fileStream.on('error', (err) => {
+      if (!res.headersSent) {
         next(err);
       }
     });
+
+    return fileStream.pipe(res);
   } catch (error) {
     next(error);
   }
