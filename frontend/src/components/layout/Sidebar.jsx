@@ -14,7 +14,8 @@ import {
   Home,
   Shield,
   PanelLeftClose,
-  Zap
+  Zap,
+  Broom
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import folderService from '../../services/folderService';
@@ -105,7 +106,7 @@ const Sidebar = ({ isCollapsed, onToggleCollapse, onOpenUpload, onOpenCreateFold
               <div className="brand-icon">
                 <Layers size={18} />
               </div>
-              <span>CloudDrive</span>
+              <span>SmartDoc</span>
             </NavLink>
             <button
               type="button"
@@ -202,6 +203,15 @@ const Sidebar = ({ isCollapsed, onToggleCollapse, onOpenUpload, onOpenCreateFold
         </NavLink>
 
         <NavLink
+          to="/drive/cleanup"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Dọn dẹp & Trùng lặp"
+        >
+          <Broom size={17} />
+          <span>Dọn dẹp & Trùng lặp</span>
+        </NavLink>
+
+        <NavLink
           to="/starred"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           title="Có gắn dấu sao"
@@ -276,8 +286,16 @@ const Sidebar = ({ isCollapsed, onToggleCollapse, onOpenUpload, onOpenCreateFold
             <HardDrive size={16} />
           </div>
         ) : (
-          <div className="storage-info">
-            <span className="storage-label">Dung lượng đã dùng</span>
+          <div
+            className="storage-info"
+            onClick={() => navigate('/drive/cleanup')}
+            style={{ cursor: 'pointer' }}
+            title="Nhấn để mở trang Dọn dẹp & Quét trùng lặp AI"
+          >
+            <span className="storage-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Dung lượng đã dùng</span>
+              <Broom size={13} style={{ opacity: 0.75 }} />
+            </span>
             <span className="storage-value tabular-nums">
               {storageStats.usedFormatted || '0 B'} / 10 GB
             </span>
@@ -288,13 +306,12 @@ const Sidebar = ({ isCollapsed, onToggleCollapse, onOpenUpload, onOpenCreateFold
           title={`${storageStats.usedFormatted || '0 B'} / 10 GB (${storageStats.percentage}%)`}
         >
           <div
-            className={`storage-progress-fill ${
-              storageStats.percentage > 90
-                ? 'is-danger'
-                : storageStats.percentage > 75
+            className={`storage-progress-fill ${storageStats.percentage > 90
+              ? 'is-danger'
+              : storageStats.percentage > 75
                 ? 'is-warning'
                 : ''
-            }`}
+              }`}
             style={{
               width: '100%',
               transform: `scaleX(${Math.min(

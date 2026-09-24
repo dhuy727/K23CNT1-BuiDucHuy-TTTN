@@ -206,6 +206,7 @@ const FileGrid = ({
 
     return (
       <div
+        data-file-id={file._id}
         className={`file-card ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
         onClick={() => onSelectItem && onSelectItem({ type: 'file', data: file })}
         onDoubleClick={() => onPreviewFile && onPreviewFile(file)}

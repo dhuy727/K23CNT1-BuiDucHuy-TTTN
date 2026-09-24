@@ -44,6 +44,12 @@ const fileSchema = new mongoose.Schema(
       type: String,
       default: ''
     },
+    contentHash: {
+      type: String,
+      default: '',
+      trim: true,
+      index: true
+    },
     // Các trường hỗ trợ phân loại & xử lý tự động bằng AI
     aiStatus: {
       type: String,
@@ -113,6 +119,7 @@ const fileSchema = new mongoose.Schema(
 
 // Index tìm kiếm theo thư mục và người dùng
 fileSchema.index({ user: 1, folder: 1, isTrash: 1 });
+fileSchema.index({ user: 1, contentHash: 1, isTrash: 1 });
 fileSchema.index({ user: 1, name: 'text', aiSummary: 'text', aiTags: 'text' });
 
 const File = mongoose.model('File', fileSchema);

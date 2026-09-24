@@ -94,6 +94,21 @@ const processFile = async (fileId) => {
     file.aiProcessedAt = new Date();
     await file.save();
 
+    // Thông báo cho người dùng khi AI phân tích xong
+    try {
+      const notificationService = require('./notification.service');
+      const tagCount = (file.aiTags && file.aiTags.length) || 0;
+      await notificationService.createNotification({
+        user: file.user,
+        file: file._id,
+        title: 'AI đã phân tích xong',
+        message: `Tệp "${file.name}" đã được phân tích xong: Danh mục "${classification.category || 'Tài liệu'}", tạo ${tagCount} thẻ gợi ý.`,
+        type: 'ai'
+      });
+    } catch (notifErr) {
+      console.error('[AI] Lỗi khi tạo thông báo AI hoàn tất:', notifErr.message);
+    }
+
     // Hook kích hoạt engine tự động hóa khi AI hoàn tất
     try {
       const automationService = require('./automation.service');
@@ -106,6 +121,20 @@ const processFile = async (fileId) => {
   } catch (error) {
     console.error(`[AI] Lỗi khi xử lý file ${file.name} (${file._id}):`, error.message);
     await markFailed(file._id, error.message);
+
+    try {
+      const notificationService = require('./notification.service');
+      await notificationService.createNotification({
+        user: file.user,
+        file: file._id,
+        title: 'Lỗi phân tích AI',
+        message: `Không thể hoàn tất phân tích tệp "${file.name}": ${error.message}`,
+        type: 'warning'
+      });
+    } catch (notifErr) {
+      // Bỏ qua lỗi thông báo
+    }
+
     return File.findById(file._id);
   }
 };

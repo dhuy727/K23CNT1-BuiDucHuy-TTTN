@@ -8,6 +8,7 @@ const searchRoutes = require('./search.routes');
 const shareRoutes = require('./share.routes');
 const automationRoutes = require('./automation.routes');
 const notificationRoutes = require('./notification.routes');
+const duplicateRoutes = require('./duplicate.routes');
 
 // Health check endpoint
 router.get('/health', (req, res) => {
@@ -27,6 +28,7 @@ router.use('/search', searchRoutes);
 router.use('/shares', shareRoutes);
 router.use('/automations', automationRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/duplicates', duplicateRoutes);
 
 module.exports = router;
 

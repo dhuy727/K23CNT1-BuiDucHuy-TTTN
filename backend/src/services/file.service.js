@@ -6,6 +6,7 @@ const File = require('../models/file.model');
 const Folder = require('../models/folder.model');
 const Share = require('../models/share.model');
 const ApiError = require('../utils/apiError');
+const { calculateFileHash } = require('../utils/fileHash');
 const { UPLOAD_DIR } = require('../middlewares/upload.middleware');
 
 /**
@@ -85,6 +86,8 @@ const uploadFile = async (userId, file, body = {}) => {
     }
   }
 
+  const contentHash = await calculateFileHash(file.path);
+
   const newFile = new File({
     name: uniqueName,
     originalName: file.originalname,
@@ -94,6 +97,7 @@ const uploadFile = async (userId, file, body = {}) => {
     mimeType: file.mimetype || 'application/octet-stream',
     extension: ext.replace('.', ''),
     storagePath: file.path,
+    contentHash: contentHash || '',
     aiCategory: body.aiCategory || 'Chưa phân loại',
     aiTags: tags,
     aiSummary: body.aiSummary || '',
@@ -140,6 +144,8 @@ const uploadMultipleFiles = async (userId, files, body = {}) => {
       counter++;
     }
 
+    const contentHash = await calculateFileHash(file.path);
+
     const newFile = new File({
       name: uniqueName,
       originalName: file.originalname,
@@ -149,6 +155,7 @@ const uploadMultipleFiles = async (userId, files, body = {}) => {
       mimeType: file.mimetype || 'application/octet-stream',
       extension: ext.replace('.', ''),
       storagePath: file.path,
+      contentHash: contentHash || '',
       aiCategory: body.aiCategory || 'Chưa phân loại',
       aiStatus: 'pending',
       isTrash: false
@@ -347,7 +354,8 @@ const getFileById = async (userId, fileId, query = {}) => {
 
   let fileQuery = File.findById(fileId)
     .populate('folder', '_id name path color')
-    .populate('user', '_id name email');
+    .populate('user', '_id name email')
+    .populate('aiSuggestedFolder', '_id name path color');
 
   if (query.includeText === 'true' || query.includeText === true) {
     fileQuery = fileQuery.select('+extractedText');
@@ -564,22 +572,28 @@ const copyFile = async (userId, fileId, targetFolderId = undefined) => {
     counter++;
   }
 
-  const clonedFile = new File({
-    name: copyName,
-    originalName: originalFile.originalName,
-    user: userId,
-    folder: destinationFolderId,
-    size: originalFile.size,
-    mimeType: originalFile.mimeType,
-    extension: originalFile.extension,
-    storagePath: newStoragePath,
-    aiCategory: originalFile.aiCategory,
-    aiTags: originalFile.aiTags,
-    aiSummary: originalFile.aiSummary,
-    aiStatus: originalFile.aiStatus,
-    isStarred: false,
-    isTrash: false
-  });
+    let copyHash = originalFile.contentHash;
+    if (!copyHash && newStoragePath) {
+      copyHash = await calculateFileHash(newStoragePath);
+    }
+
+    const clonedFile = new File({
+      name: copyName,
+      originalName: originalFile.originalName,
+      user: userId,
+      folder: destinationFolderId,
+      size: originalFile.size,
+      mimeType: originalFile.mimeType,
+      extension: originalFile.extension,
+      storagePath: newStoragePath,
+      contentHash: copyHash || '',
+      aiCategory: originalFile.aiCategory,
+      aiTags: originalFile.aiTags,
+      aiSummary: originalFile.aiSummary,
+      aiStatus: originalFile.aiStatus,
+      isStarred: false,
+      isTrash: false
+    });
 
   await clonedFile.save();
   await clonedFile.populate('folder', '_id name path color');

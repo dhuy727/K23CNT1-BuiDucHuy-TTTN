@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import searchService from '../../services/searchService';
+import NotificationDropdown from '../notifications/NotificationDropdown';
 
 const Header = ({ isSidebarCollapsed, onToggleSidebar }) => {
   const { user, logout, isAdmin } = useAuth();
@@ -164,6 +165,9 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar }) => {
 
       {/* Header Actions */}
       <div className="header-actions">
+        {/* Notification Dropdown Menu */}
+        <NotificationDropdown />
+
         {/* Toggle Inspector Panel */}
         <button
           className="btn-icon"

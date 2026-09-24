@@ -137,9 +137,28 @@ const run = async (userId, triggerType, fileSnapshot, options = { depth: 0, isAu
         try {
           if (action.type === 'MOVE_FILE') {
             const targetFolderId = action.targetFolderId || action.value || null;
+            let folderName = 'thư mục gốc';
+            if (targetFolderId) {
+              try {
+                const Folder = require('../models/folder.model');
+                const targetFolder = await Folder.findById(targetFolderId).select('name');
+                if (targetFolder) folderName = `thư mục "${targetFolder.name}"`;
+              } catch (fErr) {
+                // bỏ qua lỗi đọc tên thư mục
+              }
+            }
+
             const updated = await fileService.moveFile(userId, currentFile._id, targetFolderId);
             currentFile = await File.findById(currentFile._id);
             hasExecutedAction = true;
+
+            await notificationService.createNotification({
+              user: userId,
+              file: currentFile._id,
+              title: 'Tệp đã chuyển vào thư mục',
+              message: `Tệp "${currentFile.name}" đã được tự động chuyển vào ${folderName} theo quy tắc "${rule.name}".`,
+              type: 'automation'
+            });
 
             if (currentDepth + 1 < MAX_RECURSION_DEPTH) {
               await run(userId, 'FILE_MOVED', currentFile, {

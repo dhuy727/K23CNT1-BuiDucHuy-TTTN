@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutGrid,
   List,
@@ -26,7 +26,12 @@ import { useToast } from '../../contexts/ToastContext';
 const MyDrivePage = () => {
   const { folderId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
+
+  const [pendingHighlightId, setPendingHighlightId] = useState(
+    () => location.state?.highlightFileId || null
+  );
 
   const [folders, setFolders] = useState([]);
   const [files, setFiles] = useState([]);
@@ -136,6 +141,53 @@ const MyDrivePage = () => {
     window.addEventListener('drive:toggle-inspector', handleToggle);
     return () => window.removeEventListener('drive:toggle-inspector', handleToggle);
   }, []);
+
+  // Đồng bộ pendingHighlightId khi location.state thay đổi
+  useEffect(() => {
+    if (location.state?.highlightFileId) {
+      setPendingHighlightId(location.state.highlightFileId);
+    }
+  }, [location.state?.highlightFileId]);
+
+  // Lắng nghe sự kiện chọn tệp từ Menu thông báo hoặc các thành phần khác
+  useEffect(() => {
+    const handleSelectFile = (e) => {
+      const fileId = e.detail?.fileId;
+      if (!fileId) return;
+      setPendingHighlightId(fileId);
+    };
+    window.addEventListener('drive:select-file', handleSelectFile);
+    return () => window.removeEventListener('drive:select-file', handleSelectFile);
+  }, []);
+
+  // Tự động tìm, làm nổi bật, cuộn tới tệp và mở Inspector khi files được tải xong
+  useEffect(() => {
+    if (!loading && pendingHighlightId && files.length > 0) {
+      const target = files.find((f) => String(f._id) === String(pendingHighlightId));
+      if (target) {
+        setSelectedItem({ type: 'file', data: target });
+        setIsInspectorOpen(true);
+        setPendingHighlightId(null);
+
+        // Cuộn mượt mà đến tệp và áp dụng hiệu ứng nổi bật (pulse)
+        setTimeout(() => {
+          const el = document.querySelector(`[data-file-id="${target._id}"]`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.add('file-highlight-pulse');
+            setTimeout(() => {
+              el.classList.remove('file-highlight-pulse');
+            }, 3000);
+          }
+        }, 150);
+
+        // Xóa highlightFileId khỏi location state để tránh kích hoạt lại ngoài ý muốn
+        try {
+          window.history.replaceState({}, document.title);
+        } catch (_) {}
+      }
+    }
+  }, [files, loading, pendingHighlightId]);
 
   // Keyboard Escape listener to clear selection
   useEffect(() => {

@@ -279,6 +279,7 @@ const FileRow = ({
 
   return (
     <tr
+      data-file-id={file._id}
       className={`${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
       onClick={() => onSelectItem && onSelectItem({ type: 'file', data: file })}
       onDoubleClick={() => onPreviewFile && onPreviewFile(file)}
