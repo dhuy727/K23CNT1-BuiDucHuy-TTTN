@@ -98,7 +98,7 @@ const UsersPage = () => {
   };
 
   return (
-    <div>
+    <main className="page-body">
       <div className="drive-action-bar" style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.25rem', fontWeight: 800 }}>
           <Shield size={24} style={{ color: 'var(--primary-600)' }} />
@@ -273,7 +273,7 @@ const UsersPage = () => {
         isDanger={true}
         loading={deleting}
       />
-    </div>
+    </main>
   );
 };
 

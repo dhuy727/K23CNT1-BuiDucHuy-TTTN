@@ -13,10 +13,13 @@ import ForgotPasswordPage from '../pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from '../pages/auth/ResetPasswordPage';
 
 // Drive Pages
+import HomePage from '../pages/drive/HomePage';
 import MyDrivePage from '../pages/drive/MyDrivePage';
 import StarredPage from '../pages/drive/StarredPage';
 import TrashPage from '../pages/drive/TrashPage';
 import SearchPage from '../pages/drive/SearchPage';
+import AutomationPage from '../pages/automation/AutomationPage';
+import CleanupPage from '../pages/drive/CleanupPage';
 
 // Share Pages
 import SharedWithMePage from '../pages/shares/SharedWithMePage';
@@ -50,12 +53,15 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/drive" replace />} />
+        <Route index element={<Navigate to="/home" replace />} />
+        <Route path="home" element={<HomePage />} />
         <Route path="drive" element={<MyDrivePage />} />
         <Route path="drive/folder/:folderId" element={<MyDrivePage />} />
         <Route path="starred" element={<StarredPage />} />
         <Route path="trash" element={<TrashPage />} />
         <Route path="search" element={<SearchPage />} />
+        <Route path="automation" element={<AutomationPage />} />
+        <Route path="drive/cleanup" element={<CleanupPage />} />
         <Route path="shares/shared-with-me" element={<SharedWithMePage />} />
         <Route path="shares/shared-by-me" element={<SharedByMePage />} />
         <Route path="settings/profile" element={<ProfilePage />} />
@@ -73,7 +79,7 @@ const AppRoutes = () => {
       </Route>
 
       {/* Fallback */}
-      <Route path="*" element={<Navigate to="/drive" replace />} />
+      <Route path="*" element={<Navigate to="/home" replace />} />
     </Routes>
   );
 };

@@ -1,31 +1,37 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutGrid,
   List,
-  Filter,
-  ArrowUpDown,
-  HardDrive,
   FolderOpen
 } from 'lucide-react';
 import Breadcrumb from '../../components/drive/Breadcrumb';
 import FileGrid from '../../components/drive/FileGrid';
 import FileTable from '../../components/drive/FileTable';
+import ContextualActionBar from '../../components/drive/ContextualActionBar';
 import EmptyState from '../../components/common/EmptyState';
+
 import FilePreviewModal from '../../components/drive/FilePreviewModal';
 import RenameModal from '../../components/drive/RenameModal';
 import MoveCopyModal from '../../components/drive/MoveCopyModal';
 import ShareModal from '../../components/drive/ShareModal';
 import FileVersionsModal from '../../components/drive/FileVersionsModal';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
+import InspectorPanel from '../../components/drive/InspectorPanel';
 import folderService from '../../services/folderService';
 import fileService from '../../services/fileService';
+import aiService from '../../services/aiService';
 import { useToast } from '../../contexts/ToastContext';
 
 const MyDrivePage = () => {
   const { folderId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
+
+  const [pendingHighlightId, setPendingHighlightId] = useState(
+    () => location.state?.highlightFileId || null
+  );
 
   const [folders, setFolders] = useState([]);
   const [files, setFiles] = useState([]);
@@ -35,6 +41,10 @@ const MyDrivePage = () => {
   const [filterType, setFilterType] = useState('');
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState('desc');
+
+  // Studio 3-column Inspector state
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
   // Modals state
   const [previewFile, setPreviewFile] = useState(null);
@@ -54,8 +64,14 @@ const MyDrivePage = () => {
       if (folderId) {
         try {
           const detailRes = await folderService.getFolderById(folderId);
-          if (detailRes.data?.breadcrumb) {
-            setBreadcrumbs(detailRes.data.breadcrumb);
+          const bList = detailRes.metadata?.breadcrumb || detailRes.data?.breadcrumb;
+          if (bList && bList.length > 0) {
+            setBreadcrumbs(bList);
+          } else if (detailRes.data?.name) {
+            setBreadcrumbs([
+              { _id: 'root', name: 'Drive của tôi' },
+              { _id: detailRes.data._id, name: detailRes.data.name }
+            ]);
           }
         } catch (e) {
           console.error('Không tìm thấy thư mục con:', e);
@@ -88,11 +104,101 @@ const MyDrivePage = () => {
 
   useEffect(() => {
     fetchDriveContent();
+    setSelectedItem(null);
 
     const handleRefresh = () => fetchDriveContent();
     window.addEventListener('drive:refresh', handleRefresh);
     return () => window.removeEventListener('drive:refresh', handleRefresh);
   }, [fetchDriveContent]);
+
+  // Polling tự động khi có tệp tin đang ở trạng thái pending hoặc processing
+  useEffect(() => {
+    const hasPending = files.some(
+      (f) => f.aiStatus === 'pending' || f.aiStatus === 'processing'
+    );
+    if (!hasPending) return;
+
+    const timer = setInterval(() => {
+      fetchDriveContent();
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [files, fetchDriveContent]);
+
+  const handleRetryAi = async (fileId) => {
+    try {
+      await aiService.processFile(fileId);
+      toast.success('Đã đưa tệp tin vào hàng đợi phân tích lại AI');
+      fetchDriveContent();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Không thể phân tích lại AI');
+    }
+  };
+
+  // Toggle Inspector global event
+  useEffect(() => {
+    const handleToggle = () => setIsInspectorOpen((prev) => !prev);
+    window.addEventListener('drive:toggle-inspector', handleToggle);
+    return () => window.removeEventListener('drive:toggle-inspector', handleToggle);
+  }, []);
+
+  // Đồng bộ pendingHighlightId khi location.state thay đổi
+  useEffect(() => {
+    if (location.state?.highlightFileId) {
+      setPendingHighlightId(location.state.highlightFileId);
+    }
+  }, [location.state?.highlightFileId]);
+
+  // Lắng nghe sự kiện chọn tệp từ Menu thông báo hoặc các thành phần khác
+  useEffect(() => {
+    const handleSelectFile = (e) => {
+      const fileId = e.detail?.fileId;
+      if (!fileId) return;
+      setPendingHighlightId(fileId);
+    };
+    window.addEventListener('drive:select-file', handleSelectFile);
+    return () => window.removeEventListener('drive:select-file', handleSelectFile);
+  }, []);
+
+  // Tự động tìm, làm nổi bật, cuộn tới tệp và mở Inspector khi files được tải xong
+  useEffect(() => {
+    if (!loading && pendingHighlightId && files.length > 0) {
+      const target = files.find((f) => String(f._id) === String(pendingHighlightId));
+      if (target) {
+        setSelectedItem({ type: 'file', data: target });
+        setIsInspectorOpen(true);
+        setPendingHighlightId(null);
+
+        // Cuộn mượt mà đến tệp và áp dụng hiệu ứng nổi bật (pulse)
+        setTimeout(() => {
+          const el = document.querySelector(`[data-file-id="${target._id}"]`);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.classList.add('file-highlight-pulse');
+            setTimeout(() => {
+              el.classList.remove('file-highlight-pulse');
+            }, 3000);
+          }
+        }, 150);
+
+        // Xóa highlightFileId khỏi location state để tránh kích hoạt lại ngoài ý muốn
+        try {
+          window.history.replaceState({}, document.title);
+        } catch (_) {}
+      }
+    }
+  }, [files, loading, pendingHighlightId]);
+
+  // Keyboard Escape listener to clear selection
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setSelectedItem(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleToggleView = (mode) => {
     setViewMode(mode);
@@ -100,6 +206,7 @@ const MyDrivePage = () => {
   };
 
   const handleOpenFolder = (id) => {
+    setSelectedItem(null);
     if (id && id !== 'root') {
       navigate(`/drive/folder/${id}`);
     } else {
@@ -133,6 +240,12 @@ const MyDrivePage = () => {
       setFiles((prev) =>
         prev.map((f) => (f._id === fileId ? { ...f, isStarred: updated.isStarred } : f))
       );
+      if (selectedItem?.type === 'file' && selectedItem?.data?._id === fileId) {
+        setSelectedItem((prev) => ({
+          ...prev,
+          data: { ...prev.data, isStarred: updated.isStarred }
+        }));
+      }
       toast.success(
         updated.isStarred ? 'Đã thêm vào mục yêu thích' : 'Đã bỏ khỏi mục yêu thích'
       );
@@ -154,6 +267,7 @@ const MyDrivePage = () => {
         toast.success(`Đã chuyển tệp tin "${deleteTarget.item.name}" vào thùng rác`);
       }
       setDeleteTarget(null);
+      setSelectedItem(null);
       fetchDriveContent();
       window.dispatchEvent(new Event('folder:updated'));
     } catch (err) {
@@ -166,109 +280,152 @@ const MyDrivePage = () => {
   const isEmpty = folders.length === 0 && files.length === 0;
 
   return (
-    <div>
-      {/* Top Action Bar */}
-      <div className="drive-action-bar" style={{ marginBottom: '16px' }}>
-        <Breadcrumb breadcrumbs={breadcrumbs} onSelectFolder={handleOpenFolder} />
+    <>
+      <main className={`page-body ${isInspectorOpen ? 'has-inspector' : ''}`}>
+        {/* Top Action Bar */}
+        <div className="drive-action-bar">
+          <Breadcrumb breadcrumbs={breadcrumbs} onSelectFolder={handleOpenFolder} />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {/* Lọc loại tệp */}
-          <select
-            className="form-select"
-            style={{ width: '130px', padding: '6px 10px', fontSize: '0.8125rem' }}
-            value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
-          >
-            <option value="">Tất cả loại tệp</option>
-            <option value="image">Hình ảnh</option>
-            <option value="document">Tài liệu</option>
-            <option value="video">Video</option>
-            <option value="audio">Âm thanh</option>
-            <option value="archive">Tệp nén (ZIP)</option>
-          </select>
-
-          {/* Sắp xếp */}
-          <select
-            className="form-select"
-            style={{ width: '130px', padding: '6px 10px', fontSize: '0.8125rem' }}
-            value={`${sortBy}-${sortOrder}`}
-            onChange={(e) => {
-              const [sb, so] = e.target.value.split('-');
-              setSortBy(sb);
-              setSortOrder(so);
-            }}
-          >
-            <option value="createdAt-desc">Mới nhất</option>
-            <option value="createdAt-asc">Cũ nhất</option>
-            <option value="name-asc">Tên (A-Z)</option>
-            <option value="name-desc">Tên (Z-A)</option>
-            <option value="size-desc">Dung lượng lớn</option>
-            <option value="size-asc">Dung lượng nhỏ</option>
-          </select>
-
-          {/* Chuyển đổi Grid / List View */}
-          <div className="view-toggle-group">
-            <button
-              className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
-              onClick={() => handleToggleView('grid')}
-              title="Chế độ Lưới"
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Lọc loại tệp */}
+            <select
+              className="form-select"
+              style={{ width: '130px', padding: '5px 8px', fontSize: '0.8rem' }}
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
             >
-              <LayoutGrid size={18} />
-            </button>
-            <button
-              className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
-              onClick={() => handleToggleView('table')}
-              title="Chế độ Danh sách"
+              <option value="">Tất cả loại tệp</option>
+              <option value="image">Hình ảnh</option>
+              <option value="document">Tài liệu</option>
+              <option value="video">Video</option>
+              <option value="audio">Âm thanh</option>
+              <option value="archive">Tệp nén (ZIP)</option>
+            </select>
+
+            {/* Sắp xếp */}
+            <select
+              className="form-select"
+              style={{ width: '130px', padding: '5px 8px', fontSize: '0.8rem' }}
+              value={`${sortBy}-${sortOrder}`}
+              onChange={(e) => {
+                const [sb, so] = e.target.value.split('-');
+                setSortBy(sb);
+                setSortOrder(so);
+              }}
             >
-              <List size={18} />
-            </button>
+              <option value="createdAt-desc">Mới nhất</option>
+              <option value="createdAt-asc">Cũ nhất</option>
+              <option value="name-asc">Tên (A-Z)</option>
+              <option value="name-desc">Tên (Z-A)</option>
+              <option value="size-desc">Dung lượng lớn</option>
+              <option value="size-asc">Dung lượng nhỏ</option>
+            </select>
+
+            {/* Chuyển đổi Grid / List View */}
+            <div className="view-toggle-group">
+              <button
+                className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                onClick={() => handleToggleView('grid')}
+                title="Chế độ Lưới"
+              >
+                <LayoutGrid size={16} />
+              </button>
+              <button
+                className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                onClick={() => handleToggleView('table')}
+                title="Chế độ Danh sách"
+              >
+                <List size={16} />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Content */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text-muted)' }}>
-          <span className="spinner" style={{ width: 36, height: 36, margin: '0 auto' }} />
-          <div style={{ marginTop: '16px', fontSize: '0.875rem' }}>Đang tải nội dung Drive...</div>
-        </div>
-      ) : isEmpty ? (
-        <EmptyState
-          icon={FolderOpen}
-          title="Thư mục trống"
-          description="Chưa có tệp tin hoặc thư mục nào ở vị trí này. Hãy kéo thả tệp vào đây hoặc nhấn nút 'Tạo mới'."
-        />
-      ) : viewMode === 'grid' ? (
-        <FileGrid
-          folders={folders}
-          files={files}
-          onOpenFolder={handleOpenFolder}
-          onPreviewFile={(f) => setPreviewFile(f)}
-          onDownloadFile={handleDownloadFile}
-          onToggleStar={handleToggleStar}
-          onShareItem={(type, item) => setShareTarget({ type, item })}
-          onRenameItem={(type, item) => setRenameTarget({ type, item })}
-          onMoveItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'move' })}
-          onCopyItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'copy' })}
-          onVersionHistory={(f) => setVersionsTarget(f)}
-          onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
-        />
-      ) : (
-        <FileTable
-          folders={folders}
-          files={files}
-          onOpenFolder={handleOpenFolder}
-          onPreviewFile={(f) => setPreviewFile(f)}
-          onDownloadFile={handleDownloadFile}
-          onToggleStar={handleToggleStar}
-          onShareItem={(type, item) => setShareTarget({ type, item })}
-          onRenameItem={(type, item) => setRenameTarget({ type, item })}
-          onMoveItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'move' })}
-          onCopyItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'copy' })}
-          onVersionHistory={(f) => setVersionsTarget(f)}
-          onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
-        />
-      )}
+        {/* Thanh thao tác ngữ cảnh khi chọn tệp/thư mục (Ảnh 1) */}
+        {selectedItem && (
+          <ContextualActionBar
+            selectedItem={selectedItem}
+            onClearSelection={() => setSelectedItem(null)}
+            onShareItem={(type, item) => setShareTarget({ type, item })}
+            onDownloadFile={handleDownloadFile}
+            onRenameItem={(type, item) => setRenameTarget({ type, item })}
+            onToggleStar={handleToggleStar}
+            onPreviewFile={(f) => setPreviewFile(f)}
+            onCopyItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'copy' })}
+            onMoveItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'move' })}
+            onVersionHistory={(f) => setVersionsTarget(f)}
+            onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
+          />
+        )}
+
+        {/* Content */}
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text-muted)' }}>
+            <span className="spinner" style={{ width: 32, height: 32, margin: '0 auto' }} />
+            <div style={{ marginTop: '14px', fontSize: '0.835rem' }}>Đang tải nội dung Drive...</div>
+          </div>
+        ) : isEmpty ? (
+          <EmptyState
+            icon={FolderOpen}
+            title="Thư mục trống"
+            description="Chưa có tệp tin hoặc thư mục nào ở vị trí này. Bạn có thể nhấn nút Tạo mới để bắt đầu."
+          />
+        ) : viewMode === 'grid' ? (
+          <FileGrid
+            folders={folders}
+            files={files}
+            selectedItem={selectedItem}
+            onSelectItem={setSelectedItem}
+            onOpenFolder={handleOpenFolder}
+            onPreviewFile={(f) => setPreviewFile(f)}
+            onDownloadFile={handleDownloadFile}
+            onToggleStar={handleToggleStar}
+            onShareItem={(type, item) => setShareTarget({ type, item })}
+            onRenameItem={(type, item) => setRenameTarget({ type, item })}
+            onMoveItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'move' })}
+            onCopyItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'copy' })}
+            onVersionHistory={(f) => setVersionsTarget(f)}
+            onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
+            onRetryAi={handleRetryAi}
+          />
+        ) : (
+          <FileTable
+            folders={folders}
+            files={files}
+            selectedItem={selectedItem}
+            onSelectItem={setSelectedItem}
+            onOpenFolder={handleOpenFolder}
+            onPreviewFile={(f) => setPreviewFile(f)}
+            onDownloadFile={handleDownloadFile}
+            onToggleStar={handleToggleStar}
+            onShareItem={(type, item) => setShareTarget({ type, item })}
+            onRenameItem={(type, item) => setRenameTarget({ type, item })}
+            onMoveItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'move' })}
+            onCopyItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'copy' })}
+            onVersionHistory={(f) => setVersionsTarget(f)}
+            onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
+            onRetryAi={handleRetryAi}
+          />
+        )}
+      </main>
+
+      {/* Studio Right Inspector Panel (Column 3) */}
+      <InspectorPanel
+        isOpen={isInspectorOpen}
+        onClose={() => setIsInspectorOpen(false)}
+        selectedItem={selectedItem}
+        onOpenFolder={handleOpenFolder}
+        onPreviewFile={(f) => setPreviewFile(f)}
+        onDownloadFile={handleDownloadFile}
+        onToggleStar={handleToggleStar}
+        onShareItem={(type, item) => setShareTarget({ type, item })}
+        onRenameItem={(type, item) => setRenameTarget({ type, item })}
+        onMoveItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'move' })}
+        onCopyItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'copy' })}
+        onVersionHistory={(f) => setVersionsTarget(f)}
+        onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
+      />
 
       {/* Modals */}
       <FilePreviewModal
@@ -276,6 +433,10 @@ const MyDrivePage = () => {
         isOpen={Boolean(previewFile)}
         onClose={() => setPreviewFile(null)}
         onDownload={handleDownloadFile}
+        onFileUpdated={() => {
+          fetchDriveContent();
+          window.dispatchEvent(new Event('file:updated'));
+        }}
       />
 
       <RenameModal
@@ -325,7 +486,7 @@ const MyDrivePage = () => {
         isDanger={true}
         loading={deleting}
       />
-    </div>
+    </>
   );
 };
 

@@ -18,6 +18,18 @@ const MainLayout = () => {
   const location = useLocation();
   const toast = useToast();
 
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    return localStorage.getItem('sidebar_collapsed') === 'true';
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem('sidebar_collapsed', String(next));
+      return next;
+    });
+  };
+
   const handleCreateFolder = async (e) => {
     e.preventDefault();
     if (!newFolderName.trim()) return;
@@ -49,16 +61,21 @@ const MainLayout = () => {
     <div className="app-container">
       {/* Sidebar */}
       <Sidebar
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={toggleSidebar}
         onOpenUpload={() => setIsUploadOpen(true)}
         onOpenCreateFolder={() => setIsCreateFolderOpen(true)}
       />
 
       {/* Main Area */}
       <div className="main-wrapper">
-        <Header />
-        <main className="page-body">
+        <Header
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={toggleSidebar}
+        />
+        <div className="workspace-container">
           <Outlet />
-        </main>
+        </div>
       </div>
 
       {/* Upload Modal */}

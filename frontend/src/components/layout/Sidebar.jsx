@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   HardDrive,
@@ -9,25 +9,63 @@ import {
   Plus,
   FolderPlus,
   UploadCloud,
+  Layers,
+  ChevronDown,
+  Home,
   Shield,
-  Cloud,
-  Folder
+  PanelLeftClose,
+  Zap,
+  Broom
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import folderService from '../../services/folderService';
+import fileService from '../../services/fileService';
 import FolderTree from '../drive/FolderTree';
 
-const Sidebar = ({ onOpenUpload, onOpenCreateFolder }) => {
+const Sidebar = ({ isCollapsed, onToggleCollapse, onOpenUpload, onOpenCreateFolder }) => {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [folderTree, setFolderTree] = useState([]);
+  const [storageStats, setStorageStats] = useState({
+    usedFormatted: '0 B',
+    limitFormatted: '10 GB',
+    percentage: 0,
+    usedBytes: 0,
+    limitBytes: 10 * 1024 * 1024 * 1024
+  });
+  const actionMenuRef = useRef(null);
 
   useEffect(() => {
     fetchTree();
-    const handleFolderUpdate = () => fetchTree();
+    fetchStorage();
+
+    const handleFolderUpdate = () => {
+      fetchTree();
+      fetchStorage();
+    };
+    const handleFileUpdate = () => fetchStorage();
+
     window.addEventListener('folder:updated', handleFolderUpdate);
-    return () => window.removeEventListener('folder:updated', handleFolderUpdate);
+    window.addEventListener('file:updated', handleFileUpdate);
+    window.addEventListener('drive:refresh', handleFileUpdate);
+
+    return () => {
+      window.removeEventListener('folder:updated', handleFolderUpdate);
+      window.removeEventListener('file:updated', handleFileUpdate);
+      window.removeEventListener('drive:refresh', handleFileUpdate);
+    };
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(e.target)) {
+        setShowNewMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const fetchTree = async () => {
@@ -36,6 +74,17 @@ const Sidebar = ({ onOpenUpload, onOpenCreateFolder }) => {
       setFolderTree(res.data || []);
     } catch (err) {
       console.error('Không thể lấy cây thư mục:', err);
+    }
+  };
+
+  const fetchStorage = async () => {
+    try {
+      const res = await fileService.getStorageStats();
+      if (res.data) {
+        setStorageStats(res.data);
+      }
+    } catch (err) {
+      console.error('Không thể lấy thống kê dung lượng:', err);
     }
   };
 
@@ -48,51 +97,75 @@ const Sidebar = ({ onOpenUpload, onOpenCreateFolder }) => {
   };
 
   return (
-    <aside className="app-sidebar">
+    <aside className={`app-sidebar ${isCollapsed ? 'is-collapsed' : ''}`}>
       {/* Brand Header */}
       <div className="sidebar-header">
-        <NavLink to="/drive" className="sidebar-brand">
-          <div className="brand-icon">
-            <Cloud size={22} />
+        {!isCollapsed ? (
+          <>
+            <NavLink to="/drive" className="sidebar-brand" title="CloudDrive">
+              <div className="brand-icon">
+                <Layers size={18} />
+              </div>
+              <span>SmartDoc</span>
+            </NavLink>
+            <button
+              type="button"
+              className="sidebar-collapse-btn"
+              onClick={onToggleCollapse}
+              title="Thu gọn Sidebar"
+              aria-label="Thu gọn Sidebar"
+            >
+              <PanelLeftClose size={17} />
+            </button>
+          </>
+        ) : (
+          <div
+            className="brand-icon"
+            onClick={onToggleCollapse}
+            title="Mở rộng Sidebar (CloudDrive)"
+            style={{ cursor: 'pointer', margin: '0 auto' }}
+          >
+            <Layers size={18} />
           </div>
-          <span>CloudDrive</span>
-        </NavLink>
+        )}
       </div>
 
-      {/* Action Button: "+ Tạo mới" */}
-      <div className="sidebar-action-box" style={{ position: 'relative' }}>
+      {/* Studio Action Trigger */}
+      <div className="sidebar-action-box" ref={actionMenuRef}>
         <button
-          className="btn-new-item"
+          className="btn-studio-action"
           onClick={() => setShowNewMenu(!showNewMenu)}
+          title={isCollapsed ? 'Tạo mới & Tải lên' : 'Tạo thư mục hoặc tải lên tệp mới'}
+          aria-label="Tạo mới & Tải lên"
         >
-          <Plus size={20} />
-          <span>Tạo mới</span>
+          <div className="btn-studio-action-content">
+            <Plus size={16} />
+            <span>Tạo mới & Tải lên</span>
+          </div>
+          <ChevronDown size={14} style={{ opacity: 0.8 }} />
         </button>
 
         {showNewMenu && (
-          <div
-            className="user-dropdown-menu"
-            style={{ top: '100%', left: '20px', right: '20px', width: 'auto' }}
-          >
+          <div className="studio-action-dropdown">
             <button
-              className="dropdown-item"
+              className="studio-action-item"
               onClick={() => {
                 setShowNewMenu(false);
                 onOpenCreateFolder && onOpenCreateFolder();
               }}
             >
-              <FolderPlus size={18} style={{ color: 'var(--primary-600)' }} />
+              <FolderPlus size={16} style={{ color: 'var(--primary-600)' }} />
               <span>Thư mục mới</span>
             </button>
             <button
-              className="dropdown-item"
+              className="studio-action-item"
               onClick={() => {
                 setShowNewMenu(false);
                 onOpenUpload && onOpenUpload();
               }}
             >
-              <UploadCloud size={18} style={{ color: 'var(--accent-blue)' }} />
-              <span>Tải tệp lên</span>
+              <UploadCloud size={16} style={{ color: 'var(--accent-blue)' }} />
+              <span>Tải tệp tin lên</span>
             </button>
           </div>
         )}
@@ -101,85 +174,154 @@ const Sidebar = ({ onOpenUpload, onOpenCreateFolder }) => {
       {/* Navigation Links */}
       <nav className="sidebar-nav">
         <NavLink
+          to="/home"
+          end
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Trang chủ"
+        >
+          <Home size={17} />
+          <span>Trang chủ</span>
+        </NavLink>
+
+        <NavLink
           to="/drive"
           end
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Drive của tôi"
         >
-          <HardDrive size={18} />
+          <HardDrive size={17} />
           <span>Drive của tôi</span>
+        </NavLink>
+
+        <NavLink
+          to="/automation"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Tự động hóa & AI"
+        >
+          <Zap size={17} />
+          <span>Tự động hóa</span>
+        </NavLink>
+
+        <NavLink
+          to="/drive/cleanup"
+          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Dọn dẹp & Trùng lặp"
+        >
+          <Broom size={17} />
+          <span>Dọn dẹp & Trùng lặp</span>
         </NavLink>
 
         <NavLink
           to="/starred"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Có gắn dấu sao"
         >
-          <Star size={18} />
+          <Star size={17} />
           <span>Có gắn dấu sao</span>
         </NavLink>
 
         <NavLink
           to="/shares/shared-with-me"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Được chia sẻ với tôi"
         >
-          <Users size={18} />
-          <span>Được chia sẻ với tôi</span>
+          <Users size={17} />
+          <span>Được chia sẻ</span>
         </NavLink>
 
         <NavLink
           to="/shares/shared-by-me"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Tôi đã chia sẻ"
         >
-          <Share2 size={18} />
+          <Share2 size={17} />
           <span>Tôi đã chia sẻ</span>
         </NavLink>
 
         <NavLink
           to="/trash"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+          title="Thùng rác"
         >
-          <Trash2 size={18} />
+          <Trash2 size={17} />
           <span>Thùng rác</span>
         </NavLink>
 
         {isAdmin && (
           <>
-            <div className="sidebar-section-title">Hệ thống quản trị</div>
+            <div className="sidebar-section-title">Hệ thống</div>
             <NavLink
               to="/admin/users"
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              title="Quản trị người dùng"
             >
-              <Shield size={18} />
-              <span>Quản lý người dùng</span>
+              <Shield size={17} />
+              <span>Quản trị người dùng</span>
             </NavLink>
           </>
         )}
 
-        {/* Cây thư mục lồng nhau */}
-        {folderTree.length > 0 && (
-          <>
-            <div className="sidebar-section-title">Cây thư mục</div>
-            <div className="sidebar-tree-container">
-              <FolderTree
-                tree={folderTree}
-                onSelectFolder={handleSelectFolder}
-                includeRoot={false}
-              />
-            </div>
-          </>
-        )}
+        {/* Cây thư mục */}
+        <div className="sidebar-section-title">Cây thư mục</div>
+        <div className="sidebar-tree-container">
+          <FolderTree
+            tree={folderTree}
+            folders={folderTree}
+            onSelectFolder={handleSelectFolder}
+          />
+        </div>
       </nav>
 
-      {/* Dung lượng lưu trữ */}
-      <div className="sidebar-footer">
-        <div className="storage-info">
-          <span>Bộ nhớ đã dùng</span>
-          <span>Đang sử dụng</span>
-        </div>
-        <div className="storage-progress-bar">
-          <div className="storage-progress-fill" style={{ width: '25%' }} />
-        </div>
-        <div style={{ fontSize: '0.6875rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-          Được bảo mật với mã hóa 2-Token
+      {/* Storage Footer */}
+      <div
+        className="sidebar-footer"
+        title={isCollapsed ? `Dung lượng đã dùng: ${storageStats.usedFormatted || '0 B'} / 10 GB (${storageStats.percentage}%)` : undefined}
+      >
+        {isCollapsed ? (
+          <div
+            className="storage-mini-badge"
+            onClick={onToggleCollapse}
+            title={`Dung lượng: ${storageStats.usedFormatted || '0 B'} / 10 GB (${storageStats.percentage}%) - Nhấn để mở rộng`}
+          >
+            <HardDrive size={16} />
+          </div>
+        ) : (
+          <div
+            className="storage-info"
+            onClick={() => navigate('/drive/cleanup')}
+            style={{ cursor: 'pointer' }}
+            title="Nhấn để mở trang Dọn dẹp & Quét trùng lặp AI"
+          >
+            <span className="storage-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Dung lượng đã dùng</span>
+              <Broom size={13} style={{ opacity: 0.75 }} />
+            </span>
+            <span className="storage-value tabular-nums">
+              {storageStats.usedFormatted || '0 B'} / 10 GB
+            </span>
+          </div>
+        )}
+        <div
+          className="storage-progress-bar"
+          title={`${storageStats.usedFormatted || '0 B'} / 10 GB (${storageStats.percentage}%)`}
+        >
+          <div
+            className={`storage-progress-fill ${storageStats.percentage > 90
+              ? 'is-danger'
+              : storageStats.percentage > 75
+                ? 'is-warning'
+                : ''
+              }`}
+            style={{
+              width: '100%',
+              transform: `scaleX(${Math.min(
+                1,
+                storageStats.percentage > 0
+                  ? Math.max(0.02, storageStats.percentage / 100)
+                  : 0
+              )})`
+            }}
+          />
         </div>
       </div>
     </aside>
@@ -187,3 +329,4 @@ const Sidebar = ({ onOpenUpload, onOpenCreateFolder }) => {
 };
 
 export default Sidebar;
+

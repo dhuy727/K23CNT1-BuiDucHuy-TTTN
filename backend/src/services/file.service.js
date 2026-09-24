@@ -6,6 +6,7 @@ const File = require('../models/file.model');
 const Folder = require('../models/folder.model');
 const Share = require('../models/share.model');
 const ApiError = require('../utils/apiError');
+const { calculateFileHash } = require('../utils/fileHash');
 const { UPLOAD_DIR } = require('../middlewares/upload.middleware');
 
 /**
@@ -85,6 +86,8 @@ const uploadFile = async (userId, file, body = {}) => {
     }
   }
 
+  const contentHash = await calculateFileHash(file.path);
+
   const newFile = new File({
     name: uniqueName,
     originalName: file.originalname,
@@ -94,6 +97,7 @@ const uploadFile = async (userId, file, body = {}) => {
     mimeType: file.mimetype || 'application/octet-stream',
     extension: ext.replace('.', ''),
     storagePath: file.path,
+    contentHash: contentHash || '',
     aiCategory: body.aiCategory || 'Chưa phân loại',
     aiTags: tags,
     aiSummary: body.aiSummary || '',
@@ -102,6 +106,12 @@ const uploadFile = async (userId, file, body = {}) => {
   });
 
   await newFile.save();
+  require('./ai.service').enqueueProcess(newFile._id);
+  try {
+    require('./automation.service').run(userId, 'FILE_UPLOADED', newFile);
+  } catch (autoErr) {
+    console.error('[FileService] Lỗi chạy automation sau upload:', autoErr.message);
+  }
   await newFile.populate('folder', '_id name path color');
 
   return {
@@ -134,6 +144,8 @@ const uploadMultipleFiles = async (userId, files, body = {}) => {
       counter++;
     }
 
+    const contentHash = await calculateFileHash(file.path);
+
     const newFile = new File({
       name: uniqueName,
       originalName: file.originalname,
@@ -143,12 +155,19 @@ const uploadMultipleFiles = async (userId, files, body = {}) => {
       mimeType: file.mimetype || 'application/octet-stream',
       extension: ext.replace('.', ''),
       storagePath: file.path,
+      contentHash: contentHash || '',
       aiCategory: body.aiCategory || 'Chưa phân loại',
       aiStatus: 'pending',
       isTrash: false
     });
 
     await newFile.save();
+    require('./ai.service').enqueueProcess(newFile._id);
+    try {
+      require('./automation.service').run(userId, 'FILE_UPLOADED', newFile);
+    } catch (autoErr) {
+      console.error('[FileService] Lỗi chạy automation sau upload multiple:', autoErr.message);
+    }
     uploadedFiles.push({
       ...newFile.toObject(),
       formattedSize: formatFileSize(newFile.size)
@@ -323,7 +342,7 @@ const checkFileAccess = async (userId, fileId) => {
 /**
  * 4. Xem chi tiết thông tin tệp tin
  */
-const getFileById = async (userId, fileId) => {
+const getFileById = async (userId, fileId, query = {}) => {
   if (!mongoose.Types.ObjectId.isValid(fileId)) {
     throw new ApiError(400, 'ID tệp tin không hợp lệ');
   }
@@ -333,10 +352,16 @@ const getFileById = async (userId, fileId) => {
     throw new ApiError(404, 'Không tìm thấy tệp tin hoặc bạn không có quyền truy cập');
   }
 
-  const file = await File.findById(fileId)
+  let fileQuery = File.findById(fileId)
     .populate('folder', '_id name path color')
     .populate('user', '_id name email')
-    .lean();
+    .populate('aiSuggestedFolder', '_id name path color');
+
+  if (query.includeText === 'true' || query.includeText === true) {
+    fileQuery = fileQuery.select('+extractedText');
+  }
+
+  const file = await fileQuery.lean();
 
   return {
     ...file,
@@ -442,6 +467,12 @@ const renameFile = async (userId, fileId, newName) => {
   file.name = trimmedName;
   await file.save();
 
+  try {
+    require('./automation.service').run(userId, 'FILE_UPDATED', file);
+  } catch (autoErr) {
+    console.error('[FileService] Lỗi chạy automation sau rename:', autoErr.message);
+  }
+
   return {
     ...file.toObject(),
     formattedSize: formatFileSize(file.size)
@@ -487,6 +518,12 @@ const moveFile = async (userId, fileId, targetFolderId) => {
   file.folder = normalizedTargetId;
   await file.save();
   await file.populate('folder', '_id name path color');
+
+  try {
+    require('./automation.service').run(userId, 'FILE_MOVED', file);
+  } catch (autoErr) {
+    console.error('[FileService] Lỗi chạy automation sau move:', autoErr.message);
+  }
 
   return {
     ...file.toObject(),
@@ -535,22 +572,28 @@ const copyFile = async (userId, fileId, targetFolderId = undefined) => {
     counter++;
   }
 
-  const clonedFile = new File({
-    name: copyName,
-    originalName: originalFile.originalName,
-    user: userId,
-    folder: destinationFolderId,
-    size: originalFile.size,
-    mimeType: originalFile.mimeType,
-    extension: originalFile.extension,
-    storagePath: newStoragePath,
-    aiCategory: originalFile.aiCategory,
-    aiTags: originalFile.aiTags,
-    aiSummary: originalFile.aiSummary,
-    aiStatus: originalFile.aiStatus,
-    isStarred: false,
-    isTrash: false
-  });
+    let copyHash = originalFile.contentHash;
+    if (!copyHash && newStoragePath) {
+      copyHash = await calculateFileHash(newStoragePath);
+    }
+
+    const clonedFile = new File({
+      name: copyName,
+      originalName: originalFile.originalName,
+      user: userId,
+      folder: destinationFolderId,
+      size: originalFile.size,
+      mimeType: originalFile.mimeType,
+      extension: originalFile.extension,
+      storagePath: newStoragePath,
+      contentHash: copyHash || '',
+      aiCategory: originalFile.aiCategory,
+      aiTags: originalFile.aiTags,
+      aiSummary: originalFile.aiSummary,
+      aiStatus: originalFile.aiStatus,
+      isStarred: false,
+      isTrash: false
+    });
 
   await clonedFile.save();
   await clonedFile.populate('folder', '_id name path color');
@@ -730,6 +773,55 @@ const toggleStar = async (userId, fileId) => {
   };
 };
 
+/**
+ * 15. Lấy thống kê dung lượng lưu trữ của người dùng (Giới hạn 10GB)
+ */
+const getStorageStats = async (userId) => {
+  const stats = await File.aggregate([
+    { $match: { user: new mongoose.Types.ObjectId(userId) } },
+    {
+      $group: {
+        _id: null,
+        totalSize: { $sum: '$size' },
+        totalFiles: { $sum: 1 },
+        trashSize: {
+          $sum: {
+            $cond: [{ $eq: ['$isTrash', true] }, '$size', 0]
+          }
+        },
+        trashFiles: {
+          $sum: {
+            $cond: [{ $eq: ['$isTrash', true] }, 1, 0]
+          }
+        }
+      }
+    }
+  ]);
+
+  const usedBytes = stats.length > 0 ? stats[0].totalSize : 0;
+  const totalFiles = stats.length > 0 ? stats[0].totalFiles : 0;
+  const trashBytes = stats.length > 0 ? stats[0].trashSize : 0;
+  const trashFiles = stats.length > 0 ? stats[0].trashFiles : 0;
+  const limitBytes = 10 * 1024 * 1024 * 1024; // Giới hạn 10 GB
+
+  const percentage = limitBytes > 0 ? Math.min(100, Math.round((usedBytes / limitBytes) * 10000) / 100) : 0;
+
+  return {
+    usedBytes,
+    limitBytes,
+    usedFormatted: formatFileSize(usedBytes),
+    limitFormatted: '10 GB',
+    percentage,
+    totalFiles,
+    trashBytes,
+    trashFiles,
+    trashFormatted: formatFileSize(trashBytes),
+    activeBytes: usedBytes - trashBytes,
+    activeFiles: totalFiles - trashFiles,
+    activeFormatted: formatFileSize(usedBytes - trashBytes)
+  };
+};
+
 module.exports = {
   formatFileSize,
   checkFileAccess,
@@ -746,5 +838,7 @@ module.exports = {
   getTrashFiles,
   restoreFile,
   emptyTrash,
-  toggleStar
+  toggleStar,
+  getStorageStats
 };
+

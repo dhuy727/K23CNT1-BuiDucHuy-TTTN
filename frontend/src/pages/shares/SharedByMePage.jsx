@@ -71,7 +71,7 @@ const SharedByMePage = () => {
   };
 
   return (
-    <div>
+    <main className="page-body">
       <div className="drive-action-bar" style={{ marginBottom: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.25rem', fontWeight: 800 }}>
           <Share2 size={24} style={{ color: 'var(--primary-600)' }} />
@@ -179,7 +179,7 @@ const SharedByMePage = () => {
         onClose={() => setPreviewFile(null)}
         onDownload={handleDownloadFile}
       />
-    </div>
+    </main>
   );
 };
 

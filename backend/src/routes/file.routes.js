@@ -38,11 +38,19 @@ router.get('/trash', fileController.getTrashFiles);
 router.delete('/trash/empty', fileController.emptyTrash);
 
 /**
+ * @route   GET /api/files/storage-stats
+ * @desc    Lấy thống kê dung lượng lưu trữ thực tế của người dùng (giới hạn 10GB)
+ * @access  Private
+ */
+router.get('/storage-stats', fileController.getStorageStats);
+
+/**
  * @route   GET /api/files
  * @desc    Lấy danh sách tệp tin (hỗ trợ lọc theo folderId, tìm kiếm, lọc loại file, phân loại AI, phân trang)
  * @access  Private
  */
 router.get('/', fileController.getFiles);
+
 
 /**
  * @route   GET /api/files/:id/download
@@ -114,6 +122,8 @@ router.delete('/:id/permanent', validateObjectId('id'), (req, res, next) => {
  */
 router.delete('/:id', validateObjectId('id'), fileController.deleteFile);
 
+const aiRoutes = require('./ai.routes');
+
 /**
  * @route   GET /api/files/:id
  * @desc    Xem chi tiết thông tin tệp tin
@@ -125,5 +135,10 @@ router.get('/:id', validateObjectId('id'), fileController.getFileById);
  * Mount nested version routes: /api/files/:id/versions/...
  */
 router.use('/:id/versions', versionRoutes);
+
+/**
+ * Mount nested AI routes: /api/files/:id/ai/...
+ */
+router.use('/:id/ai', validateObjectId('id'), aiRoutes);
 
 module.exports = router;

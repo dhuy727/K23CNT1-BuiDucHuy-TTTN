@@ -1,6 +1,7 @@
 require('dotenv').config();
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
+const { resumePendingJobs } = require('./src/services/ai.service');
 
 const PORT = process.env.PORT || 3000;
 
@@ -9,13 +10,13 @@ const startServer = async () => {
   try {
     await connectDB();
 
+    // Tự động khôi phục và xử lý các tác vụ AI còn dang dở
+    await resumePendingJobs();
+
     const server = app.listen(PORT, () => {
       console.log(`==================================================`);
-      console.log(`🚀 Hệ thống (Frontend & Backend) đang chạy tại: http://localhost:${PORT}`);
+      console.log(`🚀 Hệ thống đang chạy tại: http://localhost:${PORT}`);
       console.log(`📡 Health check API: http://localhost:${PORT}/api/health`);
-      console.log(`🔑 Auth API: http://localhost:${PORT}/api/auth`);
-      console.log(`👥 User API: http://localhost:${PORT}/api/users`);
-      console.log(`📁 File & Drive API: http://localhost:${PORT}/api/files`);
       console.log(`==================================================`);
     });
 

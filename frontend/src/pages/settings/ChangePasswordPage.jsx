@@ -44,7 +44,8 @@ const ChangePasswordPage = () => {
   };
 
   return (
-    <div style={{ maxWidth: '600px', margin: '0 auto', width: '100%' }}>
+    <main className="page-body">
+      <div style={{ maxWidth: '600px', margin: '0 auto', width: '100%' }}>
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)' }}>
           Đổi mật khẩu
@@ -143,7 +144,8 @@ const ChangePasswordPage = () => {
           </div>
         </form>
       </div>
-    </div>
+      </div>
+    </main>
   );
 };
 
