@@ -637,8 +637,8 @@
   }
 
   .trash-action-btn {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     padding: 0 !important;
     border-radius: var(--radius-sm);
   }
@@ -651,20 +651,101 @@
     display: block !important;
   }
 
-  .file-table .col-date {
-    display: none !important;
-  }
-}
-
-@media (max-width: 600px) {
-  .file-table .col-size {
-    display: none !important;
-  }
-}
-
-@media (max-width: 460px) {
+  .file-table .col-date,
+  .file-table .col-size,
   .file-table .col-ai {
     display: none !important;
+  }
+
+  .table-item-row {
+    height: 50px !important;
+  }
+
+  /* 2-column mobile file & folder grid */
+  .drive-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .folder-card,
+  .file-card {
+    padding: 10px !important;
+  }
+
+  /* Responsive Drive Toolbar & Filters */
+  .drive-toolbar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .drive-filter-bar {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 4px !important;
+    gap: 6px !important;
+  }
+
+  .filter-pill {
+    flex-shrink: 0 !important;
+    white-space: nowrap !important;
+    padding: 6px 12px !important;
+    font-size: 0.8125rem !important;
+  }
+
+  /* Sticky Bottom Contextual Action Bar for thumb reach */
+  .contextual-action-bar {
+    position: sticky !important;
+    bottom: 10px !important;
+    z-index: 100 !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+    border-radius: var(--radius-lg) !important;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5) !important;
+  }
+
+  .contextual-info {
+    width: 100% !important;
+    justify-content: flex-start !important;
+  }
+
+  .contextual-actions {
+    width: 100% !important;
+    justify-content: space-between !important;
+    overflow: visible !important;
+    padding-top: 8px !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.12) !important;
+    gap: 6px !important;
+  }
+
+  .contextual-icon-btn {
+    min-width: 44px !important;
+    min-height: 44px !important;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: var(--radius-md) !important;
+  }
+
+  /* Dropdown 3 chấm trên Mobile: Fixed neo trên thanh bottom bar, không bao giờ bị cắt xén */
+  .contextual-dropdown {
+    position: fixed !important;
+    bottom: 74px !important;
+    right: 14px !important;
+    left: auto !important;
+    top: auto !important;
+    min-width: 230px !important;
+    max-width: calc(100vw - 28px) !important;
+    z-index: 1080 !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(99, 102, 241, 0.3) !important;
+  }
+}
+
+@media (max-width: 400px) {
+  .drive-grid {
+    grid-template-columns: 1fr !important;
   }
 }
 
@@ -1073,6 +1154,9 @@
   margin-bottom: 12px;
   box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.3);
   animation: barSlideDown 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  z-index: 100;
+  overflow: visible;
 }
 
 [data-theme='dark'] .contextual-action-bar {
@@ -1236,6 +1320,31 @@
   from {
     opacity: 0;
     transform: translateY(-4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Contextual Action Bar Dropdown: trên Desktop mở xuống dưới nút (không tràn header) ── */
+@media (min-width: 769px) {
+  .contextual-dropdown {
+    position: absolute !important;
+    top: calc(100% + 6px) !important;
+    bottom: auto !important;
+    right: 0 !important;
+    left: auto !important;
+    transform-origin: top right !important;
+    animation: menuAppear 0.14s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    z-index: 1060 !important;
+  }
+}
+
+@keyframes menuAppearUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
   }
   to {
     opacity: 1;

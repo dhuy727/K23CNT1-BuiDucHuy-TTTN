@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Cleanup & AI Duplicate Scanner Styles - SmartDoc Studio Workstation
+   Cleanup & AI Duplicate Scanner Styles - SmartDocs Studio Workstation
    ========================================================================== */
 
 .cleanup-page-wrapper {
@@ -861,3 +861,39 @@
   color: var(--accent-emerald);
   margin-bottom: 16px;
 }
+
+/* ── Mobile Responsive Optimizations for Cleanup & Duplicates ── */
+@media (max-width: 768px) {
+  .cleanup-stats-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .cleanup-stat-card {
+    padding: 14px 16px !important;
+  }
+
+  .compare-columns-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .cleanup-tabs-nav {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 4px !important;
+  }
+
+  .cleanup-tab-btn {
+    white-space: nowrap !important;
+    padding: 8px 14px !important;
+  }
+
+  .cleanup-action-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+}
+

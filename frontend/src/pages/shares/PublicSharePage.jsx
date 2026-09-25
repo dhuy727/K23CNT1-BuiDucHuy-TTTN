@@ -6,7 +6,7 @@ import {
   Download,
   AlertCircle,
   Eye,
-  Cloud,
+  Layers,
   FileCheck
 } from 'lucide-react';
 import FileIcon from '../../components/drive/FileIcon';
@@ -209,10 +209,10 @@ const PublicSharePage = () => {
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div className="brand-icon" style={{ width: 32, height: 32 }}>
-            <Cloud size={18} />
+            <Layers size={18} />
           </div>
           <span style={{ fontWeight: 800, fontSize: '1.125rem', color: 'var(--primary-600)' }}>
-            CloudDrive
+            SmartDocs
           </span>
           <span className="badge badge-blue">Chia sẻ công khai</span>
         </div>

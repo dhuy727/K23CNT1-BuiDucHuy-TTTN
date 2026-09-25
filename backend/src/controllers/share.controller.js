@@ -127,13 +127,22 @@ const getPublicItem = async (req, res, next) => {
 const getPublicFileDownload = async (req, res, next) => {
   try {
     const password = req.headers['x-share-password'] || req.query.password || null;
-    const { filePath, downloadName } = await shareService.getPublicFileDownload(req.params.shareToken, password);
+    const { fileStream, downloadName, mimeType, file } = await shareService.getPublicFileDownload(req.params.shareToken, password);
 
-    return res.download(filePath, downloadName, (err) => {
-      if (err && !res.headersSent) {
+    const encodedFilename = encodeURIComponent(downloadName);
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`);
+    if (file?.size) {
+      res.setHeader('Content-Length', file.size);
+    }
+
+    fileStream.on('error', (err) => {
+      if (!res.headersSent) {
         next(err);
       }
     });
+
+    return fileStream.pipe(res);
   } catch (error) {
     next(error);
   }
@@ -145,17 +154,22 @@ const getPublicFileDownload = async (req, res, next) => {
 const getPublicFilePreview = async (req, res, next) => {
   try {
     const password = req.headers['x-share-password'] || req.query.password || null;
-    const { filePath, mimeType, file } = await shareService.getPublicFilePreview(req.params.shareToken, password);
+    const { fileStream, mimeType, file } = await shareService.getPublicFilePreview(req.params.shareToken, password);
 
     const encodedFilename = encodeURIComponent(file.name);
-    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Type', mimeType || 'application/octet-stream');
     res.setHeader('Content-Disposition', `inline; filename="${encodedFilename}"; filename*=UTF-8''${encodedFilename}`);
+    if (file?.size) {
+      res.setHeader('Content-Length', file.size);
+    }
 
-    return res.sendFile(filePath, (err) => {
-      if (err && !res.headersSent) {
+    fileStream.on('error', (err) => {
+      if (!res.headersSent) {
         next(err);
       }
     });
+
+    return fileStream.pipe(res);
   } catch (error) {
     next(error);
   }

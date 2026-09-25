@@ -268,385 +268,385 @@ const CleanupPage = () => {
   return (
     <div className="cleanup-page-wrapper">
       <div className="cleanup-page">
-      {/* Toast Feedback */}
-      {toast && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 24,
-            right: 24,
-            background: toast.type === 'error' ? 'var(--accent-rose)' : 'var(--primary-600)',
-            color: '#fff',
-            padding: '12px 20px',
-            borderRadius: 'var(--radius-md)',
-            boxShadow: 'var(--shadow-lg)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            zIndex: 9999,
-            fontWeight: 500,
-            fontSize: '0.875rem'
-          }}
-        >
-          {toast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
-          <span>{toast.message}</span>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="cleanup-header">
-        <div className="cleanup-title-group">
-          <div className="cleanup-title-icon">
-            <Broom size={22} />
-          </div>
-          <div className="cleanup-title-text">
-            <h1>Dọn dẹp & Quét trùng lặp AI</h1>
-            <p>Phát hiện tệp tin trùng khớp 100% (SHA-256) và các bản thảo tương đồng bằng trí tuệ nhân tạo</p>
-          </div>
-        </div>
-
-        <div className="cleanup-controls">
-          <select
-            className="cleanup-select-scope"
-            value={scopeFolderId}
-            onChange={(e) => setScopeFolderId(e.target.value)}
-            disabled={isScanning}
+        {/* Toast Feedback */}
+        {toast && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 24,
+              right: 24,
+              background: toast.type === 'error' ? 'var(--accent-rose)' : 'var(--primary-600)',
+              color: '#fff',
+              padding: '12px 20px',
+              borderRadius: 'var(--radius-md)',
+              boxShadow: 'var(--shadow-lg)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              zIndex: 9999,
+              fontWeight: 500,
+              fontSize: '0.875rem'
+            }}
           >
-            <option value="">Phạm vi: Toàn bộ Drive</option>
-            {folders.map((f) => (
-              <option key={f._id} value={f._id}>
-                Thư mục: {f.name}
-              </option>
-            ))}
-          </select>
+            {toast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+            <span>{toast.message}</span>
+          </div>
+        )}
 
-          <button
-            type="button"
-            className="btn-scan-trigger"
-            onClick={handleStartScan}
-            disabled={isScanning}
-          >
-            <RefreshCw size={15} className={isScanning ? 'is-spinning' : ''} />
-            {isScanning ? 'Đang quét AI...' : 'Bắt đầu quét AI'}
-          </button>
-        </div>
-      </div>
-
-      {/* Banner Tiến trình Quét khi đang chạy */}
-      {isScanning && (
-        <div className="scan-progress-banner">
-          <div className="radar-pulse-box">
-            <div className="radar-circle" />
-            <div className="radar-icon-center">
-              <Sparkles size={20} />
+        {/* Header */}
+        <div className="cleanup-header">
+          <div className="cleanup-title-group">
+            <div className="cleanup-title-icon">
+              <Broom size={22} />
+            </div>
+            <div className="cleanup-title-text">
+              <h1>Dọn dẹp & Quét trùng lặp AI</h1>
+              <p>Phát hiện tệp tin trùng khớp 100% (SHA-256) và các bản thảo tương đồng bằng trí tuệ nhân tạo</p>
             </div>
           </div>
-          <div className="scan-progress-info">
-            <div className="scan-progress-title">
-              <span>Hệ thống AI đang quét và so sánh các tệp tin trong Drive...</span>
-              <span className="tabular-nums" style={{ color: 'var(--primary-600)' }}>
-                Đang xử lý
+
+          <div className="cleanup-controls">
+            <select
+              className="cleanup-select-scope"
+              value={scopeFolderId}
+              onChange={(e) => setScopeFolderId(e.target.value)}
+              disabled={isScanning}
+            >
+              <option value="">Phạm vi: Toàn bộ Drive</option>
+              {folders.map((f) => (
+                <option key={f._id} value={f._id}>
+                  Thư mục: {f.name}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              className="btn-scan-trigger"
+              onClick={handleStartScan}
+              disabled={isScanning}
+            >
+              <RefreshCw size={15} className={isScanning ? 'is-spinning' : ''} />
+              {isScanning ? 'Đang quét AI...' : 'Bắt đầu quét AI'}
+            </button>
+          </div>
+        </div>
+
+        {/* Banner Tiến trình Quét khi đang chạy */}
+        {isScanning && (
+          <div className="scan-progress-banner">
+            <div className="radar-pulse-box">
+              <div className="radar-circle" />
+              <div className="radar-icon-center">
+                <Sparkles size={20} />
+              </div>
+            </div>
+            <div className="scan-progress-info">
+              <div className="scan-progress-title">
+                <span>Hệ thống AI đang quét và so sánh các tệp tin trong Drive...</span>
+                <span className="tabular-nums" style={{ color: 'var(--primary-600)' }}>
+                  Đang xử lý
+                </span>
+              </div>
+              <div className="scan-progress-track">
+                <div className="scan-progress-fill" style={{ width: '75%' }} />
+              </div>
+              <div className="scan-stage-pills">
+                <div className="stage-pill is-active">
+                  <FileCheck size={13} />
+                  1. Quét mã băm SHA-256
+                </div>
+                <div className="stage-pill is-active">
+                  <Sparkles size={13} />
+                  2. So sánh ngữ nghĩa AI (Gemini)
+                </div>
+                <div className="stage-pill">
+                  <Layers size={13} />
+                  3. Tổng hợp cụm tệp trùng
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Stats Summary Cards Grid */}
+        <div className="cleanup-stats-grid">
+          <div className="cleanup-stat-card">
+            <div className="stat-icon-wrapper savings">
+              <HardDrive size={22} />
+            </div>
+            <div className="stat-content">
+              <span className="stat-label">Dung lượng lãng phí</span>
+              <span className="stat-value">{scanData?.stats?.wastedFormatted || '0 B'}</span>
+              <span className="stat-subtext">Có thể giải phóng ngay</span>
+            </div>
+          </div>
+
+          <div className="cleanup-stat-card">
+            <div className="stat-icon-wrapper exact">
+              <Copy size={22} />
+            </div>
+            <div className="stat-content">
+              <span className="stat-label">Trùng lặp 100%</span>
+              <span className="stat-value">{scanData?.stats?.exactDuplicateCount || 0} tệp</span>
+              <span className="stat-subtext">Mã băm SHA-256 trùng khớp</span>
+            </div>
+          </div>
+
+          <div className="cleanup-stat-card">
+            <div className="stat-icon-wrapper semantic">
+              <Sparkles size={22} />
+            </div>
+            <div className="stat-content">
+              <span className="stat-label">Bản thảo tương đồng AI</span>
+              <span className="stat-value">{scanData?.stats?.similarDuplicateCount || 0} tệp</span>
+              <span className="stat-subtext">Độ tương đồng từ 70% - 99%</span>
+            </div>
+          </div>
+
+          <div className="cleanup-stat-card">
+            <div className="stat-icon-wrapper large-files">
+              <Layers size={22} />
+            </div>
+            <div className="stat-content">
+              <span className="stat-label">Tệp dung lượng lớn</span>
+              <span className="stat-value">&lt; 500 MB</span>
+              <span className="stat-subtext">Lọc & dọn dẹp tệp nặng</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Toolbar & Filter Tabs */}
+        <div className="cleanup-toolbar">
+          <div className="cleanup-tabs">
+            <button
+              type="button"
+              className={`cleanup-tab-btn ${activeTab === 'all' ? 'is-active' : ''}`}
+              onClick={() => setActiveTab('all')}
+            >
+              <span>Tất cả trùng lặp</span>
+              <span className="cleanup-tab-count">{(scanData?.clusters || []).length}</span>
+            </button>
+            <button
+              type="button"
+              className={`cleanup-tab-btn ${activeTab === 'exact' ? 'is-active' : ''}`}
+              onClick={() => setActiveTab('exact')}
+            >
+              <span>Trùng tuyệt đối 100%</span>
+              <span className="cleanup-tab-count">
+                {(scanData?.clusters || []).filter((c) => c.type === 'exact').length}
               </span>
-            </div>
-            <div className="scan-progress-track">
-              <div className="scan-progress-fill" style={{ width: '75%' }} />
-            </div>
-            <div className="scan-stage-pills">
-              <div className="stage-pill is-active">
-                <FileCheck size={13} />
-                1. Quét mã băm SHA-256
-              </div>
-              <div className="stage-pill is-active">
-                <Sparkles size={13} />
-                2. So sánh ngữ nghĩa AI (Gemini)
-              </div>
-              <div className="stage-pill">
-                <Layers size={13} />
-                3. Tổng hợp cụm tệp trùng
-              </div>
-            </div>
+            </button>
+            <button
+              type="button"
+              className={`cleanup-tab-btn ${activeTab === 'semantic' ? 'is-active' : ''}`}
+              onClick={() => setActiveTab('semantic')}
+            >
+              <span>Gần giống nhau (AI)</span>
+              <span className="cleanup-tab-count">
+                {(scanData?.clusters || []).filter((c) => c.type === 'semantic').length}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`cleanup-tab-btn ${activeTab === 'large_files' ? 'is-active' : ''}`}
+              onClick={() => setActiveTab('large_files')}
+            >
+              <span>Tệp lớn (&lt; 500MB)</span>
+              {largeFilesData && <span className="cleanup-tab-count">{largeFilesData.totalCount}</span>}
+            </button>
           </div>
-        </div>
-      )}
 
-      {/* Stats Summary Cards Grid */}
-      <div className="cleanup-stats-grid">
-        <div className="cleanup-stat-card">
-          <div className="stat-icon-wrapper savings">
-            <HardDrive size={22} />
-          </div>
-          <div className="stat-content">
-            <span className="stat-label">Dung lượng lãng phí</span>
-            <span className="stat-value">{scanData?.stats?.wastedFormatted || '0 B'}</span>
-            <span className="stat-subtext">Có thể giải phóng ngay</span>
-          </div>
-        </div>
-
-        <div className="cleanup-stat-card">
-          <div className="stat-icon-wrapper exact">
-            <Copy size={22} />
-          </div>
-          <div className="stat-content">
-            <span className="stat-label">Trùng lặp 100%</span>
-            <span className="stat-value">{scanData?.stats?.exactDuplicateCount || 0} tệp</span>
-            <span className="stat-subtext">Mã băm SHA-256 trùng khớp</span>
-          </div>
-        </div>
-
-        <div className="cleanup-stat-card">
-          <div className="stat-icon-wrapper semantic">
-            <Sparkles size={22} />
-          </div>
-          <div className="stat-content">
-            <span className="stat-label">Bản thảo tương đồng AI</span>
-            <span className="stat-value">{scanData?.stats?.similarDuplicateCount || 0} tệp</span>
-            <span className="stat-subtext">Độ tương đồng từ 70% - 99%</span>
-          </div>
-        </div>
-
-        <div className="cleanup-stat-card">
-          <div className="stat-icon-wrapper large-files">
-            <Layers size={22} />
-          </div>
-          <div className="stat-content">
-            <span className="stat-label">Tệp dung lượng lớn</span>
-            <span className="stat-value">&lt; 500 MB</span>
-            <span className="stat-subtext">Lọc & dọn dẹp tệp nặng</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Toolbar & Filter Tabs */}
-      <div className="cleanup-toolbar">
-        <div className="cleanup-tabs">
-          <button
-            type="button"
-            className={`cleanup-tab-btn ${activeTab === 'all' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('all')}
-          >
-            <span>Tất cả trùng lặp</span>
-            <span className="cleanup-tab-count">{(scanData?.clusters || []).length}</span>
-          </button>
-          <button
-            type="button"
-            className={`cleanup-tab-btn ${activeTab === 'exact' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('exact')}
-          >
-            <span>Trùng tuyệt đối 100%</span>
-            <span className="cleanup-tab-count">
-              {(scanData?.clusters || []).filter((c) => c.type === 'exact').length}
-            </span>
-          </button>
-          <button
-            type="button"
-            className={`cleanup-tab-btn ${activeTab === 'semantic' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('semantic')}
-          >
-            <span>Gần giống nhau (AI)</span>
-            <span className="cleanup-tab-count">
-              {(scanData?.clusters || []).filter((c) => c.type === 'semantic').length}
-            </span>
-          </button>
-          <button
-            type="button"
-            className={`cleanup-tab-btn ${activeTab === 'large_files' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('large_files')}
-          >
-            <span>Tệp lớn (&lt; 500MB)</span>
-            {largeFilesData && <span className="cleanup-tab-count">{largeFilesData.totalCount}</span>}
-          </button>
-        </div>
-
-        <div className="cleanup-actions-group">
-          <button
-            type="button"
-            className="btn-smart-select"
-            onClick={handleSmartSelectAll}
-            title="Tự động chọn các bản sao dư thừa để dọn dẹp"
-          >
-            <CheckSquare size={14} />
-            Chọn thông minh
-          </button>
-          {selectedFileIds.size > 0 && (
+          <div className="cleanup-actions-group">
             <button
               type="button"
               className="btn-smart-select"
-              onClick={handleClearSelection}
+              onClick={handleSmartSelectAll}
+              title="Tự động chọn các bản sao dư thừa để dọn dẹp"
             >
-              <Square size={14} />
-              Bỏ chọn
+              <CheckSquare size={14} />
+              Chọn thông minh
             </button>
-          )}
-
-          <button
-            type="button"
-            className="btn-clean-batch"
-            onClick={handleBatchClean}
-            disabled={selectedFileIds.size === 0 || isCleaning}
-          >
-            <Trash2 size={14} />
-            {isCleaning
-              ? 'Đang chuyển...'
-              : `Dọn dẹp (${selectedFileIds.size}) • ${selectedSizeFormatted}`}
-          </button>
-        </div>
-      </div>
-
-      {/* Main Content Area */}
-      {activeTab === 'large_files' ? (
-        /* Tab Tệp Dung Lượng Lớn */
-        <div className="large-files-container">
-          <div className="large-files-filters">
-            <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
-              Ngưỡng kích thước:
-            </span>
-            <button
-              type="button"
-              className={`filter-pill ${largeFilesMinMB === 10 ? 'is-active' : ''}`}
-              onClick={() => setLargeFilesMinMB(10)}
-            >
-              Lớn hơn 10 MB
-            </button>
-            <button
-              type="button"
-              className={`filter-pill ${largeFilesMinMB === 50 ? 'is-active' : ''}`}
-              onClick={() => setLargeFilesMinMB(50)}
-            >
-              Lớn hơn 50 MB
-            </button>
-            <button
-              type="button"
-              className={`filter-pill ${largeFilesMinMB === 100 ? 'is-active' : ''}`}
-              onClick={() => setLargeFilesMinMB(100)}
-            >
-              Lớn hơn 100 MB
-            </button>
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
-              (Tối đa 500 MB mỗi tệp)
-            </span>
-          </div>
-
-          {largeFilesLoading ? (
-            <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-              Đang tải danh sách tệp lớn...
-            </div>
-          ) : (largeFilesData?.files || []).length === 0 ? (
-            <div className="cleanup-empty-state">
-              <div className="empty-state-icon">
-                <CheckCircle2 size={36} />
-              </div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: '0 0 6px 0' }}>
-                Không tìm thấy tệp nào vượt quá {largeFilesMinMB} MB
-              </h3>
-              <p style={{ margin: 0, fontSize: '0.875rem' }}>
-                Kho lưu trữ của bạn được tối ưu rất gọn gàng.
-              </p>
-            </div>
-          ) : (
-            <div className="clusters-list">
-              {(largeFilesData?.files || []).map((file) => {
-                const isSelected = selectedFileIds.has(file._id);
-                return (
-                  <div
-                    key={file._id}
-                    className={`cluster-file-item ${isSelected ? 'is-selected-delete' : ''}`}
-                  >
-                    <div className="file-item-left">
-                      <input
-                        type="checkbox"
-                        className="file-checkbox"
-                        checked={isSelected}
-                        onChange={() => handleToggleSelectFile(file._id)}
-                      />
-                      <FileIcon mimeType={file.mimeType} extension={file.extension} size={22} />
-                      <div className="file-info-col">
-                        <span className="file-primary-name" title={file.name}>
-                          {file.name}
-                        </span>
-                        <div className="file-meta-row">
-                          <strong style={{ color: 'var(--accent-blue)' }}>{file.formattedSize}</strong>
-                          <span>•</span>
-                          <span>Thư mục: {file.folder?.name || 'Drive của tôi'}</span>
-                          <span>•</span>
-                          <span>Cập nhật: {new Date(file.updatedAt || file.createdAt).toLocaleDateString('vi-VN')}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="file-item-actions">
-                      <button
-                        type="button"
-                        className="btn-item-action"
-                        style={{ color: 'var(--accent-rose)' }}
-                        onClick={() => handleDeleteSingle(file._id)}
-                        title="Chuyển vào thùng rác"
-                      >
-                        <Trash2 size={13} />
-                        Xóa
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ) : (
-        /* Tabs Cụm Trùng Lặp (Exact / Semantic / All) */
-        <div className="clusters-list">
-          {filteredClusters.length === 0 ? (
-            <div className="cleanup-empty-state">
-              <div className="empty-state-icon">
-                <CheckCircle2 size={36} />
-              </div>
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 600, margin: '0 0 6px 0', color: 'var(--text-primary)' }}>
-                Không phát hiện tệp tin trùng lặp nào
-              </h3>
-              <p style={{ margin: '0 0 16px 0', fontSize: '0.875rem' }}>
-                {scanData?.lastScannedAt
-                  ? `Lần quét gần nhất lúc ${new Date(scanData.lastScannedAt).toLocaleString('vi-VN')}. Tất cả tài liệu đều là phiên bản duy nhất.`
-                  : 'Hãy bấm "Bắt đầu quét AI" để rà soát toàn bộ tệp tin trong Drive của bạn.'}
-              </p>
+            {selectedFileIds.size > 0 && (
               <button
                 type="button"
-                className="btn-scan-trigger"
-                onClick={handleStartScan}
-                disabled={isScanning}
+                className="btn-smart-select"
+                onClick={handleClearSelection}
               >
-                <Sparkles size={15} />
-                Quét ngay bây giờ
+                <Square size={14} />
+                Bỏ chọn
               </button>
-            </div>
-          ) : (
-            filteredClusters.map((cluster) => (
-              <DuplicateClusterCard
-                key={cluster.clusterId}
-                cluster={cluster}
-                selectedFileIds={selectedFileIds}
-                onToggleSelectFile={handleToggleSelectFile}
-                onOpenCompare={handleOpenCompare}
-                onDeleteSingle={handleDeleteSingle}
-                onIgnorePair={handleIgnorePair}
-              />
-            ))
-          )}
-        </div>
-      )}
+            )}
 
-      {/* Side-by-Side Compare Modal */}
-      <SideBySideModal
-        isOpen={isCompareOpen}
-        onClose={() => setIsCompareOpen(false)}
-        compareData={compareModalData}
-        onCleanFile={async (fileIds) => {
-          await duplicateService.cleanFiles(fileIds);
-          showToast('Đã chuyển tệp bản sao vào Thùng rác');
-          loadScanStatus();
-          window.dispatchEvent(new CustomEvent('file:updated'));
-          window.dispatchEvent(new CustomEvent('drive:refresh'));
-        }}
-        onIgnorePair={handleIgnorePair}
-      />
+            <button
+              type="button"
+              className="btn-clean-batch"
+              onClick={handleBatchClean}
+              disabled={selectedFileIds.size === 0 || isCleaning}
+            >
+              <Trash2 size={14} />
+              {isCleaning
+                ? 'Đang chuyển...'
+                : `Dọn dẹp (${selectedFileIds.size}) • ${selectedSizeFormatted}`}
+            </button>
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        {activeTab === 'large_files' ? (
+          /* Tab Tệp Dung Lượng Lớn */
+          <div className="large-files-container">
+            <div className="large-files-filters">
+              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                Ngưỡng kích thước:
+              </span>
+              <button
+                type="button"
+                className={`filter-pill ${largeFilesMinMB === 10 ? 'is-active' : ''}`}
+                onClick={() => setLargeFilesMinMB(10)}
+              >
+                Lớn hơn 10 MB
+              </button>
+              <button
+                type="button"
+                className={`filter-pill ${largeFilesMinMB === 50 ? 'is-active' : ''}`}
+                onClick={() => setLargeFilesMinMB(50)}
+              >
+                Lớn hơn 50 MB
+              </button>
+              <button
+                type="button"
+                className={`filter-pill ${largeFilesMinMB === 100 ? 'is-active' : ''}`}
+                onClick={() => setLargeFilesMinMB(100)}
+              >
+                Lớn hơn 100 MB
+              </button>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                (Tối đa 500 MB mỗi tệp)
+              </span>
+            </div>
+
+            {largeFilesLoading ? (
+              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+                Đang tải danh sách tệp lớn...
+              </div>
+            ) : (largeFilesData?.files || []).length === 0 ? (
+              <div className="cleanup-empty-state">
+                <div className="empty-state-icon">
+                  <CheckCircle2 size={36} />
+                </div>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: '0 0 6px 0' }}>
+                  Không tìm thấy tệp nào vượt quá {largeFilesMinMB} MB
+                </h3>
+                <p style={{ margin: 0, fontSize: '0.875rem' }}>
+                  Kho lưu trữ của bạn được tối ưu rất gọn gàng.
+                </p>
+              </div>
+            ) : (
+              <div className="clusters-list">
+                {(largeFilesData?.files || []).map((file) => {
+                  const isSelected = selectedFileIds.has(file._id);
+                  return (
+                    <div
+                      key={file._id}
+                      className={`cluster-file-item ${isSelected ? 'is-selected-delete' : ''}`}
+                    >
+                      <div className="file-item-left">
+                        <input
+                          type="checkbox"
+                          className="file-checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleSelectFile(file._id)}
+                        />
+                        <FileIcon mimeType={file.mimeType} extension={file.extension} size={22} />
+                        <div className="file-info-col">
+                          <span className="file-primary-name" title={file.name}>
+                            {file.name}
+                          </span>
+                          <div className="file-meta-row">
+                            <strong style={{ color: 'var(--accent-blue)' }}>{file.formattedSize}</strong>
+                            <span>•</span>
+                            <span>Thư mục: {file.folder?.name || 'Drive của tôi'}</span>
+                            <span>•</span>
+                            <span>Cập nhật: {new Date(file.updatedAt || file.createdAt).toLocaleDateString('vi-VN')}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="file-item-actions">
+                        <button
+                          type="button"
+                          className="btn-item-action"
+                          style={{ color: 'var(--accent-rose)' }}
+                          onClick={() => handleDeleteSingle(file._id)}
+                          title="Chuyển vào thùng rác"
+                        >
+                          <Trash2 size={13} />
+                          Xóa
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Tabs Cụm Trùng Lặp (Exact / Semantic / All) */
+          <div className="clusters-list">
+            {filteredClusters.length === 0 ? (
+              <div className="cleanup-empty-state">
+                <div className="empty-state-icon">
+                  <CheckCircle2 size={36} />
+                </div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 600, margin: '0 0 6px 0', color: 'var(--text-primary)' }}>
+                  Không phát hiện tệp tin trùng lặp nào
+                </h3>
+                <p style={{ margin: '0 0 16px 0', fontSize: '0.875rem' }}>
+                  {scanData?.lastScannedAt
+                    ? `Lần quét gần nhất lúc ${new Date(scanData.lastScannedAt).toLocaleString('vi-VN')}. Tất cả tài liệu đều là phiên bản duy nhất.`
+                    : 'Hãy bấm "Bắt đầu quét AI" để rà soát toàn bộ tệp tin trong Drive của bạn.'}
+                </p>
+                <button
+                  type="button"
+                  className="btn-scan-trigger"
+                  onClick={handleStartScan}
+                  disabled={isScanning}
+                >
+                  <Sparkles size={15} />
+                  Quét ngay bây giờ
+                </button>
+              </div>
+            ) : (
+              filteredClusters.map((cluster) => (
+                <DuplicateClusterCard
+                  key={cluster.clusterId}
+                  cluster={cluster}
+                  selectedFileIds={selectedFileIds}
+                  onToggleSelectFile={handleToggleSelectFile}
+                  onOpenCompare={handleOpenCompare}
+                  onDeleteSingle={handleDeleteSingle}
+                  onIgnorePair={handleIgnorePair}
+                />
+              ))
+            )}
+          </div>
+        )}
+
+        {/* Side-by-Side Compare Modal */}
+        <SideBySideModal
+          isOpen={isCompareOpen}
+          onClose={() => setIsCompareOpen(false)}
+          compareData={compareModalData}
+          onCleanFile={async (fileIds) => {
+            await duplicateService.cleanFiles(fileIds);
+            showToast('Đã chuyển tệp bản sao vào Thùng rác');
+            loadScanStatus();
+            window.dispatchEvent(new CustomEvent('file:updated'));
+            window.dispatchEvent(new CustomEvent('drive:refresh'));
+          }}
+          onIgnorePair={handleIgnorePair}
+        />
       </div>
     </div>
   );

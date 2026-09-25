@@ -8,6 +8,7 @@ const Folder = require('../models/folder.model');
 const User = require('../models/user.model');
 const ApiError = require('../utils/apiError');
 const { formatFileSize } = require('./file.service');
+const storageService = require('./storage.service');
 
 /**
  * Kiểm tra quyền sở hữu đối với file hoặc folder
@@ -403,14 +404,13 @@ const getPublicFileDownload = async (shareToken, providedPassword = null) => {
   }
 
   const file = result.item;
-  if (!file.storagePath || !fs.existsSync(file.storagePath)) {
-    throw new ApiError(404, 'Tệp tin vật lý không tồn tại trên hệ thống lưu trữ');
-  }
+  const fileStream = await storageService.getFileStream(file);
 
   return {
-    filePath: file.storagePath,
+    file,
+    fileStream,
     downloadName: file.name || file.originalName,
-    mimeType: file.mimeType
+    mimeType: file.mimeType || 'application/octet-stream'
   };
 };
 
@@ -429,13 +429,11 @@ const getPublicFilePreview = async (shareToken, providedPassword = null) => {
   }
 
   const file = result.item;
-  if (!file.storagePath || !fs.existsSync(file.storagePath)) {
-    throw new ApiError(404, 'Tệp tin vật lý không tồn tại trên hệ thống lưu trữ');
-  }
+  const fileStream = await storageService.getFileStream(file);
 
   return {
     file,
-    filePath: file.storagePath,
+    fileStream,
     mimeType: file.mimeType || 'application/octet-stream'
   };
 };

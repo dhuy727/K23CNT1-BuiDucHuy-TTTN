@@ -11,13 +11,14 @@ import {
   File,
   Folder,
   PanelRight,
-  PanelLeft
+  PanelLeft,
+  Menu
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import searchService from '../../services/searchService';
 import NotificationDropdown from '../notifications/NotificationDropdown';
 
-const Header = ({ isSidebarCollapsed, onToggleSidebar }) => {
+const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => {
   const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -114,6 +115,17 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar }) => {
   return (
     <header className="app-header">
       <div className="header-left">
+        {/* Mobile Hamburger Drawer Trigger */}
+        <button
+          type="button"
+          className="btn-icon mobile-menu-trigger"
+          onClick={onOpenMobileDrawer}
+          title="Mở menu điều hướng"
+          aria-label="Mở menu điều hướng"
+        >
+          <Menu size={20} />
+        </button>
+
         {/* Studio Search Command Bar */}
         <div className="search-container" ref={searchContainerRef}>
           <form onSubmit={handleSearchSubmit}>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, useLocation, useParams } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
@@ -13,6 +13,7 @@ const MainLayout = () => {
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderColor, setNewFolderColor] = useState('#3b82f6');
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
 
   const { folderId } = useParams();
   const location = useLocation();
@@ -22,12 +23,25 @@ const MainLayout = () => {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
 
+  // Tự động đóng menu drawer trên mobile khi chuyển trang
+  useEffect(() => {
+    setIsMobileDrawerOpen(false);
+  }, [location.pathname]);
+
   const toggleSidebar = () => {
     setIsSidebarCollapsed((prev) => {
       const next = !prev;
       localStorage.setItem('sidebar_collapsed', String(next));
       return next;
     });
+  };
+
+  const handleOpenMobileDrawer = () => {
+    setIsMobileDrawerOpen(true);
+  };
+
+  const handleCloseMobileDrawer = () => {
+    setIsMobileDrawerOpen(false);
   };
 
   const handleCreateFolder = async (e) => {
@@ -59,10 +73,21 @@ const MainLayout = () => {
 
   return (
     <div className="app-container">
+      {/* Mobile Drawer Backdrop */}
+      {isMobileDrawerOpen && (
+        <div
+          className="mobile-drawer-backdrop"
+          onClick={handleCloseMobileDrawer}
+          aria-label="Đóng thanh điều hướng di động"
+        />
+      )}
+
       {/* Sidebar */}
       <Sidebar
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={toggleSidebar}
+        isMobileOpen={isMobileDrawerOpen}
+        onCloseMobile={handleCloseMobileDrawer}
         onOpenUpload={() => setIsUploadOpen(true)}
         onOpenCreateFolder={() => setIsCreateFolderOpen(true)}
       />
@@ -72,6 +97,7 @@ const MainLayout = () => {
         <Header
           isSidebarCollapsed={isSidebarCollapsed}
           onToggleSidebar={toggleSidebar}
+          onOpenMobileDrawer={handleOpenMobileDrawer}
         />
         <div className="workspace-container">
           <Outlet />

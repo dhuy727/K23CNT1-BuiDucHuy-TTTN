@@ -61,6 +61,15 @@ const versionSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Đường dẫn lưu trữ không được để trống']
     },
+    storageType: {
+      type: String,
+      enum: ['local', 'minio', 's3'],
+      default: 'local'
+    },
+    storageKey: {
+      type: String,
+      default: ''
+    },
     // Ghi chú mô tả lý do tạo version (tùy chọn)
     note: {
       type: String,

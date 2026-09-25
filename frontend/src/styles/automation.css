@@ -331,3 +331,28 @@ input:checked + .switch-slider:before {
 .builder-item-row > button {
   flex: 0 0 auto;
 }
+
+/* ── Mobile Responsive Optimizations for Automation ── */
+@media (max-width: 768px) {
+  .automation-templates-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .automation-stats-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .automation-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+
+  .automation-header button {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+}
+
