@@ -542,3 +542,49 @@
   font-size: 0.8125rem;
 }
 
+/* ── Mobile Responsive Optimizations for Modals ── */
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 8px 8px 0 8px;
+    align-items: flex-end;
+  }
+
+  .modal-card {
+    max-height: 92dvh;
+    border-radius: 20px 20px 0 0 !important;
+    animation: modalSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes modalSlideUp {
+    from {
+      transform: translateY(100%);
+      opacity: 0.5;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .modal-header {
+    padding: 14px 16px !important;
+  }
+
+  .modal-body {
+    padding: 14px 16px !important;
+  }
+
+  .modal-footer {
+    padding: 12px 16px max(12px, env(safe-area-inset-bottom)) 16px !important;
+    flex-direction: column-reverse !important;
+    gap: 8px !important;
+  }
+
+  .modal-footer button {
+    width: 100% !important;
+    height: 42px !important;
+    justify-content: center !important;
+  }
+}
+
+

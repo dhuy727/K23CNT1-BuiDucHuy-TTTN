@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { KeyRound, Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { KeyRound, Mail, ArrowLeft, CheckCircle2, Sun, Moon } from 'lucide-react';
 import authService from '../../services/authService';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -8,7 +8,17 @@ const ForgotPasswordPage = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
   const toast = useToast();
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -28,14 +38,29 @@ const ForgotPasswordPage = () => {
 
   return (
     <div className="auth-page">
+      <div className="auth-top-bar">
+        <button
+          type="button"
+          className="auth-theme-toggle"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Chuyển sang giao diện Sáng' : 'Chuyển sang giao diện Tối'}
+          aria-label="Đổi giao diện"
+        >
+          {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
+      </div>
+
       <div className="auth-card animate-slide-in">
         <div className="auth-header">
-          <div className="auth-logo" style={{ background: 'linear-gradient(135deg, var(--accent-amber), #d97706)' }}>
-            <KeyRound size={26} />
+          <div className="auth-logo-badge" style={{ background: 'linear-gradient(135deg, var(--accent-amber), #d97706)' }}>
+            <KeyRound size={24} />
+          </div>
+          <div className="auth-brand-tag" style={{ color: '#d97706', borderColor: 'rgba(217, 119, 6, 0.3)', backgroundColor: 'rgba(217, 119, 6, 0.1)' }}>
+            Khôi phục tài khoản
           </div>
           <h1 className="auth-title">Quên mật khẩu?</h1>
           <p className="auth-subtitle">
-            Nhập email tài khoản của bạn để nhận liên kết đặt lại mật khẩu mới
+            Nhập email tài khoản SmartDocs của bạn để nhận liên kết đặt lại mật khẩu mới
           </p>
         </div>
 
@@ -70,23 +95,29 @@ const ForgotPasswordPage = () => {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="auth-form">
-            <div className="form-group">
-              <label className="form-label">Địa chỉ Email</label>
-              <div className="search-input-wrapper" style={{ borderRadius: 'var(--radius-md)' }}>
-                <Mail size={18} style={{ color: 'var(--text-muted)' }} />
+            <div className="auth-field-group">
+              <label className="auth-field-label" htmlFor="forgot-email">
+                Địa chỉ Email
+              </label>
+              <div className="auth-input-wrapper">
+                <span className="auth-input-icon">
+                  <Mail size={18} />
+                </span>
                 <input
+                  id="forgot-email"
                   type="email"
-                  className="search-input"
+                  className="auth-input"
                   placeholder="name@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                   required
                   autoFocus
                 />
               </div>
             </div>
 
-            <button type="submit" className="btn btn-primary auth-submit-btn" disabled={loading}>
+            <button type="submit" className="auth-submit-btn" disabled={loading}>
               {loading ? <span className="spinner" /> : 'Gửi liên kết đặt lại'}
             </button>
           </form>

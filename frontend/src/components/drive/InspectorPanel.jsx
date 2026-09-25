@@ -56,9 +56,19 @@ const InspectorPanel = ({
   );
 
   return (
-    <aside className="inspector-panel" aria-label="Inspector Panel">
-      {/* Header */}
-      <div className="inspector-header">
+    <>
+      {/* Mobile Bottom Sheet Backdrop */}
+      <div
+        className="inspector-mobile-backdrop"
+        onClick={onClose}
+        aria-label="Đóng bảng chi tiết"
+      />
+      <aside className="inspector-panel" aria-label="Inspector Panel">
+        {/* Mobile drag handle for bottom sheet */}
+        <div className="mobile-sheet-handle" onClick={onClose} />
+
+        {/* Header */}
+        <div className="inspector-header">
         <div className="inspector-title">
           <Info size={15} style={{ color: 'var(--primary-500)' }} />
           <span>Thông tin chi tiết</span>
@@ -408,6 +418,7 @@ const InspectorPanel = ({
         )}
       </div>
     </aside>
+  </>
   );
 };
 

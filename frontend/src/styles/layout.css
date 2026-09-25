@@ -401,7 +401,7 @@
   padding: 0 20px;
   gap: 16px;
   position: relative;
-  z-index: 30;
+  z-index: 900;
 }
 
 .header-left {
@@ -600,6 +600,7 @@
   display: flex;
   overflow: hidden;
   position: relative;
+  z-index: 1;
 }
 
 .page-body {
@@ -695,7 +696,19 @@
   box-shadow: var(--shadow-xs);
 }
 
-/* Responsive adjustments */
+/* Responsive adjustments & Mobile First Off-canvas Drawer */
+.mobile-menu-trigger {
+  display: none !important;
+}
+
+.sidebar-mobile-close-btn {
+  display: none !important;
+}
+
+.mobile-drawer-backdrop {
+  display: none;
+}
+
 @media (max-width: 1024px) {
   .app-sidebar {
     width: 220px;
@@ -714,20 +727,210 @@
 
 @media (max-width: 768px) {
   .app-container {
-    flex-direction: column;
+    flex-direction: row;
+    position: relative;
+    height: 100dvh;
+    overflow: hidden;
   }
 
+  /* Off-canvas mobile drawer */
   .app-sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: 280px !important;
+    min-width: 280px !important;
+    max-width: 85vw !important;
+    height: 100% !important;
+    z-index: 1000 !important;
+    background-color: var(--bg-sidebar) !important;
+    box-shadow: 0 0 35px rgba(0, 0, 0, 0.5) !important;
+    transform: translateX(-100%) !important;
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.28s !important;
+    visibility: hidden;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .app-sidebar.is-mobile-open {
+    transform: translateX(0) !important;
+    visibility: visible !important;
+  }
+
+  .mobile-drawer-backdrop {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    background-color: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 998;
+    animation: drawerFadeIn 0.2s ease-out;
+  }
+
+  @keyframes drawerFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .mobile-menu-trigger {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+  }
+
+  .desktop-only-btn {
+    display: none !important;
+  }
+
+  .sidebar-mobile-close-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .sidebar-mobile-close-btn:hover {
+    background-color: var(--bg-surface-hover);
+    color: var(--text-primary);
+  }
+
+  .main-wrapper {
     width: 100%;
-    min-width: 100%;
-    height: auto;
-    border-right: none;
-    border-bottom: 1px solid var(--border-main);
+    min-width: 0;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .app-header {
+    height: 56px;
+    padding: 0 10px 0 8px;
+    gap: 8px;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
   }
 
   .search-container {
     max-width: 100%;
+    flex: 1;
+    min-width: 0;
   }
+
+  .search-input-wrapper {
+    height: 36px;
+  }
+
+  .search-input {
+    font-size: 0.8125rem;
+    padding-left: 30px;
+    padding-right: 8px;
+  }
+
+  .search-kbd {
+    display: none !important;
+  }
+
+  .header-actions {
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .btn-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .workspace-container {
+    padding: 10px;
+    height: calc(100dvh - 56px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Mobile Bottom Sheet Inspector */
+  .inspector-mobile-backdrop {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    background-color: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    z-index: 1040;
+    animation: drawerFadeIn 0.2s ease-out;
+  }
+
+  .mobile-sheet-handle {
+    display: block !important;
+    width: 44px;
+    height: 5px;
+    border-radius: 3px;
+    background-color: var(--border-strong);
+    margin: 8px auto 6px auto;
+    cursor: grab;
+    flex-shrink: 0;
+  }
+
+  .inspector-panel {
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    top: auto !important;
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 85dvh !important;
+    border-radius: 20px 20px 0 0 !important;
+    border-top: 1px solid var(--border-main) !important;
+    border-left: none !important;
+    z-index: 1050 !important;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5) !important;
+    animation: bottomSheetSlideUp 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+    padding-bottom: max(16px, env(safe-area-inset-bottom)) !important;
+  }
+
+  @keyframes bottomSheetSlideUp {
+    from {
+      transform: translateY(100%);
+      opacity: 0.5;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+}
+
+.inspector-mobile-backdrop {
+  display: none !important;
+}
+
+.mobile-sheet-handle {
+  display: none !important;
 }
 
 /* ── Notification Center Dropdown (Studio Workstation Grade) ── */
@@ -772,7 +975,7 @@
   line-height: 1;
   border: 2px solid var(--bg-surface);
   box-shadow: 0 2px 5px rgba(239, 68, 68, 0.35);
-  animation: notifBadgePop 220ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: notifBadgePop 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes notifBadgePop {
@@ -789,7 +992,7 @@
 .notification-dropdown-panel {
   position: absolute;
   top: calc(100% + 8px);
-  right: -50px;
+  right: 0;
   width: 380px;
   max-width: calc(100vw - 20px);
   background-color: var(--bg-surface);
@@ -801,6 +1004,19 @@
   display: flex;
   flex-direction: column;
   animation: notifSlideFade 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@media (max-width: 640px) {
+  .notification-dropdown-panel {
+    position: fixed !important;
+    top: 60px !important;
+    left: 10px !important;
+    right: 10px !important;
+    width: auto !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: 80dvh !important;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.6) !important;
+  }
 }
 
 @keyframes notifSlideFade {

@@ -15,14 +15,22 @@ import {
   Shield,
   PanelLeftClose,
   Zap,
-  Broom
+  Broom,
+  X
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import folderService from '../../services/folderService';
 import fileService from '../../services/fileService';
 import FolderTree from '../drive/FolderTree';
 
-const Sidebar = ({ isCollapsed, onToggleCollapse, onOpenUpload, onOpenCreateFolder }) => {
+const Sidebar = ({
+  isCollapsed,
+  onToggleCollapse,
+  isMobileOpen = false,
+  onCloseMobile,
+  onOpenUpload,
+  onOpenCreateFolder
+}) => {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [showNewMenu, setShowNewMenu] = useState(false);
@@ -89,6 +97,7 @@ const Sidebar = ({ isCollapsed, onToggleCollapse, onOpenUpload, onOpenCreateFold
   };
 
   const handleSelectFolder = (folderId) => {
+    onCloseMobile && onCloseMobile();
     if (folderId) {
       navigate(`/drive/folder/${folderId}`);
     } else {
@@ -97,32 +106,48 @@ const Sidebar = ({ isCollapsed, onToggleCollapse, onOpenUpload, onOpenCreateFold
   };
 
   return (
-    <aside className={`app-sidebar ${isCollapsed ? 'is-collapsed' : ''}`}>
+    <aside className={`app-sidebar ${isCollapsed ? 'is-collapsed' : ''} ${isMobileOpen ? 'is-mobile-open' : ''}`}>
       {/* Brand Header */}
       <div className="sidebar-header">
         {!isCollapsed ? (
           <>
-            <NavLink to="/drive" className="sidebar-brand" title="CloudDrive">
+            <NavLink
+              to="/drive"
+              className="sidebar-brand"
+              title="SmartDocs"
+              onClick={() => onCloseMobile && onCloseMobile()}
+            >
               <div className="brand-icon">
                 <Layers size={18} />
               </div>
-              <span>SmartDoc</span>
+              <span>SmartDocs</span>
             </NavLink>
-            <button
-              type="button"
-              className="sidebar-collapse-btn"
-              onClick={onToggleCollapse}
-              title="Thu gọn Sidebar"
-              aria-label="Thu gọn Sidebar"
-            >
-              <PanelLeftClose size={17} />
-            </button>
+            <div className="sidebar-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                type="button"
+                className="sidebar-collapse-btn desktop-only-btn"
+                onClick={onToggleCollapse}
+                title="Thu gọn Sidebar"
+                aria-label="Thu gọn Sidebar"
+              >
+                <PanelLeftClose size={17} />
+              </button>
+              <button
+                type="button"
+                className="sidebar-mobile-close-btn"
+                onClick={onCloseMobile}
+                title="Đóng menu"
+                aria-label="Đóng menu"
+              >
+                <X size={18} />
+              </button>
+            </div>
           </>
         ) : (
           <div
             className="brand-icon"
             onClick={onToggleCollapse}
-            title="Mở rộng Sidebar (CloudDrive)"
+            title="Mở rộng Sidebar (SmartDocs)"
             style={{ cursor: 'pointer', margin: '0 auto' }}
           >
             <Layers size={18} />
@@ -172,7 +197,14 @@ const Sidebar = ({ isCollapsed, onToggleCollapse, onOpenUpload, onOpenCreateFold
       </div>
 
       {/* Navigation Links */}
-      <nav className="sidebar-nav">
+      <nav
+        className="sidebar-nav"
+        onClick={(e) => {
+          if (e.target.closest('a') && onCloseMobile) {
+            onCloseMobile();
+          }
+        }}
+      >
         <NavLink
           to="/home"
           end
