@@ -5,8 +5,8 @@ const fileService = {
     return await axiosClient.get('/files', { params });
   },
 
-  getFileById: async (fileId) => {
-    return await axiosClient.get(`/files/${fileId}`);
+  getFileById: async (fileId, params = {}) => {
+    return await axiosClient.get(`/files/${fileId}`, { params });
   },
 
   uploadFile: async (formData, onUploadProgress) => {

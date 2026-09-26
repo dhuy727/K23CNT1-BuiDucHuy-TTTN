@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Download,
   X,
@@ -16,15 +17,18 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  Brain
+  Brain,
+  ExternalLink
 } from 'lucide-react';
 import fileService from '../../services/fileService';
 import aiService from '../../services/aiService';
 import FileIcon from './FileIcon';
+import DocxViewer from './DocxViewer';
 
 const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) => {
   const [currentFile, setCurrentFile] = useState(file);
   const [blobUrl, setBlobUrl] = useState(null);
+  const [rawBlobData, setRawBlobData] = useState(null);
   const [textContent, setTextContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -32,11 +36,32 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
   const [rotation, setRotation] = useState(0);
   const [showAiPanel, setShowAiPanel] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Sync state when file prop changes
   useEffect(() => {
     setCurrentFile(file);
   }, [file]);
+
+  // Lấy thêm extractedText nếu chưa có sẵn trong currentFile
+  useEffect(() => {
+    if (!isOpen || !currentFile?._id) return;
+    if (!currentFile.extractedText) {
+      fileService.getFileById(currentFile._id, { includeText: true })
+        .then((res) => {
+          const data = res?.data || res;
+          if (data && data.extractedText) {
+            setCurrentFile(prev => ({
+              ...prev,
+              extractedText: data.extractedText
+            }));
+          }
+        })
+        .catch((err) => {
+          console.debug('[Preview] Không thể tải extractedText bổ sung:', err.message);
+        });
+    }
+  }, [isOpen, currentFile?._id]);
 
   // Polling AI status if pending or processing
   useEffect(() => {
@@ -76,20 +101,29 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
       setLoading(true);
       setError(null);
       setTextContent('');
+      setRawBlobData(null);
       setZoom(1);
       setRotation(0);
 
       try {
-        const blob = await fileService.previewFileBlob(currentFile._id);
-        const mime = (blob.type || currentFile.mimeType || '').toLowerCase();
+        const rawBlob = await fileService.previewFileBlob(currentFile._id);
+        setRawBlobData(rawBlob);
+
+        const mime = (currentFile.mimeType || rawBlob.type || '').toLowerCase();
+        const ext = (currentFile.extension || '').toLowerCase();
+        const isPdf = mime.includes('pdf') || ext === 'pdf';
+
+        // Đảm bảo Blob có Content-Type chuẩn để browser hiển thị inline
+        const finalType = isPdf
+          ? 'application/pdf'
+          : rawBlob.type || currentFile.mimeType || 'application/octet-stream';
+        const blob = rawBlob.type === finalType ? rawBlob : new Blob([rawBlob], { type: finalType });
 
         if (
           mime.startsWith('text/') ||
           mime.includes('json') ||
           mime.includes('javascript') ||
-          ['txt', 'js', 'json', 'md', 'html', 'css', 'ts'].includes(
-            (currentFile.extension || '').toLowerCase()
-          )
+          ['txt', 'js', 'json', 'md', 'html', 'css', 'ts'].includes(ext)
         ) {
           const text = await blob.text();
           setTextContent(text);
@@ -99,7 +133,17 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
         setBlobUrl(activeUrl);
       } catch (err) {
         console.error('Lỗi khi tải bản xem trước:', err);
-        setError('Không thể tải bản xem trước cho tệp này hoặc định dạng chưa được hỗ trợ.');
+        const ext = (currentFile.extension || '').toLowerCase();
+        const mime = (currentFile.mimeType || '').toLowerCase();
+        const isDocx = ['docx'].includes(ext) || mime.includes('wordprocessingml') || mime.includes('msword') || ext === 'doc';
+
+        // Nếu là tệp Word hoặc đã có sẵn extractedText, không khóa màn hình bằng AlertCircle mà để DocxViewer xử lý
+        if (isDocx || currentFile?.extractedText) {
+          setError(null);
+        } else {
+          const serverMsg = err.response?.data?.message;
+          setError(serverMsg || 'Không thể tải bản xem trước cho tệp này hoặc định dạng chưa được hỗ trợ.');
+        }
       } finally {
         setLoading(false);
       }
@@ -112,8 +156,9 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
         URL.revokeObjectURL(activeUrl);
       }
       setBlobUrl(null);
+      setRawBlobData(null);
     };
-  }, [currentFile?._id, isOpen]);
+  }, [currentFile?._id, isOpen, retryCount]);
 
   if (!isOpen || !currentFile) return null;
 
@@ -124,6 +169,7 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
   const isVideo = mime.startsWith('video/') || ['mp4', 'webm', 'mov'].includes(ext);
   const isAudio = mime.startsWith('audio/') || ['mp3', 'wav', 'ogg'].includes(ext);
   const isPdf = mime.includes('pdf') || ext === 'pdf';
+  const isDocx = ['docx'].includes(ext) || mime.includes('wordprocessingml') || mime.includes('msword') || ext === 'doc';
   const isText = Boolean(textContent);
 
   // AI Actions
@@ -242,7 +288,7 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
     );
   };
 
-  return (
+  return createPortal(
     <div
       className="modal-overlay"
       onClick={(e) => {
@@ -300,6 +346,20 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
               </>
             )}
 
+            {isPdf && blobUrl && (
+              <a
+                href={blobUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-secondary"
+                style={{ padding: '6px 12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                title="Mở tài liệu PDF trong tab mới"
+              >
+                <ExternalLink size={15} />
+                <span>Mở tab mới</span>
+              </a>
+            )}
+
             {onDownload && (
               <button
                 className="btn btn-secondary"
@@ -352,24 +412,54 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: '12px',
+                  gap: '14px',
                   color: '#f87171',
-                  padding: '24px',
-                  textAlign: 'center'
+                  padding: '32px 24px',
+                  textAlign: 'center',
+                  maxWidth: '460px'
                 }}
               >
-                <AlertCircle size={48} />
-                <div>{error}</div>
-                {onDownload && (
-                  <button className="btn btn-secondary" onClick={() => onDownload(currentFile)}>
-                    <Download size={16} />
-                    <span>Tải tệp về máy để xem</span>
+                <div style={{
+                  width: '60px',
+                  height: '60px',
+                  borderRadius: '50%',
+                  background: 'rgba(239, 68, 68, 0.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'var(--accent-rose, #f43f5e)'
+                }}>
+                  <AlertCircle size={34} />
+                </div>
+                <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#ffffff', lineHeight: 1.5 }}>
+                  {error}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <button className="btn btn-primary" onClick={() => setRetryCount((c) => c + 1)}>
+                    <RefreshCw size={15} />
+                    <span>Thử tải lại</span>
                   </button>
-                )}
+                  {onDownload && (
+                    <button className="btn btn-secondary" onClick={() => onDownload(currentFile)}>
+                      <Download size={15} />
+                      <span>Tải tệp về máy để xem</span>
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
-            {!loading && !error && blobUrl && (
+            {/* Nếu là file Word (.docx) */}
+            {isDocx && !loading && (
+              <DocxViewer
+                blob={rawBlobData}
+                file={currentFile}
+                onDownload={onDownload}
+              />
+            )}
+
+            {/* Các định dạng khác */}
+            {!isDocx && !loading && !error && blobUrl && (
               <>
                 {isImage && (
                   <img
@@ -614,7 +704,8 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

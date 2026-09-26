@@ -11,6 +11,9 @@ const { Upload } = require('@aws-sdk/lib-storage');
 const ApiError = require('../utils/apiError');
 const { UPLOAD_DIR } = require('../middlewares/upload.middleware');
 
+const BUCKET_NAME = process.env.AWS_S3_BUCKET || 'smartdocs-files';
+const REGION = process.env.AWS_REGION || 'ap-southeast-2';
+
 /**
  * Kiểm tra xem thông tin kết nối AWS S3 có đầy đủ không
  */
@@ -35,9 +38,6 @@ const shouldUseS3ForUpload = () => {
   const driver = (process.env.STORAGE_DRIVER || 's3').toLowerCase();
   return (driver === 's3' || driver === 'aws') && isS3Configured();
 };
-
-const BUCKET_NAME = process.env.AWS_S3_BUCKET || 'smartdocs-files';
-const REGION = process.env.AWS_REGION || 'ap-southeast-1';
 
 let s3Client = null;
 
@@ -104,7 +104,7 @@ const resolveLocalPath = (storagePath, fileDoc = null) => {
             if (h === fileDoc.contentHash) {
               return fullP;
             }
-          } catch (e) {}
+          } catch (e) { }
         }
       }
 
@@ -116,7 +116,7 @@ const resolveLocalPath = (storagePath, fileDoc = null) => {
               if (fs.statSync(fullP).size === fileDoc.size) {
                 return fullP;
               }
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       }

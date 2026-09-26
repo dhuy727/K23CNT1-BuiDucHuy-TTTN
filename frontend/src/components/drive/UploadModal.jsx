@@ -58,6 +58,7 @@ const UploadModal = ({ isOpen, onClose, currentFolderId, onUploadSuccess }) => {
       if (selectedFiles.length === 1) {
         const formData = new FormData();
         formData.append('file', selectedFiles[0]);
+        formData.append('fileName', selectedFiles[0].name);
         if (currentFolderId && currentFolderId !== 'root') {
           formData.append('folderId', currentFolderId);
         }
@@ -73,6 +74,7 @@ const UploadModal = ({ isOpen, onClose, currentFolderId, onUploadSuccess }) => {
         selectedFiles.forEach((file) => {
           formData.append('files', file);
         });
+        formData.append('fileNames', JSON.stringify(selectedFiles.map((f) => f.name)));
         if (currentFolderId && currentFolderId !== 'root') {
           formData.append('folderId', currentFolderId);
         }
