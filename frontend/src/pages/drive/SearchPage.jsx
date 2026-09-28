@@ -182,7 +182,7 @@ const SearchPage = () => {
             </select>
 
             {/* Lọc danh mục AI */}
-            {metadata?.categories && (
+            {Array.isArray(metadata?.categories) && metadata.categories.length > 0 && (
               <select
                 className="form-select"
                 style={{ width: '150px', padding: '5px 8px', fontSize: '0.8rem' }}
@@ -190,9 +190,15 @@ const SearchPage = () => {
                 onChange={(e) => setCategoryFilter(e.target.value)}
               >
                 <option value="">Phân loại AI</option>
-                {metadata.categories.map((cat, i) => (
-                  <option key={i} value={cat}>{cat}</option>
-                ))}
+                {metadata.categories.map((cat, i) => {
+                  const catName = typeof cat === 'object' ? cat.name : cat;
+                  const catCount = typeof cat === 'object' && cat.count !== undefined ? ` (${cat.count})` : '';
+                  return (
+                    <option key={i} value={catName}>
+                      {catName}{catCount}
+                    </option>
+                  );
+                })}
               </select>
             )}
 

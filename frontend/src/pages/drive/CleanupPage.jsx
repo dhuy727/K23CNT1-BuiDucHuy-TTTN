@@ -36,7 +36,7 @@ const CleanupPage = () => {
   const [isCleaning, setIsCleaning] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Dữ liệu cho tab Tệp Dung Lượng Lớn (< 500MB)
+  // Dữ liệu cho tab Tệp Dung Lượng Lớn
   const [largeFilesData, setLargeFilesData] = useState(null);
   const [largeFilesLoading, setLargeFilesLoading] = useState(false);
   const [largeFilesMinMB, setLargeFilesMinMB] = useState(10); // 10, 50, 100
@@ -89,7 +89,7 @@ const CleanupPage = () => {
       setLargeFilesLoading(true);
       const res = await duplicateService.getLargeFiles({
         minBytes: largeFilesMinMB * 1024 * 1024,
-        maxBytes: 500 * 1024 * 1024, // Giới hạn dưới 500MB theo yêu cầu người dùng
+        maxBytes: 500 * 1024 * 1024, // Giới hạn dưới 500MB
         folderId: scopeFolderId || undefined
       });
       setLargeFilesData(res.data);
@@ -452,7 +452,7 @@ const CleanupPage = () => {
               className={`cleanup-tab-btn ${activeTab === 'large_files' ? 'is-active' : ''}`}
               onClick={() => setActiveTab('large_files')}
             >
-              <span>Tệp lớn (&lt; 500MB)</span>
+              <span>Tệp lớn </span>
               {largeFilesData && <span className="cleanup-tab-count">{largeFilesData.totalCount}</span>}
             </button>
           </div>
