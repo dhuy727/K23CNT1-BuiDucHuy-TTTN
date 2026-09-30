@@ -382,6 +382,22 @@
   transform: translateX(2px);
 }
 
+.sidebar-folder-mini-item.drop-target-active,
+.nav-item.drop-target-active {
+  background: rgba(99, 102, 241, 0.18) !important;
+  color: var(--primary-600) !important;
+  outline: 1.5px dashed var(--primary-500) !important;
+  outline-offset: -1px;
+  transform: translateX(3px) scale(1.02);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22) !important;
+}
+[data-theme='dark'] .sidebar-folder-mini-item.drop-target-active,
+[data-theme='dark'] .nav-item.drop-target-active {
+  background: rgba(99, 102, 241, 0.28) !important;
+  color: var(--primary-300) !important;
+  outline-color: var(--primary-400) !important;
+}
+
 .mini-folder-name {
   flex: 1;
   white-space: nowrap;

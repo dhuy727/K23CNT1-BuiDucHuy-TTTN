@@ -11,9 +11,9 @@ export const ToastProvider = ({ children }) => {
   }, []);
 
   const addToast = useCallback(
-    ({ type = 'info', title, message, duration = 4000 }) => {
+    ({ type = 'info', title, message, duration = 5000, action = null }) => {
       const id = Date.now() + Math.random().toString(36).substring(2, 9);
-      const newToast = { id, type, title, message };
+      const newToast = { id, type, title, message, action };
 
       setToasts((prev) => [...prev, newToast]);
 
@@ -27,10 +27,26 @@ export const ToastProvider = ({ children }) => {
   );
 
   const toast = {
-    success: (message, title = 'Thành công') => addToast({ type: 'success', title, message }),
-    error: (message, title = 'Lỗi') => addToast({ type: 'error', title, message }),
-    info: (message, title = 'Thông báo') => addToast({ type: 'info', title, message }),
-    warning: (message, title = 'Cảnh báo') => addToast({ type: 'warning', title, message })
+    success: (message, titleOrOpts = 'Thành công', extraOpts = {}) => {
+      let title = typeof titleOrOpts === 'string' ? titleOrOpts : 'Thành công';
+      let opts = typeof titleOrOpts === 'object' ? titleOrOpts : extraOpts;
+      return addToast({ type: 'success', title: opts.title || title, message, ...opts });
+    },
+    error: (message, titleOrOpts = 'Lỗi', extraOpts = {}) => {
+      let title = typeof titleOrOpts === 'string' ? titleOrOpts : 'Lỗi';
+      let opts = typeof titleOrOpts === 'object' ? titleOrOpts : extraOpts;
+      return addToast({ type: 'error', title: opts.title || title, message, ...opts });
+    },
+    info: (message, titleOrOpts = 'Thông báo', extraOpts = {}) => {
+      let title = typeof titleOrOpts === 'string' ? titleOrOpts : 'Thông báo';
+      let opts = typeof titleOrOpts === 'object' ? titleOrOpts : extraOpts;
+      return addToast({ type: 'info', title: opts.title || title, message, ...opts });
+    },
+    warning: (message, titleOrOpts = 'Cảnh báo', extraOpts = {}) => {
+      let title = typeof titleOrOpts === 'string' ? titleOrOpts : 'Cảnh báo';
+      let opts = typeof titleOrOpts === 'object' ? titleOrOpts : extraOpts;
+      return addToast({ type: 'warning', title: opts.title || title, message, ...opts });
+    }
   };
 
   return (
@@ -48,6 +64,18 @@ export const ToastProvider = ({ children }) => {
             <div className="toast-content">
               {item.title && <div className="toast-title">{item.title}</div>}
               <div className="toast-message">{item.message}</div>
+              {item.action && (
+                <button
+                  type="button"
+                  className="toast-action-btn"
+                  onClick={() => {
+                    item.action.onClick && item.action.onClick();
+                    removeToast(item.id);
+                  }}
+                >
+                  {item.action.label || 'Hoàn tác'}
+                </button>
+              )}
             </div>
             <button
               className="toast-close-btn"

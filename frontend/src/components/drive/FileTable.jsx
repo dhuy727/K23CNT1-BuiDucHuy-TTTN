@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Folder,
+  FolderOpen,
   Star,
   Download,
   Share2,
@@ -124,6 +125,7 @@ const FolderRow = ({
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isDropTarget, setIsDropTarget] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const buttonRef = useRef(null);
 
   const menuItems = [
@@ -142,12 +144,17 @@ const FolderRow = ({
 
   const handleDragStart = (e) => {
     if (isTrash) return;
+    setIsDragging(true);
     e.dataTransfer.setData('application/json', JSON.stringify({
       type: 'folder',
       id: folder._id,
       name: folder.name
     }));
     e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
   };
 
   const handleDragOver = (e) => {
@@ -181,9 +188,10 @@ const FolderRow = ({
 
   return (
     <tr
-      className={`folder-row ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDropTarget ? 'drop-target-active' : ''}`}
+      className={`folder-row ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDropTarget ? 'drop-target-active' : ''} ${isDragging ? 'is-dragging' : ''}`}
       draggable={!isTrash}
       onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -192,14 +200,25 @@ const FolderRow = ({
     >
       <td className="col-name">
         <div className="table-name-cell">
-          <Folder
-            size={18}
-            style={{
-              color: folder.color || 'var(--primary-600)',
-              fill: folder.color ? `${folder.color}33` : 'var(--primary-200)',
-              flexShrink: 0
-            }}
-          />
+          {isDropTarget ? (
+            <FolderOpen
+              size={18}
+              style={{
+                color: 'var(--primary-600)',
+                fill: 'var(--primary-200)',
+                flexShrink: 0
+              }}
+            />
+          ) : (
+            <Folder
+              size={18}
+              style={{
+                color: folder.color || 'var(--primary-600)',
+                fill: folder.color ? `${folder.color}33` : 'var(--primary-200)',
+                flexShrink: 0
+              }}
+            />
+          )}
           <span title={folder.name}>{folder.name}</span>
           {folder.isPinned && (
             <Pin
@@ -331,6 +350,7 @@ const FileRow = ({
   onRetryAi
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const buttonRef = useRef(null);
 
   const menuItems = [
@@ -357,6 +377,7 @@ const FileRow = ({
 
   const handleDragStart = (e) => {
     if (isTrash) return;
+    setIsDragging(true);
     e.dataTransfer.setData('application/json', JSON.stringify({
       type: 'file',
       id: file._id,
@@ -365,12 +386,17 @@ const FileRow = ({
     e.dataTransfer.effectAllowed = 'move';
   };
 
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
   return (
     <tr
       data-file-id={file._id}
-      className={`${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
+      className={`${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDragging ? 'is-dragging' : ''}`}
       draggable={!isTrash}
       onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       onClick={() => onSelectItem && onSelectItem({ type: 'file', data: file })}
       onDoubleClick={() => onPreviewFile && onPreviewFile(file)}
     >

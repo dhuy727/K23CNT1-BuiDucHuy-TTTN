@@ -1,8 +1,19 @@
 import React, { useState } from 'react';
-import { ChevronRight, ChevronDown, Folder, HardDrive } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, FolderOpen, HardDrive } from 'lucide-react';
 
-const TreeNode = ({ node, activeFolderId, onSelectFolder, disabledFolderId = null, isParentDisabled = false, level = 0 }) => {
+const TreeNode = ({
+  node,
+  activeFolderId,
+  onSelectFolder,
+  onDirectDrop,
+  disabledFolderId = null,
+  isParentDisabled = false,
+  level = 0
+}) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isDropTarget, setIsDropTarget] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
   const hasChildren = node.children && node.children.length > 0;
   const isActive = activeFolderId === node._id;
   const isDisabled = isParentDisabled || Boolean(disabledFolderId && String(node._id) === String(disabledFolderId));
@@ -19,14 +30,79 @@ const TreeNode = ({ node, activeFolderId, onSelectFolder, disabledFolderId = nul
     }
   };
 
+  const handleDragStart = (e) => {
+    if (isDisabled) {
+      e.preventDefault();
+      return;
+    }
+    e.stopPropagation();
+    setIsDragging(true);
+    e.dataTransfer.setData(
+      'application/json',
+      JSON.stringify({
+        type: 'folder',
+        id: node._id,
+        name: node.name,
+        path: node.path
+      })
+    );
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e) => {
+    if (isDisabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    if (!isDropTarget) {
+      setIsDropTarget(true);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDropTarget(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDropTarget(false);
+    if (isDisabled) return;
+
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      if (!raw) return;
+      const sourceItem = JSON.parse(raw);
+      if (sourceItem && sourceItem.id !== node._id && onDirectDrop) {
+        onDirectDrop(sourceItem, node);
+      }
+    } catch (err) {
+      console.error('Lỗi drop vào Tree Node:', err);
+    }
+  };
+
   return (
     <div className="tree-node">
       <div
-        className={`tree-item ${isActive ? 'active' : ''}`}
+        className={`tree-item ${isActive ? 'active' : ''} ${isDropTarget ? 'drop-target-active' : ''} ${isDragging ? 'is-dragging' : ''}`}
         onClick={handleSelect}
+        draggable={!isDisabled}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         style={{
           paddingLeft: `${level * 16 + 8}px`,
-          opacity: isDisabled ? 0.45 : 1,
+          opacity: isDisabled ? 0.45 : isDragging ? 0.4 : 1,
           cursor: isDisabled ? 'not-allowed' : 'pointer'
         }}
         title={isDisabled ? 'Không thể di chuyển vào chính thư mục này hoặc thư mục con của nó' : node.name}
@@ -44,13 +120,24 @@ const TreeNode = ({ node, activeFolderId, onSelectFolder, disabledFolderId = nul
           <span style={{ width: 14 }} />
         )}
 
-        <Folder
-          size={16}
-          style={{
-            color: node.color || '#3b82f6',
-            fill: node.color ? `${node.color}33` : '#3b82f633'
-          }}
-        />
+        {isDropTarget ? (
+          <FolderOpen
+            size={16}
+            style={{
+              color: 'var(--primary-500)',
+              fill: 'rgba(99, 102, 241, 0.25)'
+            }}
+          />
+        ) : (
+          <Folder
+            size={16}
+            style={{
+              color: node.color || '#3b82f6',
+              fill: node.color ? `${node.color}33` : '#3b82f633'
+            }}
+          />
+        )}
+
         <span
           style={{
             whiteSpace: 'nowrap',
@@ -76,6 +163,7 @@ const TreeNode = ({ node, activeFolderId, onSelectFolder, disabledFolderId = nul
               node={child}
               activeFolderId={activeFolderId}
               onSelectFolder={onSelectFolder}
+              onDirectDrop={onDirectDrop}
               disabledFolderId={disabledFolderId}
               isParentDisabled={isDisabled}
               level={level + 1}
@@ -92,10 +180,45 @@ const FolderTree = ({
   folders,
   activeFolderId = null,
   onSelectFolder,
+  onDirectDrop,
   includeRoot = false,
   disabledFolderId = null
 }) => {
+  const [isRootDropTarget, setIsRootDropTarget] = useState(false);
   const list = (tree && tree.length > 0) ? tree : (folders || []);
+
+  const handleRootDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    if (!isRootDropTarget) {
+      setIsRootDropTarget(true);
+    }
+  };
+
+  const handleRootDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsRootDropTarget(false);
+    }
+  };
+
+  const handleRootDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsRootDropTarget(false);
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      if (!raw) return;
+      const sourceItem = JSON.parse(raw);
+      if (sourceItem && onDirectDrop) {
+        onDirectDrop(sourceItem, { _id: 'root', name: 'Drive của tôi' });
+      }
+    } catch (err) {
+      console.error('Lỗi drop vào Gốc FolderTree:', err);
+    }
+  };
 
   if (list.length === 0 && !includeRoot) {
     return (
@@ -109,9 +232,15 @@ const FolderTree = ({
     <div className="folder-tree-root">
       {includeRoot && (
         <div
-          className={`tree-item ${activeFolderId === null || activeFolderId === 'root' ? 'active' : ''}`}
+          className={`tree-item ${activeFolderId === null || activeFolderId === 'root' ? 'active' : ''} ${
+            isRootDropTarget ? 'drop-target-active' : ''
+          }`}
           onClick={() => onSelectFolder && onSelectFolder(null)}
+          onDragOver={handleRootDragOver}
+          onDragLeave={handleRootDragLeave}
+          onDrop={handleRootDrop}
           style={{ paddingLeft: '8px', cursor: 'pointer' }}
+          title="Drive của tôi (Gốc) - Kéo thả tệp hoặc thư mục vào đây để đưa ra ngoài cùng"
         >
           <span style={{ width: 14 }} />
           <HardDrive size={16} style={{ color: 'var(--primary-400)' }} />
@@ -124,6 +253,7 @@ const FolderTree = ({
           node={node}
           activeFolderId={activeFolderId}
           onSelectFolder={onSelectFolder}
+          onDirectDrop={onDirectDrop}
           disabledFolderId={disabledFolderId}
           level={0}
         />
@@ -133,4 +263,3 @@ const FolderTree = ({
 };
 
 export default FolderTree;
-

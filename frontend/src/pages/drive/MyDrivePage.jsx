@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutGrid,
@@ -40,20 +41,68 @@ import fileService from '../../services/fileService';
 import aiService from '../../services/aiService';
 import { useToast } from '../../contexts/ToastContext';
 
-/* ── Menu 3 chấm thẻ Quick Folder ── */
-const QuickFolderMenu = ({ items, onClose }) => {
-  const ref = useRef(null);
+/* ── Dropdown menu 3 chấm thẻ Quick Folder qua Portal chống bị che khuất ── */
+const QuickFolderMenu = ({ buttonRef, items, onClose }) => {
+  const menuRef = useRef(null);
+  const [coords, setCoords] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!buttonRef?.current) return;
+    const btnRect = buttonRef.current.getBoundingClientRect();
+    const menuWidth = 200;
+    const numItems = items.filter((it) => !it.divider).length;
+    const numDividers = items.filter((it) => it.divider).length;
+    const estHeight = numItems * 36 + numDividers * 8 + 14;
+
+    const spaceBelow = window.innerHeight - btnRect.bottom;
+    const openUpwards = spaceBelow < estHeight && btnRect.top > estHeight;
+
+    const top = openUpwards
+      ? Math.max(10, btnRect.top - estHeight - 4)
+      : Math.min(window.innerHeight - estHeight - 10, btnRect.bottom + 4);
+
+    const left = Math.max(10, Math.min(btnRect.right - menuWidth, window.innerWidth - menuWidth - 10));
+
+    setCoords({ top, left });
+  }, [buttonRef, items]);
 
   useEffect(() => {
     const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target) &&
+        buttonRef?.current &&
+        !buttonRef.current.contains(e.target)
+      ) {
+        onClose();
+      }
     };
+    const scrollHandler = () => onClose();
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
+    window.addEventListener('scroll', scrollHandler, true);
+    window.addEventListener('resize', scrollHandler);
 
-  return (
-    <div className="home-more-menu" ref={ref} onClick={(e) => e.stopPropagation()}>
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      window.removeEventListener('scroll', scrollHandler, true);
+      window.removeEventListener('resize', scrollHandler);
+    };
+  }, [onClose, buttonRef]);
+
+  if (!coords) return null;
+
+  return createPortal(
+    <div
+      className="home-more-menu portal-table-menu"
+      ref={menuRef}
+      style={{
+        position: 'fixed',
+        top: `${coords.top}px`,
+        left: `${coords.left}px`,
+        zIndex: 9999
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
       {items.map((item, i) =>
         item.divider ? (
           <div key={i} className="home-more-divider" />
@@ -72,6 +121,164 @@ const QuickFolderMenu = ({ items, onClose }) => {
           </button>
         )
       )}
+    </div>,
+    document.body
+  );
+};
+
+/* ── Thẻ thư mục trong Quick Access Strip ── */
+const QuickFolderCard = ({
+  folder,
+  isSelected,
+  isDragTarget,
+  onSelect,
+  onOpen,
+  onTogglePin,
+  onShare,
+  onRename,
+  onMove,
+  onDelete,
+  onDragOver,
+  onDragLeave,
+  onDrop
+}) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const moreBtnRef = useRef(null);
+
+  const quickMenuItems = [
+    {
+      icon: <FolderOpen size={14} />,
+      label: 'Mở thư mục',
+      onClick: () => onOpen(folder._id)
+    },
+    {
+      icon: <Pin size={14} style={{ color: folder.isPinned ? '#f59e0b' : 'inherit' }} />,
+      label: folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục',
+      onClick: () => onTogglePin(folder._id)
+    },
+    {
+      icon: <Share2 size={14} />,
+      label: 'Chia sẻ',
+      onClick: () => onShare(folder)
+    },
+    {
+      icon: <Edit2 size={14} />,
+      label: 'Đổi tên',
+      onClick: () => onRename(folder)
+    },
+    {
+      icon: <FolderInput size={14} />,
+      label: 'Di chuyển',
+      onClick: () => onMove(folder)
+    },
+    { divider: true },
+    {
+      icon: <Trash2 size={14} />,
+      label: 'Xóa vào thùng rác',
+      danger: true,
+      onClick: () => onDelete(folder)
+    }
+  ];
+
+  const updatedAtFormatted = folder.updatedAt
+    ? new Date(folder.updatedAt).toLocaleDateString('vi-VN', {
+        day: '2-digit',
+        month: '2-digit'
+      })
+    : '';
+
+  return (
+    <div
+      className={`home-folder-scroll-card ${isSelected ? 'is-selected' : ''} ${
+        isDragTarget ? 'drop-target-active' : ''
+      }`}
+      onClick={() => onSelect(folder)}
+      onDoubleClick={() => onOpen(folder._id)}
+      onDragOver={(e) => onDragOver(e, folder)}
+      onDragLeave={(e) => onDragLeave(e, folder)}
+      onDrop={(e) => onDrop(e, folder)}
+    >
+      <div className="home-folder-card-top">
+        <div
+          className="home-folder-icon-box"
+          style={{
+            backgroundColor: folder.color ? `${folder.color}18` : 'rgba(99, 102, 241, 0.1)',
+            borderColor: folder.color ? `${folder.color}35` : 'rgba(99, 102, 241, 0.2)'
+          }}
+        >
+          <Folder
+            size={18}
+            style={{
+              color: folder.color || 'var(--primary-600)',
+              fill: folder.color ? `${folder.color}33` : 'var(--primary-200)'
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className={`home-folder-action-btn ${folder.isPinned ? 'is-pinned' : ''}`}
+            title={folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim lên lối tắt'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePin(folder._id);
+            }}
+            aria-label={folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim lên lối tắt'}
+          >
+            <Pin
+              size={13}
+              style={{
+                color: folder.isPinned ? 'var(--accent-amber, #f59e0b)' : 'var(--text-secondary)',
+                fill: folder.isPinned ? 'var(--accent-amber, #f59e0b)' : 'none',
+                opacity: folder.isPinned ? 1 : 0.85
+              }}
+            />
+          </button>
+          <div className={`home-folder-card-actions ${isMenuOpen ? 'menu-open' : ''}`}>
+            <button
+              ref={moreBtnRef}
+              type="button"
+              className={`home-folder-action-btn ${isMenuOpen ? 'active' : ''}`}
+              title="Thao tác khác"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMenuOpen((prev) => !prev);
+              }}
+              aria-label="Thao tác khác"
+            >
+              <MoreVertical size={14} style={{ color: 'var(--text-secondary)' }} />
+            </button>
+            {isMenuOpen && (
+              <QuickFolderMenu
+                buttonRef={moreBtnRef}
+                items={quickMenuItems}
+                onClose={() => setIsMenuOpen(false)}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="home-folder-card-title" title={folder.name}>
+        {folder.name}
+      </div>
+
+      <div className="home-folder-card-meta">
+        <span className="home-folder-meta-count" title={`${folder.fileCount || 0} tệp tin trong thư mục`}>
+          <Files size={12} style={{ color: 'var(--primary-400)' }} />
+          <span>{folder.fileCount || 0} tệp</span>
+        </span>
+        {updatedAtFormatted && (
+          <span
+            className="home-folder-meta-time"
+            title={`Cập nhật: ${new Date(folder.updatedAt).toLocaleString('vi-VN')}`}
+          >
+            <Clock size={11} />
+            <span>{updatedAtFormatted}</span>
+          </span>
+        )}
+      </div>
     </div>
   );
 };
@@ -233,6 +440,60 @@ const MyDrivePage = () => {
     localStorage.setItem('drive_quick_tab', tab);
   };
 
+  const handleDirectDrop = async (sourceItem, targetFolder) => {
+    if (!sourceItem || !targetFolder) return;
+    const previousParentId = folderId || 'root';
+    const targetId = targetFolder._id === 'root' ? 'root' : targetFolder._id;
+    const targetName = targetFolder.name || (targetId === 'root' ? 'Drive của tôi' : 'thư mục');
+
+    if (sourceItem.id === targetId) return;
+
+    try {
+      if (sourceItem.type === 'file') {
+        await fileService.moveFile(sourceItem.id, targetId);
+        toast.success(`Đã chuyển tệp "${sourceItem.name}" vào "${targetName}"`, {
+          action: {
+            label: 'Hoàn tác',
+            onClick: async () => {
+              try {
+                await fileService.moveFile(sourceItem.id, previousParentId);
+                toast.info(`Đã hoàn tác: chuyển tệp "${sourceItem.name}" về lại vị trí cũ`);
+                fetchDriveContent();
+                window.dispatchEvent(new Event('file:updated'));
+                window.dispatchEvent(new Event('drive:refresh'));
+              } catch (err) {
+                toast.error('Không thể hoàn tác');
+              }
+            }
+          }
+        });
+      } else if (sourceItem.type === 'folder') {
+        await folderService.moveFolder(sourceItem.id, targetId);
+        toast.success(`Đã chuyển thư mục "${sourceItem.name}" vào "${targetName}"`, {
+          action: {
+            label: 'Hoàn tác',
+            onClick: async () => {
+              try {
+                await folderService.moveFolder(sourceItem.id, previousParentId);
+                toast.info(`Đã hoàn tác: chuyển thư mục "${sourceItem.name}" về lại vị trí cũ`);
+                fetchDriveContent();
+                window.dispatchEvent(new Event('folder:updated'));
+                window.dispatchEvent(new Event('drive:refresh'));
+              } catch (err) {
+                toast.error('Không thể hoàn tác');
+              }
+            }
+          }
+        });
+      }
+      fetchDriveContent();
+      window.dispatchEvent(new Event('folder:updated'));
+      window.dispatchEvent(new Event('drive:refresh'));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Không thể di chuyển đến thư mục này');
+    }
+  };
+
   const handleQuickFolderDrop = async (e, targetFolder) => {
     e.preventDefault();
     e.stopPropagation();
@@ -242,17 +503,9 @@ const MyDrivePage = () => {
       if (!raw) return;
       const dragData = JSON.parse(raw);
       if (dragData.id === targetFolder._id) return;
-      if (dragData.type === 'file') {
-        await fileService.moveFile(dragData.id, targetFolder._id);
-        toast.success(`Đã di chuyển "${dragData.name}" vào thư mục "${targetFolder.name}"`);
-      } else if (dragData.type === 'folder') {
-        await folderService.moveFolder(dragData.id, targetFolder._id);
-        toast.success(`Đã di chuyển thư mục "${dragData.name}" vào "${targetFolder.name}"`);
-      }
-      fetchDriveContent();
-      window.dispatchEvent(new Event('folder:updated'));
+      await handleDirectDrop(dragData, targetFolder);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Di chuyển thất bại');
+      console.error('Lỗi khi thả vào lối tắt thư mục:', err);
     }
   };
 
@@ -431,79 +684,25 @@ const MyDrivePage = () => {
     }
   };
 
-  const handleDirectDrop = async (sourceItem, targetFolder) => {
-    try {
-      if (sourceItem.type === 'file') {
-        await fileService.moveFile(sourceItem.id, targetFolder._id);
-        toast.success(`Đã chuyển tệp "${sourceItem.name}" vào "${targetFolder.name}"`);
-      } else if (sourceItem.type === 'folder') {
-        if (sourceItem.id === targetFolder._id) return;
-        await folderService.moveFolder(sourceItem.id, targetFolder._id);
-        toast.success(`Đã chuyển thư mục "${sourceItem.name}" vào "${targetFolder.name}"`);
-      }
-      fetchDriveContent();
-      window.dispatchEvent(new Event('folder:updated'));
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Không thể di chuyển đến thư mục này');
-    }
-  };
 
   /* ── Render thẻ thư mục trong Quick Access Strip ── */
   const renderQuickFolderCard = (folder) => {
     const isSelected = selectedItem?.type === 'folder' && selectedItem?.data?._id === folder._id;
     const isDragTarget = dragOverQuickFolderId === folder._id;
-    const isMenuOpen = activeQuickMenuId === folder._id;
-
-    const quickMenuItems = [
-      {
-        icon: <FolderOpen size={14} />,
-        label: 'Mở thư mục',
-        onClick: () => handleOpenFolder(folder._id)
-      },
-      {
-        icon: <Pin size={14} style={{ color: folder.isPinned ? '#f59e0b' : 'inherit' }} />,
-        label: folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục',
-        onClick: () => handleTogglePinFolder(folder._id)
-      },
-      {
-        icon: <Share2 size={14} />,
-        label: 'Chia sẻ',
-        onClick: () => setShareTarget({ type: 'folder', item: folder })
-      },
-      {
-        icon: <Edit2 size={14} />,
-        label: 'Đổi tên',
-        onClick: () => setRenameTarget({ type: 'folder', item: folder })
-      },
-      {
-        icon: <FolderInput size={14} />,
-        label: 'Di chuyển',
-        onClick: () => setMoveCopyTarget({ type: 'folder', item: folder, mode: 'move' })
-      },
-      { divider: true },
-      {
-        icon: <Trash2 size={14} />,
-        label: 'Xóa vào thùng rác',
-        danger: true,
-        onClick: () => setDeleteTarget({ type: 'folder', item: folder })
-      }
-    ];
-
-    const updatedAtFormatted = folder.updatedAt
-      ? new Date(folder.updatedAt).toLocaleDateString('vi-VN', {
-          day: '2-digit',
-          month: '2-digit'
-        })
-      : '';
 
     return (
-      <div
+      <QuickFolderCard
         key={`quick-${folder._id}`}
-        className={`home-folder-scroll-card ${isSelected ? 'is-selected' : ''} ${
-          isDragTarget ? 'drop-target-active' : ''
-        }`}
-        onClick={() => setSelectedItem({ type: 'folder', data: folder })}
-        onDoubleClick={() => handleOpenFolder(folder._id)}
+        folder={folder}
+        isSelected={isSelected}
+        isDragTarget={isDragTarget}
+        onSelect={(f) => setSelectedItem({ type: 'folder', data: f })}
+        onOpen={handleOpenFolder}
+        onTogglePin={handleTogglePinFolder}
+        onShare={(f) => setShareTarget({ type: 'folder', item: f })}
+        onRename={(f) => setRenameTarget({ type: 'folder', item: f })}
+        onMove={(f) => setMoveCopyTarget({ type: 'folder', item: f, mode: 'move' })}
+        onDelete={(f) => setDeleteTarget({ type: 'folder', item: f })}
         onDragOver={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -516,80 +715,7 @@ const MyDrivePage = () => {
           if (dragOverQuickFolderId === folder._id) setDragOverQuickFolderId(null);
         }}
         onDrop={(e) => handleQuickFolderDrop(e, folder)}
-      >
-        <div className="home-folder-card-top">
-          <div
-            className="home-folder-icon-box"
-            style={{
-              backgroundColor: folder.color ? `${folder.color}18` : 'rgba(99, 102, 241, 0.1)',
-              borderColor: folder.color ? `${folder.color}35` : 'rgba(99, 102, 241, 0.2)'
-            }}
-          >
-            <Folder
-              size={18}
-              style={{
-                color: folder.color || 'var(--primary-600)',
-                fill: folder.color ? `${folder.color}33` : 'var(--primary-200)'
-              }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }} onClick={(e) => e.stopPropagation()}>
-            <button
-              className={`home-folder-action-btn ${folder.isPinned ? 'is-pinned' : ''}`}
-              title={folder.isPinned ? 'Bỏ ghim' : 'Ghim lên lối tắt'}
-              onClick={(e) => {
-                e.stopPropagation();
-                handleTogglePinFolder(folder._id);
-              }}
-            >
-              <Pin
-                size={13}
-                style={{
-                  color: folder.isPinned ? 'var(--accent-amber, #f59e0b)' : 'inherit',
-                  fill: folder.isPinned ? 'var(--accent-amber, #f59e0b)' : 'none',
-                  opacity: folder.isPinned ? 1 : 0.6
-                }}
-              />
-            </button>
-            <div className={`home-folder-card-actions ${isMenuOpen ? 'menu-open' : ''}`}>
-              <button
-                className="home-folder-action-btn"
-                title="Thao tác"
-                onClick={() => setActiveQuickMenuId(isMenuOpen ? null : folder._id)}
-              >
-                <MoreVertical size={14} />
-              </button>
-              {isMenuOpen && (
-                <QuickFolderMenu
-                  items={quickMenuItems}
-                  onClose={() => setActiveQuickMenuId(null)}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="home-folder-card-title" title={folder.name}>
-          {folder.name}
-        </div>
-
-        <div className="home-folder-card-meta">
-          <span className="home-folder-meta-count" title={`${folder.fileCount || 0} tệp tin trong thư mục`}>
-            <Files size={12} style={{ color: 'var(--primary-400)' }} />
-            <span>{folder.fileCount || 0} tệp</span>
-          </span>
-          {updatedAtFormatted && (
-            <span
-              className="home-folder-meta-time"
-              title={`Cập nhật: ${new Date(folder.updatedAt).toLocaleString('vi-VN')}`}
-            >
-              <Clock size={11} />
-              <span>{updatedAtFormatted}</span>
-            </span>
-          )}
-        </div>
-      </div>
+      />
     );
   };
 
@@ -600,7 +726,11 @@ const MyDrivePage = () => {
       <main className={`page-body ${isInspectorOpen ? 'has-inspector' : ''}`}>
         {/* Top Action Bar */}
         <div className="drive-action-bar">
-          <Breadcrumb breadcrumbs={breadcrumbs} onSelectFolder={handleOpenFolder} />
+          <Breadcrumb
+            breadcrumbs={breadcrumbs}
+            onSelectFolder={handleOpenFolder}
+            onDirectDrop={handleDirectDrop}
+          />
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             {/* Lọc loại tệp */}
@@ -700,6 +830,7 @@ const MyDrivePage = () => {
           <ContextualActionBar
             selectedItem={selectedItem}
             onClearSelection={() => setSelectedItem(null)}
+            onOpenFolder={handleOpenFolder}
             onShareItem={(type, item) => setShareTarget({ type, item })}
             onDownloadFile={handleDownloadFile}
             onRenameItem={(type, item) => setRenameTarget({ type, item })}

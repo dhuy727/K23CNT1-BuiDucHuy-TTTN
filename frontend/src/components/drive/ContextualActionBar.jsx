@@ -14,13 +14,16 @@ import {
   RotateCcw,
   Sparkles,
   Tag,
-  Pin
+  Pin,
+  Folder,
+  FolderOpen
 } from 'lucide-react';
 import FileIcon from './FileIcon';
 
 const ContextualActionBar = ({
   selectedItem,
   onClearSelection,
+  onOpenFolder,
   onShareItem,
   onDownloadFile,
   onRenameItem,
@@ -143,7 +146,14 @@ const ContextualActionBar = ({
               size={18}
             />
           ) : (
-            <span className="contextual-folder-icon">📁</span>
+            <Folder
+              size={18}
+              style={{
+                color: data.color || 'var(--primary-600)',
+                fill: data.color ? `${data.color}33` : 'var(--primary-200)',
+                flexShrink: 0
+              }}
+            />
           )}
           <span className="contextual-item-name" title={data.name}>
             {data.name}
@@ -164,10 +174,23 @@ const ContextualActionBar = ({
         )}
       </div>
 
-      {/* Bên phải: Dãy nút icon ngang giống Ảnh 1 */}
+      {/* Bên phải: Dãy nút icon ngang */}
       <div className="contextual-actions">
         {!isTrash ? (
           <>
+            {/* Nút Mở thư mục khi chọn thư mục */}
+            {!isFile && onOpenFolder && (
+              <button
+                className="contextual-icon-btn"
+                title="Mở thư mục"
+                onClick={() => onOpenFolder(data._id)}
+                aria-label="Mở thư mục"
+                style={{ color: 'var(--primary-500)' }}
+              >
+                <FolderOpen size={17} />
+              </button>
+            )}
+
             {onShareItem && (
               <button
                 className="contextual-icon-btn"
@@ -201,6 +224,18 @@ const ContextualActionBar = ({
               </button>
             )}
 
+            {/* Nút Di chuyển trực tiếp */}
+            {onMoveItem && (
+              <button
+                className="contextual-icon-btn"
+                title="Di chuyển"
+                onClick={() => onMoveItem(type, data)}
+                aria-label="Di chuyển"
+              >
+                <FolderInput size={17} />
+              </button>
+            )}
+
             {isFile && onToggleStar && (
               <button
                 className={`contextual-icon-btn ${isStarred ? 'is-starred' : ''}`}
@@ -228,6 +263,18 @@ const ContextualActionBar = ({
                   fill={data.isPinned ? '#f59e0b' : 'none'}
                   color={data.isPinned ? '#f59e0b' : 'currentColor'}
                 />
+              </button>
+            )}
+
+            {/* Nút Xóa trực tiếp */}
+            {onDeleteItem && (
+              <button
+                className="contextual-icon-btn danger-hover"
+                title="Xóa vào thùng rác"
+                onClick={() => onDeleteItem(type, data)}
+                aria-label="Xóa vào thùng rác"
+              >
+                <Trash2 size={17} />
               </button>
             )}
 

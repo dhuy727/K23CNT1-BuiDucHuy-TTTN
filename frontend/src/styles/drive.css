@@ -42,6 +42,33 @@
   align-items: center;
 }
 
+.breadcrumb-item.drop-target-active {
+  background-color: rgba(99, 102, 241, 0.16) !important;
+  color: var(--primary-600) !important;
+  border: 1px dashed var(--primary-500) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22) !important;
+  transform: translateY(-1px) scale(1.03);
+  font-weight: 700;
+}
+[data-theme='dark'] .breadcrumb-item.drop-target-active {
+  background-color: rgba(99, 102, 241, 0.25) !important;
+  color: var(--primary-300) !important;
+  border-color: var(--primary-400) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.35) !important;
+}
+
+.folder-card.is-dragging,
+.file-card.is-dragging,
+tr.folder-row.is-dragging,
+tr.is-dragging,
+.tree-item.is-dragging {
+  opacity: 0.45 !important;
+  border-style: dashed !important;
+  transform: scale(0.97) !important;
+  filter: grayscale(25%);
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
 /* ── Section Titles ── */
 .drive-section-header {
   display: flex;
@@ -988,6 +1015,21 @@ tr.folder-row.drop-target-active {
   color: var(--primary-300);
 }
 
+.tree-item.drop-target-active {
+  background-color: rgba(99, 102, 241, 0.16) !important;
+  color: var(--primary-600) !important;
+  outline: 1.5px dashed var(--primary-500) !important;
+  outline-offset: -1px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.22);
+}
+[data-theme='dark'] .tree-item.drop-target-active {
+  background-color: rgba(99, 102, 241, 0.25) !important;
+  color: var(--primary-300) !important;
+  outline-color: var(--primary-400) !important;
+}
+
 .tree-expand-btn {
   background: transparent;
   border: none;
@@ -1609,8 +1651,10 @@ tr.folder-row.drop-target-active {
 
 .home-folder-card-actions {
   position: relative;
-  opacity: 0.6;
-  transition: opacity var(--transition-fast);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.88;
 }
 
 .home-folder-scroll-card:hover .home-folder-card-actions,
@@ -1622,19 +1666,34 @@ tr.folder-row.drop-target-active {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
-.home-folder-action-btn:hover {
+[data-theme='light'] .home-folder-action-btn {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: var(--text-secondary);
+}
+
+.home-folder-action-btn:hover,
+.home-folder-action-btn.active {
   background: var(--bg-surface-hover);
   color: var(--text-primary);
+  border-color: var(--primary-400);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.home-folder-action-btn.is-pinned {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.35);
 }
 
 /* Card Middle: Title */

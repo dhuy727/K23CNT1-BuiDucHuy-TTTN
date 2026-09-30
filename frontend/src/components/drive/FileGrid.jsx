@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   Folder,
+  FolderOpen,
   Star,
   Download,
   Share2,
@@ -113,6 +114,7 @@ const FileGrid = ({
   const FolderCard = ({ folder }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const [isDropTarget, setIsDropTarget] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
     const isSelected = selectedItem?.type === 'folder' && selectedItem?.data?._id === folder._id;
 
     const menuItems = [
@@ -131,12 +133,17 @@ const FileGrid = ({
 
     const handleDragStart = (e) => {
       if (isTrash) return;
+      setIsDragging(true);
       e.dataTransfer.setData('application/json', JSON.stringify({
         type: 'folder',
         id: folder._id,
         name: folder.name
       }));
       e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragEnd = () => {
+      setIsDragging(false);
     };
 
     const handleDragOver = (e) => {
@@ -171,9 +178,10 @@ const FileGrid = ({
 
     return (
       <div
-        className={`folder-card ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDropTarget ? 'drop-target-active' : ''}`}
+        className={`folder-card ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDropTarget ? 'drop-target-active' : ''} ${isDragging ? 'is-dragging' : ''}`}
         draggable={!isTrash}
         onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -188,13 +196,23 @@ const FileGrid = ({
               borderColor: folder.color ? `${folder.color}40` : 'var(--border-subtle)'
             }}
           >
-            <Folder
-              size={18}
-              style={{
-                color: folder.color || 'var(--primary-600)',
-                fill: folder.color ? `${folder.color}33` : 'var(--primary-200)'
-              }}
-            />
+            {isDropTarget ? (
+              <FolderOpen
+                size={18}
+                style={{
+                  color: 'var(--primary-600)',
+                  fill: 'var(--primary-200)'
+                }}
+              />
+            ) : (
+              <Folder
+                size={18}
+                style={{
+                  color: folder.color || 'var(--primary-600)',
+                  fill: folder.color ? `${folder.color}33` : 'var(--primary-200)'
+                }}
+              />
+            )}
           </div>
           <div className="folder-card-info">
             <span className="folder-card-name" title={folder.name}>
@@ -258,6 +276,7 @@ const FileGrid = ({
   /* ── Studio File Card ── */
   const FileCard = ({ file }) => {
     const [menuOpen, setMenuOpen] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
     const isSelected = selectedItem?.type === 'file' && selectedItem?.data?._id === file._id;
 
     const isImage = (
@@ -279,6 +298,7 @@ const FileGrid = ({
 
     const handleDragStart = (e) => {
       if (isTrash) return;
+      setIsDragging(true);
       e.dataTransfer.setData('application/json', JSON.stringify({
         type: 'file',
         id: file._id,
@@ -287,12 +307,17 @@ const FileGrid = ({
       e.dataTransfer.effectAllowed = 'move';
     };
 
+    const handleDragEnd = () => {
+      setIsDragging(false);
+    };
+
     return (
       <div
         data-file-id={file._id}
-        className={`file-card ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
+        className={`file-card ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDragging ? 'is-dragging' : ''}`}
         draggable={!isTrash}
         onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         onClick={() => onSelectItem && onSelectItem({ type: 'file', data: file })}
         onDoubleClick={() => onPreviewFile && onPreviewFile(file)}
       >
