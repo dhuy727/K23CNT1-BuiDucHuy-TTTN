@@ -16,7 +16,9 @@ import {
   PanelLeftClose,
   Zap,
   Broom,
-  X
+  X,
+  ShieldCheck,
+  BarChart3
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import folderService from '../../services/folderService';
@@ -290,6 +292,14 @@ const Sidebar = ({
               <Shield size={17} />
               <span>Quản trị người dùng</span>
             </NavLink>
+            <NavLink
+              to="/admin/logs"
+              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              title="Nhật ký kiểm toán"
+            >
+              <ShieldCheck size={17} />
+              <span>Nhật ký hệ thống</span>
+            </NavLink>
           </>
         )}
 
@@ -320,13 +330,13 @@ const Sidebar = ({
         ) : (
           <div
             className="storage-info"
-            onClick={() => navigate('/drive/cleanup')}
+            onClick={() => navigate('/analytics')}
             style={{ cursor: 'pointer' }}
-            title="Nhấn để mở trang Dọn dẹp & Quét trùng lặp AI"
+            title="Nhấn để mở trang Thống kê & Báo cáo lưu trữ"
           >
             <span className="storage-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span>Dung lượng đã dùng</span>
-              <Broom size={13} style={{ opacity: 0.75 }} />
+              <BarChart3 size={13} style={{ opacity: 0.85 }} />
             </span>
             <span className="storage-value tabular-nums">
               {storageStats.usedFormatted || '0 B'} / 10 GB

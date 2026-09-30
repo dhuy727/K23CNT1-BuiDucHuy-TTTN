@@ -1,4 +1,5 @@
 const folderService = require('../services/folder.service');
+const activityService = require('../services/activity.service');
 const { sendSuccess, sendCreated } = require('../utils/apiResponse');
 
 /**
@@ -7,6 +8,18 @@ const { sendSuccess, sendCreated } = require('../utils/apiResponse');
 const createFolder = async (req, res, next) => {
   try {
     const folder = await folderService.createFolder(req.user._id, req.body);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'folder_create',
+      targetType: 'folder',
+      targetId: folder._id,
+      targetName: folder.name,
+      description: `Đã tạo thư mục mới "${folder.name}"`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendCreated(res, {
       message: 'Tạo thư mục thành công',
       data: folder
@@ -72,6 +85,18 @@ const getFolderById = async (req, res, next) => {
 const renameFolder = async (req, res, next) => {
   try {
     const folder = await folderService.renameFolder(req.user._id, req.params.id, req.body.name);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'folder_rename',
+      targetType: 'folder',
+      targetId: folder._id,
+      targetName: folder.name,
+      description: `Đã đổi tên thư mục thành "${folder.name}"`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: 'Đổi tên thư mục thành công',
       data: folder
@@ -87,6 +112,18 @@ const renameFolder = async (req, res, next) => {
 const moveFolder = async (req, res, next) => {
   try {
     const folder = await folderService.moveFolder(req.user._id, req.params.id, req.body.targetParentId);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'folder_move',
+      targetType: 'folder',
+      targetId: folder._id,
+      targetName: folder.name,
+      description: `Đã di chuyển thư mục "${folder.name}"`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: 'Di chuyển thư mục thành công',
       data: folder
@@ -103,6 +140,17 @@ const deleteFolder = async (req, res, next) => {
   try {
     const permanent = req.query.permanent === 'true';
     const result = await folderService.deleteFolder(req.user._id, req.params.id, permanent);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: permanent ? 'folder_delete_permanent' : 'folder_trash',
+      targetType: 'folder',
+      targetId: req.params.id,
+      description: permanent ? 'Đã xóa vĩnh viễn thư mục' : 'Đã chuyển thư mục vào thùng rác',
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: result.message,
       data: result

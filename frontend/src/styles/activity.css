@@ -1,0 +1,229 @@
+/* ======================================================= */
+/* Activity & Audit Logs Styling                           */
+/* ======================================================= */
+
+.activity-page {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.activity-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.activity-title-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(79, 70, 229, 0.25));
+  color: var(--primary-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.activity-title-text h1 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 2px 0;
+}
+
+.activity-title-text p {
+  font-size: 0.825rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.activity-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  margin-bottom: 20px;
+}
+
+.activity-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.activity-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+}
+
+.activity-card:hover {
+  border-color: var(--border-hover);
+  background-color: var(--bg-surface-hover);
+  box-shadow: var(--shadow-sm);
+}
+
+.activity-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.activity-icon-badge {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.activity-icon-badge.upload {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+
+.activity-icon-badge.download {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.activity-icon-badge.preview {
+  background: rgba(139, 92, 246, 0.12);
+  color: #8b5cf6;
+}
+
+.activity-icon-badge.edit {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+
+.activity-icon-badge.delete {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.activity-icon-badge.star {
+  background: rgba(234, 179, 8, 0.12);
+  color: #eab308;
+}
+
+.activity-icon-badge.auth {
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+}
+
+.activity-icon-badge.admin {
+  background: rgba(236, 72, 153, 0.12);
+  color: #ec4899;
+}
+
+.activity-content {
+  min-width: 0;
+}
+
+.activity-desc {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.activity-target-pill {
+  font-weight: 500;
+  color: var(--primary-600);
+}
+
+.activity-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.775rem;
+  color: var(--text-muted);
+}
+
+.activity-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.activity-time {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.activity-ip-tag {
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+/* User Pill in Audit Log */
+.activity-user-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.activity-user-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary-600);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (max-width: 768px) {
+  .activity-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .activity-right {
+    align-items: flex-start;
+    margin-left: 52px;
+  }
+}

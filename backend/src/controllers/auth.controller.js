@@ -1,5 +1,6 @@
 const authService = require('../services/auth.service');
 const userService = require('../services/user.service');
+const activityService = require('../services/activity.service');
 const { sendSuccess, sendCreated } = require('../utils/apiResponse');
 
 /**
@@ -23,6 +24,19 @@ const register = async (req, res, next) => {
 const login = async (req, res, next) => {
   try {
     const result = await authService.loginUser(req.body);
+
+    if (result?.user?._id) {
+      activityService.logActivity({
+        userId: result.user._id,
+        action: 'auth_login',
+        targetType: 'auth',
+        targetName: result.user.email,
+        description: `Đăng nhập vào hệ thống (${result.user.name || result.user.email})`,
+        ip: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+    }
+
     return sendSuccess(res, {
       message: 'Đăng nhập thành công',
       data: result
@@ -104,6 +118,16 @@ const resetPassword = async (req, res, next) => {
 const logout = async (req, res, next) => {
   try {
     await authService.logoutUser(req.user._id);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'auth_logout',
+      targetType: 'auth',
+      description: 'Đăng xuất khỏi hệ thống',
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: 'Đăng xuất thành công, refreshToken đã bị vô hiệu hóa',
       data: null
@@ -149,6 +173,16 @@ const updateProfile = async (req, res, next) => {
 const changePassword = async (req, res, next) => {
   try {
     const result = await userService.changePassword(req.user._id, req.body);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'auth_password_change',
+      targetType: 'auth',
+      description: 'Người dùng đã thay đổi mật khẩu tài khoản',
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: result.message,
       data: null

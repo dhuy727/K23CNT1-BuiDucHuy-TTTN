@@ -10,6 +10,8 @@ import './styles/layout.css';
 import './styles/drive.css';
 import './styles/modals.css';
 import './styles/auth.css';
+import './styles/activity.css';
+import './styles/analytics.css';
 
 function App() {
   return (
