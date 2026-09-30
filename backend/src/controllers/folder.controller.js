@@ -236,6 +236,35 @@ const ensureFolderPath = async (req, res, next) => {
   }
 };
 
+/**
+ * Ghim / Bỏ ghim thư mục
+ */
+const togglePinFolder = async (req, res, next) => {
+  try {
+    const folder = await folderService.togglePinFolder(req.user._id, req.params.id);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: folder.isPinned ? 'folder_pin' : 'folder_unpin',
+      targetType: 'folder',
+      targetId: folder._id,
+      targetName: folder.name,
+      description: folder.isPinned
+        ? `Đã ghim thư mục "${folder.name}" lên lối tắt nhanh`
+        : `Đã bỏ ghim thư mục "${folder.name}"`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
+    return sendSuccess(res, {
+      message: folder.isPinned ? 'Đã ghim thư mục thành công' : 'Đã bỏ ghim thư mục',
+      data: folder
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createFolder,
   getFolders,
@@ -247,5 +276,7 @@ module.exports = {
   getFolderFiles,
   getTrashFolders,
   restoreFolder,
-  ensureFolderPath
+  ensureFolderPath,
+  togglePinFolder
 };
+

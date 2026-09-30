@@ -19,7 +19,11 @@ import {
   Broom,
   X,
   ShieldCheck,
-  BarChart3
+  BarChart3,
+  Pin,
+  Clock,
+  Network,
+  Folder as FolderIcon
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import folderService from '../../services/folderService';
@@ -38,7 +42,10 @@ const Sidebar = ({
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
   const [showNewMenu, setShowNewMenu] = useState(false);
+  const [folderViewTab, setFolderViewTab] = useState(() => localStorage.getItem('sidebar_folder_tab') || 'pinned');
   const [folderTree, setFolderTree] = useState([]);
+  const [pinnedFolders, setPinnedFolders] = useState([]);
+  const [recentFolders, setRecentFolders] = useState([]);
   const [storageStats, setStorageStats] = useState({
     usedFormatted: '0 B',
     limitFormatted: '10 GB',
@@ -49,21 +56,23 @@ const Sidebar = ({
   const actionMenuRef = useRef(null);
 
   useEffect(() => {
-    fetchTree();
+    fetchAllFolderData();
     fetchStorage();
 
     const handleFolderUpdate = () => {
-      fetchTree();
+      fetchAllFolderData();
       fetchStorage();
     };
     const handleFileUpdate = () => fetchStorage();
 
     window.addEventListener('folder:updated', handleFolderUpdate);
+    window.addEventListener('folder:pinned', handleFolderUpdate);
     window.addEventListener('file:updated', handleFileUpdate);
     window.addEventListener('drive:refresh', handleFileUpdate);
 
     return () => {
       window.removeEventListener('folder:updated', handleFolderUpdate);
+      window.removeEventListener('folder:pinned', handleFolderUpdate);
       window.removeEventListener('file:updated', handleFileUpdate);
       window.removeEventListener('drive:refresh', handleFileUpdate);
     };
@@ -80,13 +89,35 @@ const Sidebar = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchTree = async () => {
+  const fetchAllFolderData = async () => {
     try {
-      const res = await folderService.getFolderTree();
-      setFolderTree(res.data || []);
+      const [treeRes, pinnedRes, recentRes] = await Promise.allSettled([
+        folderService.getFolderTree(),
+        folderService.getFolders({ isPinned: true, sortBy: 'updatedAt', sortOrder: 'desc' }),
+        folderService.getFolders({ sortBy: 'updatedAt', sortOrder: 'desc', limit: 8 })
+      ]);
+
+      if (treeRes.status === 'fulfilled') {
+        setFolderTree(treeRes.value.data || []);
+      }
+      if (pinnedRes.status === 'fulfilled') {
+        const raw = pinnedRes.value.data;
+        const list = Array.isArray(raw) ? raw : (raw?.folders || raw?.data || []);
+        setPinnedFolders(list);
+      }
+      if (recentRes.status === 'fulfilled') {
+        const raw = recentRes.value.data;
+        const list = Array.isArray(raw) ? raw : (raw?.folders || raw?.data || []);
+        setRecentFolders(list.slice(0, 8));
+      }
     } catch (err) {
-      console.error('Không thể lấy cây thư mục:', err);
+      console.error('Không thể lấy danh sách thư mục:', err);
     }
+  };
+
+  const handleTabChange = (tab) => {
+    setFolderViewTab(tab);
+    localStorage.setItem('sidebar_folder_tab', tab);
   };
 
   const fetchStorage = async () => {
@@ -315,14 +346,107 @@ const Sidebar = ({
           </>
         )}
 
-        {/* Cây thư mục */}
-        <div className="sidebar-section-title">Cây thư mục</div>
-        <div className="sidebar-tree-container">
-          <FolderTree
-            tree={folderTree}
-            folders={folderTree}
-            onSelectFolder={handleSelectFolder}
-          />
+        {/* Khu vực thư mục: Đã ghim / Gần đây / Cây đầy đủ */}
+        <div className="sidebar-folders-section">
+          <div className="sidebar-folders-header">
+            <span className="sidebar-section-title">Thư mục</span>
+            <div className="sidebar-folder-tabs">
+              <button
+                type="button"
+                className={`sidebar-folder-tab-btn ${folderViewTab === 'pinned' ? 'active' : ''}`}
+                onClick={() => handleTabChange('pinned')}
+                title="Thư mục đã ghim"
+              >
+                <Pin size={11} />
+                <span className="tab-label">Ghim</span>
+                {pinnedFolders.length > 0 && <span className="tab-badge">{pinnedFolders.length}</span>}
+              </button>
+              <button
+                type="button"
+                className={`sidebar-folder-tab-btn ${folderViewTab === 'recent' ? 'active' : ''}`}
+                onClick={() => handleTabChange('recent')}
+                title="Thư mục gần đây"
+              >
+                <Clock size={11} />
+                <span className="tab-label">Gần đây</span>
+              </button>
+              <button
+                type="button"
+                className={`sidebar-folder-tab-btn ${folderViewTab === 'tree' ? 'active' : ''}`}
+                onClick={() => handleTabChange('tree')}
+                title="Cây thư mục phân cấp"
+              >
+                <Network size={11} />
+                <span className="tab-label">Cây</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="sidebar-tree-container">
+            {folderViewTab === 'pinned' ? (
+              pinnedFolders.length === 0 ? (
+                <div className="sidebar-folder-empty-hint">
+                  <Pin size={13} style={{ opacity: 0.5, marginBottom: '2px' }} />
+                  <span>Chưa có thư mục ghim. Nhấn 📌 trên thư mục để truy cập nhanh tại đây.</span>
+                </div>
+              ) : (
+                <div className="sidebar-folder-mini-list">
+                  {pinnedFolders.map((folder) => (
+                    <div
+                      key={folder._id}
+                      className="sidebar-folder-mini-item"
+                      onClick={() => handleSelectFolder(folder._id)}
+                      title={`Thư mục: ${folder.name}`}
+                    >
+                      <FolderIcon
+                        size={15}
+                        style={{
+                          color: folder.color || 'var(--primary-500)',
+                          fill: folder.color ? `${folder.color}33` : 'rgba(99, 102, 241, 0.2)'
+                        }}
+                      />
+                      <span className="mini-folder-name">{folder.name}</span>
+                      <Pin size={11} className="mini-folder-pinned-icon" />
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : folderViewTab === 'recent' ? (
+              recentFolders.length === 0 ? (
+                <div className="sidebar-folder-empty-hint">
+                  <Clock size={13} style={{ opacity: 0.5, marginBottom: '2px' }} />
+                  <span>Chưa có thư mục nào</span>
+                </div>
+              ) : (
+                <div className="sidebar-folder-mini-list">
+                  {recentFolders.map((folder) => (
+                    <div
+                      key={folder._id}
+                      className="sidebar-folder-mini-item"
+                      onClick={() => handleSelectFolder(folder._id)}
+                      title={`Cập nhật: ${new Date(folder.updatedAt).toLocaleDateString('vi-VN')}`}
+                    >
+                      <FolderIcon
+                        size={15}
+                        style={{
+                          color: folder.color || 'var(--primary-500)',
+                          fill: folder.color ? `${folder.color}33` : 'rgba(99, 102, 241, 0.2)'
+                        }}
+                      />
+                      <span className="mini-folder-name">{folder.name}</span>
+                      <span className="mini-folder-file-count">{folder.fileCount ?? 0} tệp</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              <FolderTree
+                tree={folderTree}
+                folders={folderTree}
+                onSelectFolder={handleSelectFolder}
+              />
+            )}
+          </div>
         </div>
       </nav>
 

@@ -1,10 +1,22 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutGrid,
   List,
   FolderOpen,
-  Tags
+  Tags,
+  Pin,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  Folder,
+  MoreVertical,
+  Edit2,
+  Share2,
+  FolderInput,
+  Trash2,
+  Files,
+  Sparkles
 } from 'lucide-react';
 import Breadcrumb from '../../components/drive/Breadcrumb';
 import FileGrid from '../../components/drive/FileGrid';
@@ -28,6 +40,42 @@ import fileService from '../../services/fileService';
 import aiService from '../../services/aiService';
 import { useToast } from '../../contexts/ToastContext';
 
+/* ── Menu 3 chấm thẻ Quick Folder ── */
+const QuickFolderMenu = ({ items, onClose }) => {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) onClose();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  return (
+    <div className="home-more-menu" ref={ref} onClick={(e) => e.stopPropagation()}>
+      {items.map((item, i) =>
+        item.divider ? (
+          <div key={i} className="home-more-divider" />
+        ) : (
+          <button
+            key={i}
+            className={`home-more-item ${item.danger ? 'danger' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              item.onClick();
+              onClose();
+            }}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </button>
+        )
+      )}
+    </div>
+  );
+};
+
 const MyDrivePage = () => {
   const { folderId } = useParams();
   const navigate = useNavigate();
@@ -48,6 +96,14 @@ const MyDrivePage = () => {
   const [categoriesList, setCategoriesList] = useState([]);
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState('desc');
+
+  // Quick Access Folders Strip (Đã ghim / Gần đây)
+  const [quickTab, setQuickTab] = useState(() => localStorage.getItem('drive_quick_tab') || 'pinned');
+  const [pinnedFolders, setPinnedFolders] = useState([]);
+  const [recentFolders, setRecentFolders] = useState([]);
+  const quickScrollRef = useRef(null);
+  const [activeQuickMenuId, setActiveQuickMenuId] = useState(null);
+  const [dragOverQuickFolderId, setDragOverQuickFolderId] = useState(null);
 
   // Studio 3-column Inspector state
   const [selectedItem, setSelectedItem] = useState(null);
@@ -102,21 +158,38 @@ const MyDrivePage = () => {
         setBreadcrumbs([{ _id: 'root', name: 'Drive của tôi' }]);
       }
 
-      // 2. Lấy danh sách thư mục con
-      const folderRes = await folderService.getFolders({
-        parentId: currentId
-      });
-      setFolders(folderRes.data?.folders || []);
+      // 2. Lấy danh sách thư mục con, thư mục đã ghim và thư mục gần đây song song
+      const [folderRes, fileRes, pinnedRes, recentRes] = await Promise.allSettled([
+        folderService.getFolders({ parentId: currentId }),
+        fileService.getFiles({
+          folderId: currentId,
+          type: filterType || undefined,
+          category: filterCategory || undefined,
+          sortBy,
+          sortOrder
+        }),
+        folderService.getFolders({ isPinned: true, sortBy: 'updatedAt', sortOrder: 'desc' }),
+        folderService.getFolders({ sortBy: 'updatedAt', sortOrder: 'desc', limit: 10 })
+      ]);
 
-      // 3. Lấy danh sách tệp tin
-      const fileRes = await fileService.getFiles({
-        folderId: currentId,
-        type: filterType || undefined,
-        category: filterCategory || undefined,
-        sortBy,
-        sortOrder
-      });
-      setFiles(fileRes.data || []);
+      if (folderRes.status === 'fulfilled') {
+        const raw = folderRes.value.data;
+        const list = Array.isArray(raw) ? raw : (raw?.folders || raw?.data || []);
+        setFolders(list);
+      }
+      if (fileRes.status === 'fulfilled') {
+        setFiles(fileRes.value.data || []);
+      }
+      if (pinnedRes.status === 'fulfilled') {
+        const raw = pinnedRes.value.data;
+        const list = Array.isArray(raw) ? raw : (raw?.folders || raw?.data || []);
+        setPinnedFolders(list);
+      }
+      if (recentRes.status === 'fulfilled') {
+        const raw = recentRes.value.data;
+        const list = Array.isArray(raw) ? raw : (raw?.folders || raw?.data || []);
+        setRecentFolders(list.slice(0, 10));
+      }
     } catch (err) {
       console.error('Lỗi khi tải dữ liệu Drive:', err);
       toast.error('Không thể tải dữ liệu thư mục');
@@ -124,6 +197,64 @@ const MyDrivePage = () => {
       setLoading(false);
     }
   }, [folderId, filterType, filterCategory, sortBy, sortOrder]);
+
+  const handleTogglePinFolder = async (targetFolderId) => {
+    try {
+      const res = await folderService.togglePinFolder(targetFolderId);
+      const updated = res.data;
+      toast.success(
+        updated.isPinned
+          ? `Đã ghim thư mục "${updated.name}" lên lối tắt`
+          : `Đã bỏ ghim thư mục "${updated.name}"`
+      );
+      fetchDriveContent();
+      window.dispatchEvent(new Event('folder:pinned'));
+      window.dispatchEvent(new Event('folder:updated'));
+      if (selectedItem?.type === 'folder' && selectedItem?.data?._id === targetFolderId) {
+        setSelectedItem((prev) => ({
+          ...prev,
+          data: { ...prev.data, isPinned: updated.isPinned }
+        }));
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Thao tác ghim thất bại');
+    }
+  };
+
+  const handleScrollQuick = (direction) => {
+    if (quickScrollRef.current) {
+      const offset = direction === 'left' ? -220 : 220;
+      quickScrollRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+    }
+  };
+
+  const handleQuickTabChange = (tab) => {
+    setQuickTab(tab);
+    localStorage.setItem('drive_quick_tab', tab);
+  };
+
+  const handleQuickFolderDrop = async (e, targetFolder) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverQuickFolderId(null);
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      if (!raw) return;
+      const dragData = JSON.parse(raw);
+      if (dragData.id === targetFolder._id) return;
+      if (dragData.type === 'file') {
+        await fileService.moveFile(dragData.id, targetFolder._id);
+        toast.success(`Đã di chuyển "${dragData.name}" vào thư mục "${targetFolder.name}"`);
+      } else if (dragData.type === 'folder') {
+        await folderService.moveFolder(dragData.id, targetFolder._id);
+        toast.success(`Đã di chuyển thư mục "${dragData.name}" vào "${targetFolder.name}"`);
+      }
+      fetchDriveContent();
+      window.dispatchEvent(new Event('folder:updated'));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Di chuyển thất bại');
+    }
+  };
 
   useEffect(() => {
     fetchDriveContent();
@@ -317,6 +448,151 @@ const MyDrivePage = () => {
     }
   };
 
+  /* ── Render thẻ thư mục trong Quick Access Strip ── */
+  const renderQuickFolderCard = (folder) => {
+    const isSelected = selectedItem?.type === 'folder' && selectedItem?.data?._id === folder._id;
+    const isDragTarget = dragOverQuickFolderId === folder._id;
+    const isMenuOpen = activeQuickMenuId === folder._id;
+
+    const quickMenuItems = [
+      {
+        icon: <FolderOpen size={14} />,
+        label: 'Mở thư mục',
+        onClick: () => handleOpenFolder(folder._id)
+      },
+      {
+        icon: <Pin size={14} style={{ color: folder.isPinned ? '#f59e0b' : 'inherit' }} />,
+        label: folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục',
+        onClick: () => handleTogglePinFolder(folder._id)
+      },
+      {
+        icon: <Share2 size={14} />,
+        label: 'Chia sẻ',
+        onClick: () => setShareTarget({ type: 'folder', item: folder })
+      },
+      {
+        icon: <Edit2 size={14} />,
+        label: 'Đổi tên',
+        onClick: () => setRenameTarget({ type: 'folder', item: folder })
+      },
+      {
+        icon: <FolderInput size={14} />,
+        label: 'Di chuyển',
+        onClick: () => setMoveCopyTarget({ type: 'folder', item: folder, mode: 'move' })
+      },
+      { divider: true },
+      {
+        icon: <Trash2 size={14} />,
+        label: 'Xóa vào thùng rác',
+        danger: true,
+        onClick: () => setDeleteTarget({ type: 'folder', item: folder })
+      }
+    ];
+
+    const updatedAtFormatted = folder.updatedAt
+      ? new Date(folder.updatedAt).toLocaleDateString('vi-VN', {
+          day: '2-digit',
+          month: '2-digit'
+        })
+      : '';
+
+    return (
+      <div
+        key={`quick-${folder._id}`}
+        className={`home-folder-scroll-card ${isSelected ? 'is-selected' : ''} ${
+          isDragTarget ? 'drop-target-active' : ''
+        }`}
+        onClick={() => setSelectedItem({ type: 'folder', data: folder })}
+        onDoubleClick={() => handleOpenFolder(folder._id)}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          if (dragOverQuickFolderId !== folder._id) setDragOverQuickFolderId(folder._id);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (dragOverQuickFolderId === folder._id) setDragOverQuickFolderId(null);
+        }}
+        onDrop={(e) => handleQuickFolderDrop(e, folder)}
+      >
+        <div className="home-folder-card-top">
+          <div
+            className="home-folder-icon-box"
+            style={{
+              backgroundColor: folder.color ? `${folder.color}18` : 'rgba(99, 102, 241, 0.1)',
+              borderColor: folder.color ? `${folder.color}35` : 'rgba(99, 102, 241, 0.2)'
+            }}
+          >
+            <Folder
+              size={18}
+              style={{
+                color: folder.color || 'var(--primary-600)',
+                fill: folder.color ? `${folder.color}33` : 'var(--primary-200)'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }} onClick={(e) => e.stopPropagation()}>
+            <button
+              className={`home-folder-action-btn ${folder.isPinned ? 'is-pinned' : ''}`}
+              title={folder.isPinned ? 'Bỏ ghim' : 'Ghim lên lối tắt'}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleTogglePinFolder(folder._id);
+              }}
+            >
+              <Pin
+                size={13}
+                style={{
+                  color: folder.isPinned ? 'var(--accent-amber, #f59e0b)' : 'inherit',
+                  fill: folder.isPinned ? 'var(--accent-amber, #f59e0b)' : 'none',
+                  opacity: folder.isPinned ? 1 : 0.6
+                }}
+              />
+            </button>
+            <div className={`home-folder-card-actions ${isMenuOpen ? 'menu-open' : ''}`}>
+              <button
+                className="home-folder-action-btn"
+                title="Thao tác"
+                onClick={() => setActiveQuickMenuId(isMenuOpen ? null : folder._id)}
+              >
+                <MoreVertical size={14} />
+              </button>
+              {isMenuOpen && (
+                <QuickFolderMenu
+                  items={quickMenuItems}
+                  onClose={() => setActiveQuickMenuId(null)}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="home-folder-card-title" title={folder.name}>
+          {folder.name}
+        </div>
+
+        <div className="home-folder-card-meta">
+          <span className="home-folder-meta-count" title={`${folder.fileCount || 0} tệp tin trong thư mục`}>
+            <Files size={12} style={{ color: 'var(--primary-400)' }} />
+            <span>{folder.fileCount || 0} tệp</span>
+          </span>
+          {updatedAtFormatted && (
+            <span
+              className="home-folder-meta-time"
+              title={`Cập nhật: ${new Date(folder.updatedAt).toLocaleString('vi-VN')}`}
+            >
+              <Clock size={11} />
+              <span>{updatedAtFormatted}</span>
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const isEmpty = folders.length === 0 && files.length === 0;
 
   return (
@@ -434,7 +710,77 @@ const MyDrivePage = () => {
             onVersionHistory={(f) => setVersionsTarget(f)}
             onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
             onAssignCategory={(item) => setAssignCategoryTarget(item)}
+            onTogglePinFolder={handleTogglePinFolder}
           />
+        )}
+
+        {/* Dải Truy cập nhanh (Quick Access Folders Strip: Đã ghim & Gần đây) */}
+        {(pinnedFolders.length > 0 || recentFolders.length > 0) && (
+          <div className="drive-quick-folders-section">
+            <div className="drive-quick-header">
+              <div className="drive-quick-tabs">
+                <button
+                  type="button"
+                  className={`drive-quick-tab-btn ${quickTab === 'pinned' ? 'active' : ''}`}
+                  onClick={() => handleQuickTabChange('pinned')}
+                >
+                  <Pin size={13} />
+                  <span>Đã ghim</span>
+                  <span className="drive-quick-count">{pinnedFolders.length}</span>
+                </button>
+                <button
+                  type="button"
+                  className={`drive-quick-tab-btn ${quickTab === 'recent' ? 'active' : ''}`}
+                  onClick={() => handleQuickTabChange('recent')}
+                >
+                  <Clock size={13} />
+                  <span>Gần đây</span>
+                  <span className="drive-quick-count">{recentFolders.length}</span>
+                </button>
+              </div>
+
+              <div className="home-folders-nav-controls">
+                <button
+                  className="home-scroll-nav-btn"
+                  title="Cuộn sang trái"
+                  onClick={() => handleScrollQuick('left')}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  className="home-scroll-nav-btn"
+                  title="Cuộn sang phải"
+                  onClick={() => handleScrollQuick('right')}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+
+            <div className="home-folders-scroll-viewport">
+              <div className="home-folders-scroll-row" ref={quickScrollRef}>
+                {quickTab === 'pinned' ? (
+                  pinnedFolders.length === 0 ? (
+                    <div className="drive-quick-empty-hint">
+                      <Pin size={16} style={{ color: 'var(--text-muted)' }} />
+                      <span>Bạn chưa ghim thư mục nào. Nhấn biểu tượng 📌 trên bất kỳ thư mục nào để ghim lên lối tắt nhanh tại đây.</span>
+                    </div>
+                  ) : (
+                    pinnedFolders.map(renderQuickFolderCard)
+                  )
+                ) : (
+                  recentFolders.length === 0 ? (
+                    <div className="drive-quick-empty-hint">
+                      <Clock size={16} style={{ color: 'var(--text-muted)' }} />
+                      <span>Chưa có thư mục nào gần đây</span>
+                    </div>
+                  ) : (
+                    recentFolders.map(renderQuickFolderCard)
+                  )
+                )}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Content */}
@@ -468,6 +814,7 @@ const MyDrivePage = () => {
             onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
             onRetryAi={handleRetryAi}
             onDirectDrop={handleDirectDrop}
+            onTogglePinFolder={handleTogglePinFolder}
           />
         ) : (
           <FileTable
@@ -487,6 +834,7 @@ const MyDrivePage = () => {
             onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
             onRetryAi={handleRetryAi}
             onDirectDrop={handleDirectDrop}
+            onTogglePinFolder={handleTogglePinFolder}
           />
         )}
       </main>
@@ -507,6 +855,7 @@ const MyDrivePage = () => {
         onVersionHistory={(f) => setVersionsTarget(f)}
         onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
         onAssignCategory={(item) => setAssignCategoryTarget(item)}
+        onTogglePinFolder={handleTogglePinFolder}
       />
 
       {/* Modals */}

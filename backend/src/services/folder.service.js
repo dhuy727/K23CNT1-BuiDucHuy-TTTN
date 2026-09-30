@@ -77,6 +77,11 @@ const getFolders = async (userId, query = {}) => {
     }
   }
 
+  // Lọc theo trạng thái ghim
+  if (query.isPinned !== undefined) {
+    filter.isPinned = query.isPinned === 'true' || query.isPinned === true;
+  }
+
   // Tìm kiếm theo tên thư mục
   if (query.search) {
     filter.name = { $regex: query.search, $options: 'i' };
@@ -86,17 +91,31 @@ const getFolders = async (userId, query = {}) => {
   const limit = parseInt(query.limit, 10) || 50;
   const skip = (page - 1) * limit;
 
+  const sortField = query.sortBy || 'updatedAt';
+  const sortDirection = query.sortOrder === 'asc' ? 1 : -1;
+
   const [folders, total] = await Promise.all([
     Folder.find(filter)
-      .sort({ createdAt: -1 })
+      .sort({ [sortField]: sortDirection })
       .skip(skip)
       .limit(limit)
       .lean(),
     Folder.countDocuments(filter)
   ]);
 
+  // Đếm nhanh số file trong các thư mục trả về
+  const foldersWithCount = await Promise.all(
+    folders.map(async (folder) => {
+      const fileCount = await File.countDocuments({ folder: folder._id, isTrash: false });
+      return {
+        ...folder,
+        fileCount
+      };
+    })
+  );
+
   return {
-    folders,
+    folders: foldersWithCount,
     pagination: {
       total,
       page,
@@ -577,6 +596,30 @@ const ensureFolderPath = async (userId, baseFolderId, relativeDirPath) => {
   return currentParentId;
 };
 
+/**
+ * 12. Ghim / Bỏ ghim thư mục
+ */
+const togglePinFolder = async (userId, folderId) => {
+  if (!mongoose.Types.ObjectId.isValid(folderId)) {
+    throw new ApiError(400, 'ID thư mục không hợp lệ');
+  }
+
+  const folder = await Folder.findOne({
+    _id: folderId,
+    user: userId,
+    isTrash: false
+  });
+
+  if (!folder) {
+    throw new ApiError(404, 'Thư mục không tồn tại');
+  }
+
+  folder.isPinned = !folder.isPinned;
+  await folder.save();
+
+  return folder;
+};
+
 module.exports = {
   createFolder,
   getFolders,
@@ -588,5 +631,6 @@ module.exports = {
   getFolderFiles,
   getTrashFolders,
   restoreFolder,
-  ensureFolderPath
+  ensureFolderPath,
+  togglePinFolder
 };

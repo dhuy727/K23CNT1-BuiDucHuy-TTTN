@@ -16,7 +16,8 @@ import {
   RefreshCw,
   Clock,
   XCircle,
-  RotateCcw
+  RotateCcw,
+  Pin
 } from 'lucide-react';
 import FileIcon from './FileIcon';
 
@@ -118,7 +119,8 @@ const FolderRow = ({
   onDeleteItem,
   isTrash,
   onRestoreItem,
-  onDirectDrop
+  onDirectDrop,
+  onTogglePinFolder
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isDropTarget, setIsDropTarget] = useState(false);
@@ -126,6 +128,11 @@ const FolderRow = ({
 
   const menuItems = [
     onOpenFolder && { icon: <Folder size={14} />, label: 'Mở thư mục', onClick: () => onOpenFolder(folder._id) },
+    onTogglePinFolder && {
+      icon: <Pin size={14} style={{ color: folder.isPinned ? '#f59e0b' : 'inherit' }} />,
+      label: folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục',
+      onClick: () => onTogglePinFolder(folder._id)
+    },
     onShareItem && { icon: <Share2 size={14} />, label: 'Chia sẻ', onClick: () => onShareItem('folder', folder) },
     onRenameItem && { icon: <Edit2 size={14} />, label: 'Đổi tên', onClick: () => onRenameItem('folder', folder) },
     onMoveItem && { icon: <FolderInput size={14} />, label: 'Di chuyển', onClick: () => onMoveItem('folder', folder) },
@@ -194,6 +201,13 @@ const FolderRow = ({
             }}
           />
           <span title={folder.name}>{folder.name}</span>
+          {folder.isPinned && (
+            <Pin
+              size={12}
+              style={{ color: 'var(--accent-amber, #f59e0b)', fill: 'var(--accent-amber, #f59e0b)', flexShrink: 0 }}
+              title="Thư mục đã ghim"
+            />
+          )}
         </div>
       </td>
       <td className="col-ai">
@@ -210,6 +224,24 @@ const FolderRow = ({
           {!isTrash ? (
             <>
               <div className="table-row-hover-actions">
+                {onTogglePinFolder && (
+                  <button
+                    className={`btn-icon home-quick-btn ${folder.isPinned ? 'is-pinned' : ''}`}
+                    title={folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTogglePinFolder(folder._id);
+                    }}
+                  >
+                    <Pin
+                      size={14}
+                      style={{
+                        color: folder.isPinned ? '#f59e0b' : 'inherit',
+                        fill: folder.isPinned ? '#f59e0b' : 'none'
+                      }}
+                    />
+                  </button>
+                )}
                 {onShareItem && (
                   <button
                     className="btn-icon home-quick-btn"
@@ -530,7 +562,8 @@ const FileTable = ({
   isTrash = false,
   onRestoreItem,
   onRetryAi,
-  onDirectDrop
+  onDirectDrop,
+  onTogglePinFolder
 }) => {
   const formatSize = (bytes) => {
     if (!bytes && bytes !== 0) return '-';
@@ -568,6 +601,7 @@ const FileTable = ({
               isTrash={isTrash}
               onRestoreItem={onRestoreItem}
               onDirectDrop={onDirectDrop}
+              onTogglePinFolder={onTogglePinFolder}
             />
           ))}
 

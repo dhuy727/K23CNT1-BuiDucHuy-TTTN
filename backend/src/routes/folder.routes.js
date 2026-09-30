@@ -83,6 +83,13 @@ router.patch('/:id/move', validateObjectId('id'), folderController.moveFolder);
 router.put('/:id/move', validateObjectId('id'), folderController.moveFolder);
 
 /**
+ * @route   PATCH /api/folders/:id/pin
+ * @desc    Ghim / Bỏ ghim thư mục
+ * @access  Private
+ */
+router.patch('/:id/pin', validateObjectId('id'), folderController.togglePinFolder);
+
+/**
  * @route   DELETE /api/folders/:id
  * @desc    Xóa thư mục (soft delete hoặc permanent qua query ?permanent=true)
  * @access  Private

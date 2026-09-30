@@ -13,7 +13,8 @@ import {
   Trash2,
   RotateCcw,
   Sparkles,
-  Tag
+  Tag,
+  Pin
 } from 'lucide-react';
 import FileIcon from './FileIcon';
 
@@ -31,7 +32,8 @@ const ContextualActionBar = ({
   onDeleteItem,
   isTrash = false,
   onRestoreItem,
-  onAssignCategory
+  onAssignCategory,
+  onTogglePinFolder
 }) => {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -105,6 +107,11 @@ const ContextualActionBar = ({
           icon: <Tag size={15} />,
           label: 'Phân loại danh mục',
           onClick: () => onAssignCategory(data)
+        },
+        !isFile && onTogglePinFolder && {
+          icon: <Pin size={15} style={{ color: data.isPinned ? '#f59e0b' : 'inherit' }} />,
+          label: data.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục',
+          onClick: () => onTogglePinFolder(data._id)
         },
         { divider: true },
         onDeleteItem && {
@@ -205,6 +212,21 @@ const ContextualActionBar = ({
                   size={17}
                   fill={isStarred ? '#f59e0b' : 'none'}
                   color={isStarred ? '#f59e0b' : 'currentColor'}
+                />
+              </button>
+            )}
+
+            {!isFile && onTogglePinFolder && (
+              <button
+                className={`contextual-icon-btn ${data.isPinned ? 'is-starred' : ''}`}
+                title={data.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục'}
+                onClick={() => onTogglePinFolder(data._id)}
+                aria-label={data.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục'}
+              >
+                <Pin
+                  size={17}
+                  fill={data.isPinned ? '#f59e0b' : 'none'}
+                  color={data.isPinned ? '#f59e0b' : 'currentColor'}
                 />
               </button>
             )}

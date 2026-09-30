@@ -40,6 +40,11 @@ const folderSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    isPinned: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
     isTrash: {
       type: Boolean,
       default: false,

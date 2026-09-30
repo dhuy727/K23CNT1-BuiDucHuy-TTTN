@@ -16,7 +16,8 @@ import {
   ExternalLink,
   HardDrive,
   RotateCcw,
-  Tags
+  Tags,
+  Pin
 } from 'lucide-react';
 import FileIcon from './FileIcon';
 
@@ -36,7 +37,8 @@ const InspectorPanel = ({
   onDeleteItem,
   onRestoreItem,
   isTrash = false,
-  onAssignCategory
+  onAssignCategory,
+  onTogglePinFolder
 }) => {
   if (!isOpen) return null;
 
@@ -139,6 +141,12 @@ const InspectorPanel = ({
                     </span>
                   </div>
                 )}
+                <div className="inspector-meta-row">
+                  <span className="inspector-meta-key">Lối tắt:</span>
+                  <span className="inspector-meta-val" style={{ color: item.isPinned ? 'var(--accent-amber, #f59e0b)' : 'inherit', fontWeight: item.isPinned ? 600 : 400 }}>
+                    {item.isPinned ? '📌 Đã ghim' : 'Chưa ghim'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -153,6 +161,21 @@ const InspectorPanel = ({
                     >
                       <ExternalLink size={15} />
                       <span>Mở thư mục</span>
+                    </button>
+                  )}
+                  {onTogglePinFolder && (
+                    <button
+                      className="inspector-action-btn"
+                      onClick={() => onTogglePinFolder(item._id)}
+                    >
+                      <Pin
+                        size={15}
+                        style={{
+                          color: item.isPinned ? 'var(--accent-amber, #f59e0b)' : 'inherit',
+                          fill: item.isPinned ? 'var(--accent-amber, #f59e0b)' : 'none'
+                        }}
+                      />
+                      <span>{item.isPinned ? 'Bỏ ghim thư mục' : 'Ghim lên lối tắt'}</span>
                     </button>
                   )}
                   {onShareItem && (

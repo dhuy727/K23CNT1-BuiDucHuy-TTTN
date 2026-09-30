@@ -12,10 +12,15 @@ import {
   History,
   MoreVertical,
   Folder,
+  FolderOpen,
+  FolderClock,
   Sparkles,
+  ChevronLeft,
   ChevronRight,
   TrendingUp,
-  HardDrive
+  HardDrive,
+  Clock,
+  Files
 } from 'lucide-react';
 import FileIcon from '../../components/drive/FileIcon';
 import ContextualActionBar from '../../components/drive/ContextualActionBar';
@@ -103,6 +108,11 @@ const HomePage = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
 
+  // Horizontal scroll ref & active states
+  const foldersScrollRef = useRef(null);
+  const [activeFolderMenuId, setActiveFolderMenuId] = useState(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState(null);
+
   // Modals state
   const [previewFile, setPreviewFile] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null);
@@ -118,7 +128,7 @@ const HomePage = () => {
       const [recentRes, starredRes, folderRes] = await Promise.allSettled([
         fileService.getFiles({ sortBy: 'createdAt', sortOrder: 'desc', folderId: 'root' }),
         fileService.getFiles({ isStarred: true, sortBy: 'updatedAt', sortOrder: 'desc' }),
-        folderService.getFolders({ parentId: 'root' })
+        folderService.getFolders({ sortBy: 'updatedAt', sortOrder: 'desc', limit: 10 })
       ]);
 
       if (recentRes.status === 'fulfilled') {
@@ -128,7 +138,9 @@ const HomePage = () => {
         setStarredFiles((starredRes.value.data || []).slice(0, 6));
       }
       if (folderRes.status === 'fulfilled') {
-        setRecentFolders((folderRes.value.data?.folders || []).slice(0, 6));
+        const raw = folderRes.value.data;
+        const list = Array.isArray(raw) ? raw : (raw?.folders || raw?.data || []);
+        setRecentFolders(list.slice(0, 10));
       }
     } catch (err) {
       console.error('Lỗi khi tải trang chủ:', err);
@@ -216,22 +228,116 @@ const HomePage = () => {
     hour < 12 ? 'Chào buổi sáng' : hour < 18 ? 'Chào buổi chiều' : 'Chào buổi tối';
   const displayName = user?.name || user?.email || 'bạn';
 
-  /* ── Card thư mục Studio ── */
-  const renderFolderCard = (folder) => {
+  /* ── Điều khiển cuộn ngang thư mục gần đây ── */
+  const handleScrollFolders = (direction) => {
+    if (foldersScrollRef.current) {
+      const offset = direction === 'left' ? -240 : 240;
+      foldersScrollRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+    }
+  };
+
+  /* ── Kéo thả tệp tin vào thư mục ── */
+  const handleFileDragStart = (e, file) => {
+    e.dataTransfer.setData(
+      'application/json',
+      JSON.stringify({
+        type: 'file',
+        id: file._id,
+        name: file.name
+      })
+    );
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleFolderDrop = async (e, targetFolder) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverFolderId(null);
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      if (!raw) return;
+      const dragData = JSON.parse(raw);
+      if (dragData.type === 'file' && dragData.id) {
+        await fileService.moveFile(dragData.id, targetFolder._id);
+        toast.success(`Đã di chuyển "${dragData.name}" vào thư mục "${targetFolder.name}"`);
+        fetchData();
+        window.dispatchEvent(new Event('folder:updated'));
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Di chuyển tệp thất bại');
+    }
+  };
+
+  /* ── Card Thư mục gần đây (Horizontal Scroll Card) ── */
+  const renderRecentFolderCard = (folder) => {
     const isSelected = selectedItem?.type === 'folder' && selectedItem?.data?._id === folder._id;
+    const isDragTarget = dragOverFolderId === folder._id;
+    const isMenuOpen = activeFolderMenuId === folder._id;
+
+    const folderMenuItems = [
+      {
+        icon: <FolderOpen size={14} />,
+        label: 'Mở thư mục',
+        onClick: () => navigate(`/drive/folder/${folder._id}`)
+      },
+      {
+        icon: <Edit2 size={14} />,
+        label: 'Đổi tên',
+        onClick: () => setRenameTarget({ type: 'folder', item: folder })
+      },
+      {
+        icon: <FolderInput size={14} />,
+        label: 'Di chuyển',
+        onClick: () => setMoveCopyTarget({ type: 'folder', item: folder, mode: 'move' })
+      },
+      {
+        icon: <Share2 size={14} />,
+        label: 'Sao chép',
+        onClick: () => setMoveCopyTarget({ type: 'folder', item: folder, mode: 'copy' })
+      },
+      { divider: true },
+      {
+        icon: <Trash2 size={14} />,
+        label: 'Xóa thư mục',
+        danger: true,
+        onClick: () => setDeleteTarget({ type: 'folder', item: folder })
+      }
+    ];
+
+    const updatedAtFormatted = folder.updatedAt
+      ? new Date(folder.updatedAt).toLocaleDateString('vi-VN', {
+          day: '2-digit',
+          month: '2-digit'
+        })
+      : '';
+
     return (
       <div
         key={folder._id}
-        className={`folder-card ${isSelected ? 'is-selected' : ''}`}
+        className={`home-folder-scroll-card ${isSelected ? 'is-selected' : ''} ${
+          isDragTarget ? 'drop-target-active' : ''
+        }`}
         onClick={() => setSelectedItem({ type: 'folder', data: folder })}
         onDoubleClick={() => navigate(`/drive/folder/${folder._id}`)}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          if (dragOverFolderId !== folder._id) setDragOverFolderId(folder._id);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (dragOverFolderId === folder._id) setDragOverFolderId(null);
+        }}
+        onDrop={(e) => handleFolderDrop(e, folder)}
       >
-        <div className="folder-card-main">
+        <div className="home-folder-card-top">
           <div
-            className="folder-card-icon"
+            className="home-folder-icon-box"
             style={{
-              backgroundColor: folder.color ? `${folder.color}15` : 'var(--bg-surface-hover)',
-              borderColor: folder.color ? `${folder.color}40` : 'var(--border-subtle)'
+              backgroundColor: folder.color ? `${folder.color}18` : 'rgba(99, 102, 241, 0.1)',
+              borderColor: folder.color ? `${folder.color}35` : 'rgba(99, 102, 241, 0.2)'
             }}
           >
             <Folder
@@ -242,12 +348,45 @@ const HomePage = () => {
               }}
             />
           </div>
-          <div className="folder-card-info">
-            <span className="folder-card-name" title={folder.name}>
-              {folder.name}
-            </span>
-            <span className="folder-card-sub">Thư mục</span>
+
+          <div
+            className={`home-folder-card-actions ${isMenuOpen ? 'menu-open' : ''}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="home-folder-action-btn"
+              title="Thao tác"
+              onClick={() => setActiveFolderMenuId(isMenuOpen ? null : folder._id)}
+            >
+              <MoreVertical size={14} />
+            </button>
+            {isMenuOpen && (
+              <MoreMenu
+                items={folderMenuItems}
+                onClose={() => setActiveFolderMenuId(null)}
+              />
+            )}
           </div>
+        </div>
+
+        <div className="home-folder-card-title" title={folder.name}>
+          {folder.name}
+        </div>
+
+        <div className="home-folder-card-meta">
+          <span className="home-folder-meta-count" title={`${folder.fileCount || 0} tệp tin trong thư mục`}>
+            <Files size={12} style={{ color: 'var(--primary-400)' }} />
+            <span>{folder.fileCount || 0} tệp</span>
+          </span>
+          {updatedAtFormatted && (
+            <span
+              className="home-folder-meta-time"
+              title={`Cập nhật: ${new Date(folder.updatedAt).toLocaleString('vi-VN')}`}
+            >
+              <Clock size={11} />
+              <span>{updatedAtFormatted}</span>
+            </span>
+          )}
         </div>
       </div>
     );
@@ -265,6 +404,8 @@ const HomePage = () => {
       <div
         key={file._id}
         className={`file-card ${isSelected ? 'is-selected' : ''}`}
+        draggable={true}
+        onDragStart={(e) => handleFileDragStart(e, file)}
         onClick={() => setSelectedItem({ type: 'file', data: file })}
         onDoubleClick={() => setPreviewFile(file)}
       >
@@ -381,18 +522,44 @@ const HomePage = () => {
             </div>
           ) : (
             <>
-              {/* Thư mục gần đây */}
+              {/* Thư mục gần đây (Thanh cuộn ngang) */}
               {recentFolders.length > 0 && (
-                <HomeSection
-                  icon={<Folder size={15} style={{ color: 'var(--primary-600)' }} />}
-                  title="Thư mục làm việc"
-                  count={recentFolders.length}
-                  onViewAll={() => navigate('/drive')}
-                >
-                  <div className="folder-grid">
-                    {recentFolders.map(renderFolderCard)}
+                <div className="home-section">
+                  <div className="home-section-header">
+                    <div className="home-section-title">
+                      <FolderClock size={16} style={{ color: 'var(--primary-600)' }} />
+                      <span>Thư mục gần đây</span>
+                      <span className="drive-section-count">{recentFolders.length}</span>
+                    </div>
+                    <div className="home-folders-header-right">
+                      <button className="home-view-all-btn" onClick={() => navigate('/drive')}>
+                        <span>Xem tất cả</span>
+                        <ChevronRight size={14} />
+                      </button>
+                      <div className="home-folders-nav-controls">
+                        <button
+                          className="home-scroll-nav-btn"
+                          title="Cuộn sang trái"
+                          onClick={() => handleScrollFolders('left')}
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        <button
+                          className="home-scroll-nav-btn"
+                          title="Cuộn sang phải"
+                          onClick={() => handleScrollFolders('right')}
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </HomeSection>
+                  <div className="home-folders-scroll-viewport">
+                    <div className="home-folders-scroll-row" ref={foldersScrollRef}>
+                      {recentFolders.map(renderRecentFolderCard)}
+                    </div>
+                  </div>
+                </div>
               )}
 
               {/* Tệp tin gần đây */}

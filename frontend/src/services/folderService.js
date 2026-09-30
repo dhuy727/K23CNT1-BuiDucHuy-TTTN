@@ -45,6 +45,10 @@ const folderService = {
 
   ensureFolderPath: async (baseFolderId, relativeDirPath) => {
     return await axiosClient.post('/folders/ensure-path', { baseFolderId, relativeDirPath });
+  },
+
+  togglePinFolder: async (folderId) => {
+    return await axiosClient.patch(`/folders/${folderId}/pin`);
   }
 };
 
