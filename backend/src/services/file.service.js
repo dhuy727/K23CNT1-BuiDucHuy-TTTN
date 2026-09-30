@@ -236,9 +236,9 @@ const getFiles = async (userId, query = {}) => {
     ];
   }
 
-  // Lọc theo phân loại AI (Category)
-  if (query.aiCategory) {
-    filter.aiCategory = query.aiCategory;
+  // Lọc theo danh mục (Category / AI Category)
+  if (query.category || query.aiCategory) {
+    filter.aiCategory = query.category || query.aiCategory;
   }
 
   // Lọc theo trạng thái yêu thích

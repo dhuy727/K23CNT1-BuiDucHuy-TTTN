@@ -3,13 +3,18 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutGrid,
   List,
-  FolderOpen
+  FolderOpen,
+  Tags
 } from 'lucide-react';
 import Breadcrumb from '../../components/drive/Breadcrumb';
 import FileGrid from '../../components/drive/FileGrid';
 import FileTable from '../../components/drive/FileTable';
 import ContextualActionBar from '../../components/drive/ContextualActionBar';
 import EmptyState from '../../components/common/EmptyState';
+
+import CategoryModal from '../../components/drive/CategoryModal';
+import AssignCategoryModal from '../../components/drive/AssignCategoryModal';
+import categoryService from '../../services/categoryService';
 
 import FilePreviewModal from '../../components/drive/FilePreviewModal';
 import RenameModal from '../../components/drive/RenameModal';
@@ -39,6 +44,8 @@ const MyDrivePage = () => {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('drive_view_mode') || 'grid');
   const [filterType, setFilterType] = useState('');
+  const [filterCategory, setFilterCategory] = useState('');
+  const [categoriesList, setCategoriesList] = useState([]);
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState('desc');
 
@@ -47,6 +54,8 @@ const MyDrivePage = () => {
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
   // Modals state
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [assignCategoryTarget, setAssignCategoryTarget] = useState(null);
   const [previewFile, setPreviewFile] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null);
   const [moveCopyTarget, setMoveCopyTarget] = useState(null);
@@ -54,6 +63,19 @@ const MyDrivePage = () => {
   const [versionsTarget, setVersionsTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+
+  const loadCategories = useCallback(async () => {
+    try {
+      const res = await categoryService.getCategories();
+      setCategoriesList(res.data || []);
+    } catch (e) {
+      console.error('Lỗi tải danh mục:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
 
   const fetchDriveContent = useCallback(async () => {
     setLoading(true);
@@ -90,6 +112,7 @@ const MyDrivePage = () => {
       const fileRes = await fileService.getFiles({
         folderId: currentId,
         type: filterType || undefined,
+        category: filterCategory || undefined,
         sortBy,
         sortOrder
       });
@@ -100,7 +123,7 @@ const MyDrivePage = () => {
     } finally {
       setLoading(false);
     }
-  }, [folderId, filterType, sortBy, sortOrder]);
+  }, [folderId, filterType, filterCategory, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchDriveContent();
@@ -277,6 +300,23 @@ const MyDrivePage = () => {
     }
   };
 
+  const handleDirectDrop = async (sourceItem, targetFolder) => {
+    try {
+      if (sourceItem.type === 'file') {
+        await fileService.moveFile(sourceItem.id, targetFolder._id);
+        toast.success(`Đã chuyển tệp "${sourceItem.name}" vào "${targetFolder.name}"`);
+      } else if (sourceItem.type === 'folder') {
+        if (sourceItem.id === targetFolder._id) return;
+        await folderService.moveFolder(sourceItem.id, targetFolder._id);
+        toast.success(`Đã chuyển thư mục "${sourceItem.name}" vào "${targetFolder.name}"`);
+      }
+      fetchDriveContent();
+      window.dispatchEvent(new Event('folder:updated'));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Không thể di chuyển đến thư mục này');
+    }
+  };
+
   const isEmpty = folders.length === 0 && files.length === 0;
 
   return (
@@ -301,6 +341,44 @@ const MyDrivePage = () => {
               <option value="audio">Âm thanh</option>
               <option value="archive">Tệp nén (ZIP)</option>
             </select>
+
+            {/* Lọc theo danh mục */}
+            <select
+              className="form-select"
+              style={{ width: '145px', padding: '5px 8px', fontSize: '0.8rem' }}
+              value={filterCategory}
+              onChange={(e) => setFilterCategory(e.target.value)}
+            >
+              <option value="">Tất cả danh mục</option>
+              {categoriesList.map((cat) => (
+                <option key={cat._id} value={cat.name}>
+                  {cat.name} {cat.fileCount !== undefined ? `(${cat.fileCount})` : ''}
+                </option>
+              ))}
+            </select>
+
+            {/* Quản lý danh mục */}
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              style={{
+                padding: '5px 10px',
+                fontSize: '0.8rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                borderRadius: 'var(--border-radius-sm, 6px)',
+                border: '1px solid var(--border-color)',
+                background: 'var(--surface-color)',
+                color: 'var(--text-main)',
+                cursor: 'pointer'
+              }}
+              onClick={() => setIsCategoryModalOpen(true)}
+              title="Quản lý danh mục tài liệu"
+            >
+              <Tags size={15} style={{ color: 'var(--primary-color)' }} />
+              <span>Danh mục</span>
+            </button>
 
             {/* Sắp xếp */}
             <select
@@ -341,7 +419,7 @@ const MyDrivePage = () => {
           </div>
         </div>
 
-        {/* Thanh thao tác ngữ cảnh khi chọn tệp/thư mục (Ảnh 1) */}
+        {/* Thanh thao tác ngữ cảnh khi chọn tệp/thư mục */}
         {selectedItem && (
           <ContextualActionBar
             selectedItem={selectedItem}
@@ -355,6 +433,7 @@ const MyDrivePage = () => {
             onMoveItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'move' })}
             onVersionHistory={(f) => setVersionsTarget(f)}
             onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
+            onAssignCategory={(item) => setAssignCategoryTarget(item)}
           />
         )}
 
@@ -388,6 +467,7 @@ const MyDrivePage = () => {
             onVersionHistory={(f) => setVersionsTarget(f)}
             onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
             onRetryAi={handleRetryAi}
+            onDirectDrop={handleDirectDrop}
           />
         ) : (
           <FileTable
@@ -406,6 +486,7 @@ const MyDrivePage = () => {
             onVersionHistory={(f) => setVersionsTarget(f)}
             onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
             onRetryAi={handleRetryAi}
+            onDirectDrop={handleDirectDrop}
           />
         )}
       </main>
@@ -425,9 +506,39 @@ const MyDrivePage = () => {
         onCopyItem={(type, item) => setMoveCopyTarget({ type, item, mode: 'copy' })}
         onVersionHistory={(f) => setVersionsTarget(f)}
         onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
+        onAssignCategory={(item) => setAssignCategoryTarget(item)}
       />
 
       {/* Modals */}
+      <CategoryModal
+        isOpen={isCategoryModalOpen}
+        onClose={() => {
+          setIsCategoryModalOpen(false);
+          loadCategories();
+          fetchDriveContent();
+        }}
+        onCategoriesChanged={() => {
+          loadCategories();
+          fetchDriveContent();
+        }}
+      />
+
+      <AssignCategoryModal
+        isOpen={Boolean(assignCategoryTarget)}
+        onClose={() => setAssignCategoryTarget(null)}
+        file={assignCategoryTarget}
+        onSuccess={(updatedFile) => {
+          fetchDriveContent();
+          loadCategories();
+          if (selectedItem?.type === 'file' && selectedItem?.data?._id === updatedFile._id) {
+            setSelectedItem((prev) => ({
+              ...prev,
+              data: { ...prev.data, aiCategory: updatedFile.aiCategory }
+            }));
+          }
+        }}
+      />
+
       <FilePreviewModal
         file={previewFile}
         isOpen={Boolean(previewFile)}

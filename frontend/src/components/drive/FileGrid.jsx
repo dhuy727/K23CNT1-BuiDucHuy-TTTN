@@ -96,7 +96,8 @@ const FileGrid = ({
   onVersionHistory,
   onDeleteItem,
   isTrash = false,
-  onRestoreItem
+  onRestoreItem,
+  onDirectDrop
 }) => {
   const formatSize = (bytes) => {
     if (!bytes && bytes !== 0) return '0 B';
@@ -109,6 +110,7 @@ const FileGrid = ({
   /* ── Studio Folder Card ── */
   const FolderCard = ({ folder }) => {
     const [menuOpen, setMenuOpen] = useState(false);
+    const [isDropTarget, setIsDropTarget] = useState(false);
     const isSelected = selectedItem?.type === 'folder' && selectedItem?.data?._id === folder._id;
 
     const menuItems = [
@@ -120,9 +122,54 @@ const FileGrid = ({
       onDeleteItem && { icon: <Trash2 size={14} />, label: 'Xóa vào thùng rác', danger: true, onClick: () => onDeleteItem('folder', folder) },
     ].filter(Boolean);
 
+    const handleDragStart = (e) => {
+      if (isTrash) return;
+      e.dataTransfer.setData('application/json', JSON.stringify({
+        type: 'folder',
+        id: folder._id,
+        name: folder.name
+      }));
+      e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragOver = (e) => {
+      if (isTrash) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setIsDropTarget(true);
+    };
+
+    const handleDragLeave = (e) => {
+      // Chỉ hủy khi rời khỏi hẳn container
+      if (!e.currentTarget.contains(e.relatedTarget)) {
+        setIsDropTarget(false);
+      }
+    };
+
+    const handleDrop = (e) => {
+      e.preventDefault();
+      setIsDropTarget(false);
+      if (isTrash) return;
+      try {
+        const raw = e.dataTransfer.getData('application/json');
+        if (!raw) return;
+        const item = JSON.parse(raw);
+        if (item && item.id !== folder._id && onDirectDrop) {
+          onDirectDrop(item, folder);
+        }
+      } catch (err) {
+        console.error('Lỗi drop:', err);
+      }
+    };
+
     return (
       <div
-        className={`folder-card ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
+        className={`folder-card ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDropTarget ? 'drop-target-active' : ''}`}
+        draggable={!isTrash}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         onClick={() => onSelectItem && onSelectItem({ type: 'folder', data: folder })}
         onDoubleClick={() => onOpenFolder && onOpenFolder(folder._id)}
       >
@@ -204,10 +251,22 @@ const FileGrid = ({
       onDeleteItem && { icon: <Trash2 size={14} />, label: 'Xóa vào thùng rác', danger: true, onClick: () => onDeleteItem('file', file) },
     ].filter(Boolean);
 
+    const handleDragStart = (e) => {
+      if (isTrash) return;
+      e.dataTransfer.setData('application/json', JSON.stringify({
+        type: 'file',
+        id: file._id,
+        name: file.name
+      }));
+      e.dataTransfer.effectAllowed = 'move';
+    };
+
     return (
       <div
         data-file-id={file._id}
         className={`file-card ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
+        draggable={!isTrash}
+        onDragStart={handleDragStart}
         onClick={() => onSelectItem && onSelectItem({ type: 'file', data: file })}
         onDoubleClick={() => onPreviewFile && onPreviewFile(file)}
       >

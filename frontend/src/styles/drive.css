@@ -111,6 +111,17 @@
   box-shadow: 0 0 0 1px var(--primary-400);
 }
 
+.folder-card.drop-target-active,
+tr.folder-row.drop-target-active {
+  border-color: var(--primary-500) !important;
+  background-color: rgba(99, 102, 241, 0.18) !important;
+  outline: 2px dashed var(--primary-500) !important;
+  outline-offset: -2px;
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25) !important;
+  transition: all 0.15s ease-in-out;
+}
+
 .folder-card-main {
   display: flex;
   align-items: center;

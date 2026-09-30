@@ -8,6 +8,7 @@ import {
   Trash2,
   Plus,
   FolderPlus,
+  FolderUp,
   UploadCloud,
   Layers,
   ChevronDown,
@@ -31,6 +32,7 @@ const Sidebar = ({
   isMobileOpen = false,
   onCloseMobile,
   onOpenUpload,
+  onOpenUploadFolder,
   onOpenCreateFolder
 }) => {
   const { isAdmin } = useAuth();
@@ -193,6 +195,16 @@ const Sidebar = ({
             >
               <UploadCloud size={16} style={{ color: 'var(--accent-blue)' }} />
               <span>Tải tệp tin lên</span>
+            </button>
+            <button
+              className="studio-action-item"
+              onClick={() => {
+                setShowNewMenu(false);
+                onOpenUploadFolder && onOpenUploadFolder();
+              }}
+            >
+              <FolderUp size={16} style={{ color: 'var(--primary-color)' }} />
+              <span>Tải thư mục lên</span>
             </button>
           </div>
         )}

@@ -12,7 +12,8 @@ import {
   History,
   Trash2,
   RotateCcw,
-  Sparkles
+  Sparkles,
+  Tag
 } from 'lucide-react';
 import FileIcon from './FileIcon';
 
@@ -29,7 +30,8 @@ const ContextualActionBar = ({
   onVersionHistory,
   onDeleteItem,
   isTrash = false,
-  onRestoreItem
+  onRestoreItem,
+  onAssignCategory
 }) => {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -98,6 +100,11 @@ const ContextualActionBar = ({
           icon: <History size={15} />,
           label: 'Lịch sử phiên bản',
           onClick: () => onVersionHistory(data)
+        },
+        isFile && onAssignCategory && {
+          icon: <Tag size={15} />,
+          label: 'Phân loại danh mục',
+          onClick: () => onAssignCategory(data)
         },
         { divider: true },
         onDeleteItem && {

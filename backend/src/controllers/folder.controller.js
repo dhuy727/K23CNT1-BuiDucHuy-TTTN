@@ -179,6 +179,63 @@ const getFolderFiles = async (req, res, next) => {
   }
 };
 
+/**
+ * Lấy danh sách thư mục trong thùng rác
+ */
+const getTrashFolders = async (req, res, next) => {
+  try {
+    const folders = await folderService.getTrashFolders(req.user._id);
+    return sendSuccess(res, {
+      message: 'Lấy danh sách thư mục trong thùng rác thành công',
+      data: folders
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Khôi phục thư mục từ thùng rác
+ */
+const restoreFolder = async (req, res, next) => {
+  try {
+    const result = await folderService.restoreFolder(req.user._id, req.params.id);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'folder_restore',
+      targetType: 'folder',
+      targetId: req.params.id,
+      description: 'Đã khôi phục thư mục từ thùng rác',
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
+    return sendSuccess(res, {
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Đảm bảo đường dẫn thư mục phân cấp tồn tại
+ */
+const ensureFolderPath = async (req, res, next) => {
+  try {
+    const { baseFolderId, relativeDirPath } = req.body;
+    const folderId = await folderService.ensureFolderPath(req.user._id, baseFolderId, relativeDirPath);
+    return sendSuccess(res, {
+      message: 'Đã xác định thư mục thành công',
+      data: { folderId }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createFolder,
   getFolders,
@@ -187,5 +244,8 @@ module.exports = {
   renameFolder,
   moveFolder,
   deleteFolder,
-  getFolderFiles
+  getFolderFiles,
+  getTrashFolders,
+  restoreFolder,
+  ensureFolderPath
 };

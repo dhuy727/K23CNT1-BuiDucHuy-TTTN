@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { ChevronRight, ChevronDown, Folder, HardDrive } from 'lucide-react';
 
-const TreeNode = ({ node, activeFolderId, onSelectFolder, level = 0 }) => {
+const TreeNode = ({ node, activeFolderId, onSelectFolder, disabledFolderId = null, isParentDisabled = false, level = 0 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
   const isActive = activeFolderId === node._id;
+  const isDisabled = isParentDisabled || Boolean(disabledFolderId && String(node._id) === String(disabledFolderId));
 
   const handleToggle = (e) => {
     e.stopPropagation();
@@ -12,6 +13,7 @@ const TreeNode = ({ node, activeFolderId, onSelectFolder, level = 0 }) => {
   };
 
   const handleSelect = () => {
+    if (isDisabled) return;
     if (onSelectFolder) {
       onSelectFolder(node._id);
     }
@@ -22,7 +24,12 @@ const TreeNode = ({ node, activeFolderId, onSelectFolder, level = 0 }) => {
       <div
         className={`tree-item ${isActive ? 'active' : ''}`}
         onClick={handleSelect}
-        style={{ paddingLeft: `${level * 16 + 8}px` }}
+        style={{
+          paddingLeft: `${level * 16 + 8}px`,
+          opacity: isDisabled ? 0.45 : 1,
+          cursor: isDisabled ? 'not-allowed' : 'pointer'
+        }}
+        title={isDisabled ? 'Không thể di chuyển vào chính thư mục này hoặc thư mục con của nó' : node.name}
       >
         {hasChildren ? (
           <button
@@ -54,6 +61,11 @@ const TreeNode = ({ node, activeFolderId, onSelectFolder, level = 0 }) => {
         >
           {node.name}
         </span>
+        {isDisabled && (
+          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto', fontStyle: 'italic' }}>
+            (Không thể chọn)
+          </span>
+        )}
       </div>
 
       {hasChildren && isOpen && (
@@ -64,6 +76,8 @@ const TreeNode = ({ node, activeFolderId, onSelectFolder, level = 0 }) => {
               node={child}
               activeFolderId={activeFolderId}
               onSelectFolder={onSelectFolder}
+              disabledFolderId={disabledFolderId}
+              isParentDisabled={isDisabled}
               level={level + 1}
             />
           ))}
@@ -78,7 +92,8 @@ const FolderTree = ({
   folders,
   activeFolderId = null,
   onSelectFolder,
-  includeRoot = false
+  includeRoot = false,
+  disabledFolderId = null
 }) => {
   const list = (tree && tree.length > 0) ? tree : (folders || []);
 
@@ -96,7 +111,7 @@ const FolderTree = ({
         <div
           className={`tree-item ${activeFolderId === null || activeFolderId === 'root' ? 'active' : ''}`}
           onClick={() => onSelectFolder && onSelectFolder(null)}
-          style={{ paddingLeft: '8px' }}
+          style={{ paddingLeft: '8px', cursor: 'pointer' }}
         >
           <span style={{ width: 14 }} />
           <HardDrive size={16} style={{ color: 'var(--primary-400)' }} />
@@ -109,6 +124,7 @@ const FolderTree = ({
           node={node}
           activeFolderId={activeFolderId}
           onSelectFolder={onSelectFolder}
+          disabledFolderId={disabledFolderId}
           level={0}
         />
       ))}
