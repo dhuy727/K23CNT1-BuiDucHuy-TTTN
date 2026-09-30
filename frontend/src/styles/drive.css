@@ -42,6 +42,33 @@
   align-items: center;
 }
 
+.breadcrumb-item.drop-target-active {
+  background-color: rgba(99, 102, 241, 0.16) !important;
+  color: var(--primary-600) !important;
+  border: 1px dashed var(--primary-500) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22) !important;
+  transform: translateY(-1px) scale(1.03);
+  font-weight: 700;
+}
+[data-theme='dark'] .breadcrumb-item.drop-target-active {
+  background-color: rgba(99, 102, 241, 0.25) !important;
+  color: var(--primary-300) !important;
+  border-color: var(--primary-400) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.35) !important;
+}
+
+.folder-card.is-dragging,
+.file-card.is-dragging,
+tr.folder-row.is-dragging,
+tr.is-dragging,
+.tree-item.is-dragging {
+  opacity: 0.45 !important;
+  border-style: dashed !important;
+  transform: scale(0.97) !important;
+  filter: grayscale(25%);
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
 /* ── Section Titles ── */
 .drive-section-header {
   display: flex;
@@ -109,6 +136,17 @@
   background-color: rgba(99, 102, 241, 0.15);
   border-color: var(--primary-400);
   box-shadow: 0 0 0 1px var(--primary-400);
+}
+
+.folder-card.drop-target-active,
+tr.folder-row.drop-target-active {
+  border-color: var(--primary-500) !important;
+  background-color: rgba(99, 102, 241, 0.18) !important;
+  outline: 2px dashed var(--primary-500) !important;
+  outline-offset: -2px;
+  transform: scale(1.02);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25) !important;
+  transition: all 0.15s ease-in-out;
 }
 
 .folder-card-main {
@@ -977,6 +1015,21 @@
   color: var(--primary-300);
 }
 
+.tree-item.drop-target-active {
+  background-color: rgba(99, 102, 241, 0.16) !important;
+  color: var(--primary-600) !important;
+  outline: 1.5px dashed var(--primary-500) !important;
+  outline-offset: -1px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.22);
+}
+[data-theme='dark'] .tree-item.drop-target-active {
+  background-color: rgba(99, 102, 241, 0.25) !important;
+  color: var(--primary-300) !important;
+  outline-color: var(--primary-400) !important;
+}
+
 .tree-expand-btn {
   background: transparent;
   border: none;
@@ -1455,5 +1508,347 @@
   z-index: 90 !important;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   STUDIO RECENT FOLDERS HORIZONTAL SCROLL STRIP
+   ══════════════════════════════════════════════════════════════ */
+.home-folders-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
+.home-folders-nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.home-scroll-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  padding: 0;
+}
+
+.home-scroll-nav-btn:hover:not(:disabled) {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+  border-color: var(--border-main);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.home-scroll-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.home-folders-scroll-viewport {
+  position: relative;
+  width: 100%;
+}
+
+.home-folders-scroll-row {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 2px 14px 2px;
+  scroll-behavior: smooth;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Slim modern scrollbar */
+.home-folders-scroll-row::-webkit-scrollbar {
+  height: 6px;
+}
+.home-folders-scroll-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+.home-folders-scroll-row::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: var(--radius-full);
+}
+.home-folders-scroll-row:hover::-webkit-scrollbar-thumb {
+  background: var(--border-main);
+}
+
+/* Horizontal Folder Card */
+.home-folder-scroll-card {
+  flex: 0 0 220px;
+  max-width: 240px;
+  min-height: 110px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.home-folder-scroll-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary-300);
+  background: var(--bg-surface-hover);
+  box-shadow: 0 8px 20px -4px rgba(99, 102, 241, 0.12), 0 2px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.home-folder-scroll-card.is-selected {
+  border-color: var(--primary-500);
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06) 0%, var(--bg-surface) 100%);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.28), 0 6px 16px -2px rgba(99, 102, 241, 0.15);
+}
+
+.home-folder-scroll-card.drop-target-active {
+  border-color: var(--primary-500) !important;
+  background: rgba(99, 102, 241, 0.12) !important;
+  transform: scale(1.02);
+  box-shadow: 0 0 0 2px var(--primary-500), 0 8px 24px rgba(99, 102, 241, 0.25);
+}
+
+/* Card Top: Icon & More Menu */
+.home-folder-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.home-folder-icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: rgba(99, 102, 241, 0.09);
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  transition: transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.home-folder-scroll-card:hover .home-folder-icon-box {
+  transform: scale(1.06);
+}
+
+.home-folder-card-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0.88;
+}
+
+.home-folder-scroll-card:hover .home-folder-card-actions,
+.home-folder-card-actions.menu-open {
+  opacity: 1;
+}
+
+.home-folder-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm, 6px);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+[data-theme='light'] .home-folder-action-btn {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: var(--text-secondary);
+}
+
+.home-folder-action-btn:hover,
+.home-folder-action-btn.active {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+  border-color: var(--primary-400);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.home-folder-action-btn.is-pinned {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+/* Card Middle: Title */
+.home-folder-card-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 8px;
+  line-height: 1.35;
+}
+
+/* Card Bottom Meta */
+.home-folder-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-subtle);
+}
+
+.home-folder-meta-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.home-folder-meta-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+[data-theme='dark'] .home-folder-scroll-card {
+  background: var(--bg-surface);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+[data-theme='dark'] .home-folder-scroll-card:hover {
+  border-color: rgba(139, 92, 246, 0.5);
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5), 0 0 16px rgba(139, 92, 246, 0.15);
+}
+
+[data-theme='dark'] .home-folder-scroll-card.is-selected {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, var(--bg-surface) 100%);
+  border-color: var(--primary-400);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DRIVE QUICK ACCESS FOLDERS STRIP (PINNED & RECENT)
+   ══════════════════════════════════════════════════════════════ */
+.drive-quick-folders-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  background: var(--bg-surface-alt, rgba(0, 0, 0, 0.015));
+  padding: 10px 12px 14px 12px;
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--border-subtle);
+}
+
+.drive-quick-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.drive-quick-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-surface-hover);
+  padding: 3px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.drive-quick-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+  font-weight: 500;
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.drive-quick-tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.drive-quick-tab-btn.active {
+  background: var(--bg-surface);
+  color: var(--primary-600);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='dark'] .drive-quick-tab-btn.active {
+  color: var(--primary-400);
+}
+
+.drive-quick-count {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: var(--bg-surface-hover);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+}
+
+.drive-quick-tab-btn.active .drive-quick-count {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--primary-600);
+}
+
+[data-theme='dark'] .drive-quick-tab-btn.active .drive-quick-count {
+  color: var(--primary-300);
+}
+
+.drive-quick-empty-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 14px;
+  width: 100%;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-subtle);
+}
+
+/* Pin button highlight effects */
+.btn-icon.is-pinned,
+.home-folder-action-btn.is-pinned {
+  color: var(--accent-amber, #f59e0b) !important;
+}
 

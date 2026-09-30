@@ -20,6 +20,7 @@ import TrashPage from '../pages/drive/TrashPage';
 import SearchPage from '../pages/drive/SearchPage';
 import AutomationPage from '../pages/automation/AutomationPage';
 import CleanupPage from '../pages/drive/CleanupPage';
+import AnalyticsPage from '../pages/analytics/AnalyticsPage';
 
 // Share Pages
 import SharedWithMePage from '../pages/shares/SharedWithMePage';
@@ -29,7 +30,9 @@ import PublicSharePage from '../pages/shares/PublicSharePage';
 // Settings & Admin
 import ProfilePage from '../pages/settings/ProfilePage';
 import ChangePasswordPage from '../pages/settings/ChangePasswordPage';
+import ActivityLogPage from '../pages/settings/ActivityLogPage';
 import UsersPage from '../pages/admin/UsersPage';
+import AuditLogsPage from '../pages/admin/AuditLogsPage';
 
 const AppRoutes = () => {
   return (
@@ -62,10 +65,12 @@ const AppRoutes = () => {
         <Route path="search" element={<SearchPage />} />
         <Route path="automation" element={<AutomationPage />} />
         <Route path="drive/cleanup" element={<CleanupPage />} />
+        <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="shares/shared-with-me" element={<SharedWithMePage />} />
         <Route path="shares/shared-by-me" element={<SharedByMePage />} />
         <Route path="settings/profile" element={<ProfilePage />} />
         <Route path="settings/change-password" element={<ChangePasswordPage />} />
+        <Route path="settings/activities" element={<ActivityLogPage />} />
 
         {/* Admin only route */}
         <Route
@@ -73,6 +78,14 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute requireAdmin={true}>
               <UsersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="admin/logs"
+          element={
+            <ProtectedRoute requireAdmin={true}>
+              <AuditLogsPage />
             </ProtectedRoute>
           }
         />

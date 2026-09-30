@@ -12,7 +12,8 @@ import {
   Folder,
   PanelRight,
   PanelLeft,
-  Menu
+  Menu,
+  Clock
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import searchService from '../../services/searchService';
@@ -245,6 +246,17 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => 
               >
                 <Key size={15} />
                 <span>Đổi mật khẩu</span>
+              </button>
+
+              <button
+                className="dropdown-item"
+                onClick={() => {
+                  setShowUserMenu(false);
+                  navigate('/settings/activities');
+                }}
+              >
+                <Clock size={15} />
+                <span>Lịch sử thao tác</span>
               </button>
 
               {isAdmin && (

@@ -99,7 +99,7 @@ const shareWithUser = async (ownerId, { itemType, itemId, email, role = 'viewer'
 };
 
 /**
- * 2. Cập nhật quyền của cộng tác viên (viewer ↔ editor)
+ * 2. Cập nhật quyền của cộng tác viên
  */
 const updateCollaboratorRole = async (ownerId, shareId, newRole) => {
   if (!mongoose.Types.ObjectId.isValid(shareId)) {
@@ -154,7 +154,7 @@ const removeCollaborator = async (ownerId, shareId) => {
 };
 
 /**
- * 4. Tạo hoặc cập nhật liên kết chia sẻ công khai (Public Link)
+ * 4. Tạo hoặc cập nhật liên kết chia sẻ công khai 
  */
 const createOrUpdatePublicLink = async (
   ownerId,
@@ -289,22 +289,22 @@ const getItemShares = async (ownerId, itemType, itemId) => {
     })),
     publicLink: publicLink
       ? {
-          _id: publicLink._id,
-          shareToken: publicLink.shareToken,
-          shareUrl: `/api/shares/public/${publicLink.shareToken}`,
-          role: publicLink.role,
-          hasPassword: publicLink.hasPassword,
-          expiresAt: publicLink.expiresAt,
-          allowDownload: publicLink.allowDownload
-        }
+        _id: publicLink._id,
+        shareToken: publicLink.shareToken,
+        shareUrl: `/api/shares/public/${publicLink.shareToken}`,
+        role: publicLink.role,
+        hasPassword: publicLink.hasPassword,
+        expiresAt: publicLink.expiresAt,
+        allowDownload: publicLink.allowDownload
+      }
       : null
   };
 };
 
 /**
- * 7. Truy cập tệp hoặc thư mục qua liên kết công khai (Public Access)
+ * 7. Truy cập tệp hoặc thư mục qua liên kết công khai 
  */
-const getPublicItem = async (shareToken, providedPassword = null) => {
+const getPublicItem = async (shareToken, providedPassword = null, subfolderId = null) => {
   if (!shareToken) {
     throw new ApiError(400, 'Mã token chia sẻ không hợp lệ');
   }
@@ -343,7 +343,10 @@ const getPublicItem = async (shareToken, providedPassword = null) => {
 
   // Trả về dữ liệu chi tiết
   if (share.itemType === 'file') {
-    const file = await File.findOne({ _id: share.file, isTrash: false }).populate('user', '_id name email').lean();
+    const file = await File.findOne({ _id: share.file, isTrash: false })
+      .select('+extractedText')
+      .populate('user', '_id name email')
+      .lean();
     if (!file) {
       throw new ApiError(404, 'Tệp tin được chia sẻ không còn tồn tại hoặc đã bị xóa');
     }
@@ -353,21 +356,46 @@ const getPublicItem = async (shareToken, providedPassword = null) => {
       itemType: 'file',
       role: share.role,
       allowDownload: share.allowDownload,
+      share: {
+        owner: share.owner,
+        role: share.role,
+        allowDownload: share.allowDownload,
+        expiresAt: share.expiresAt,
+        hasPassword: share.hasPassword
+      },
       item: {
         ...file,
         formattedSize: formatFileSize(file.size)
       }
     };
   } else {
-    const folder = await Folder.findOne({ _id: share.folder, isTrash: false }).populate('user', '_id name email').lean();
-    if (!folder) {
+    const rootFolder = await Folder.findOne({ _id: share.folder, isTrash: false })
+      .populate('user', '_id name email')
+      .lean();
+    if (!rootFolder) {
       throw new ApiError(404, 'Thư mục được chia sẻ không còn tồn tại hoặc đã bị xóa');
     }
 
-    // Lấy danh sách tệp tin và thư mục con cấp 1 trực thuộc
+    let currentFolder = rootFolder;
+    let breadcrumbs = [{ _id: rootFolder._id, name: rootFolder.name }];
+
+    // Hỗ trợ duyệt thư mục con bên trong thư mục được chia sẻ
+    if (subfolderId && mongoose.Types.ObjectId.isValid(subfolderId) && subfolderId.toString() !== rootFolder._id.toString()) {
+      const sub = await Folder.findOne({
+        _id: subfolderId,
+        user: rootFolder.user._id || rootFolder.user,
+        isTrash: false
+      }).lean();
+      if (sub) {
+        currentFolder = sub;
+        breadcrumbs.push({ _id: sub._id, name: sub.name });
+      }
+    }
+
+    // Lấy danh sách tệp tin và thư mục con cấp 1 trực thuộc thư mục hiện tại
     const [subfolders, files] = await Promise.all([
-      Folder.find({ parent: folder._id, isTrash: false }).lean(),
-      File.find({ folder: folder._id, isTrash: false }).lean()
+      Folder.find({ parent: currentFolder._id, isTrash: false }).lean(),
+      File.find({ folder: currentFolder._id, isTrash: false }).select('+extractedText').lean()
     ]);
 
     return {
@@ -375,7 +403,16 @@ const getPublicItem = async (shareToken, providedPassword = null) => {
       itemType: 'folder',
       role: share.role,
       allowDownload: share.allowDownload,
-      item: folder,
+      share: {
+        owner: share.owner,
+        role: share.role,
+        allowDownload: share.allowDownload,
+        expiresAt: share.expiresAt,
+        hasPassword: share.hasPassword
+      },
+      item: currentFolder,
+      rootFolder,
+      breadcrumbs,
       subfolders,
       files: files.map((f) => ({
         ...f,
@@ -386,9 +423,9 @@ const getPublicItem = async (shareToken, providedPassword = null) => {
 };
 
 /**
- * 8. Tải tệp tin qua liên kết công khai (Public Download)
+ * 8. Tải tệp tin qua liên kết công khai 
  */
-const getPublicFileDownload = async (shareToken, providedPassword = null) => {
+const getPublicFileDownload = async (shareToken, providedPassword = null, fileId = null) => {
   const result = await getPublicItem(shareToken, providedPassword);
 
   if (result.requiresPassword) {
@@ -399,11 +436,24 @@ const getPublicFileDownload = async (shareToken, providedPassword = null) => {
     throw new ApiError(403, 'Chủ sở hữu đã khóa tính năng tải xuống đối với liên kết này');
   }
 
-  if (result.itemType !== 'file') {
-    throw new ApiError(400, 'Liên kết này chia sẻ thư mục, không thể tải trực tiếp như một tệp tin đơn lẻ');
+  let file = null;
+
+  if (result.itemType === 'file') {
+    file = result.item;
+  } else if (result.itemType === 'folder') {
+    if (!fileId || !mongoose.Types.ObjectId.isValid(fileId)) {
+      throw new ApiError(400, 'Vui lòng chỉ định ID tệp tin cần tải trong thư mục');
+    }
+    file = await File.findOne({
+      _id: fileId,
+      user: result.share.owner._id || result.share.owner,
+      isTrash: false
+    });
+    if (!file) {
+      throw new ApiError(404, 'Tệp tin không tồn tại trong thư mục chia sẻ');
+    }
   }
 
-  const file = result.item;
   const fileStream = await storageService.getFileStream(file);
 
   return {
@@ -415,20 +465,33 @@ const getPublicFileDownload = async (shareToken, providedPassword = null) => {
 };
 
 /**
- * 9. Xem trước tệp tin inline qua liên kết công khai (Public Preview)
+ * 9. Xem trước tệp tin inline qua liên kết công khai 
  */
-const getPublicFilePreview = async (shareToken, providedPassword = null) => {
+const getPublicFilePreview = async (shareToken, providedPassword = null, fileId = null) => {
   const result = await getPublicItem(shareToken, providedPassword);
 
   if (result.requiresPassword) {
     throw new ApiError(401, 'Vui lòng cung cấp mật khẩu truy cập để xem trước tệp tin');
   }
 
-  if (result.itemType !== 'file') {
-    throw new ApiError(400, 'Liên kết này chia sẻ thư mục, không thể xem trước trực tiếp như một tệp tin');
+  let file = null;
+
+  if (result.itemType === 'file') {
+    file = result.item;
+  } else if (result.itemType === 'folder') {
+    if (!fileId || !mongoose.Types.ObjectId.isValid(fileId)) {
+      throw new ApiError(400, 'Vui lòng chỉ định ID tệp tin cần xem trước trong thư mục');
+    }
+    file = await File.findOne({
+      _id: fileId,
+      user: result.share.owner._id || result.share.owner,
+      isTrash: false
+    }).select('+extractedText');
+    if (!file) {
+      throw new ApiError(404, 'Tệp tin không tồn tại trong thư mục chia sẻ');
+    }
   }
 
-  const file = result.item;
   const fileStream = await storageService.getFileStream(file);
 
   return {
@@ -439,7 +502,7 @@ const getPublicFilePreview = async (shareToken, providedPassword = null) => {
 };
 
 /**
- * 10. Danh sách tài liệu & thư mục được chia sẻ với tôi (Shared With Me)
+ * 10. Danh sách tài liệu & thư mục được chia sẻ với tôi 
  */
 const getSharedWithMe = async (userId, query = {}) => {
   const filter = {
@@ -511,7 +574,7 @@ const getSharedWithMe = async (userId, query = {}) => {
 };
 
 /**
- * 11. Danh sách tài liệu & thư mục do tôi chia sẻ (Shared By Me)
+ * 11. Danh sách tài liệu & thư mục do tôi chia sẻ
  */
 const getSharedByMe = async (userId, query = {}) => {
   const filter = {

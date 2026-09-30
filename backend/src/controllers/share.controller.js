@@ -47,7 +47,7 @@ const removeCollaborator = async (req, res, next) => {
 };
 
 /**
- * Tạo hoặc cập nhật liên kết chia sẻ công khai (Public Link)
+ * Tạo hoặc cập nhật liên kết chia sẻ công khai 
  */
 const createOrUpdatePublicLink = async (req, res, next) => {
   try {
@@ -92,12 +92,13 @@ const getItemShares = async (req, res, next) => {
 };
 
 /**
- * Truy cập xem tệp hoặc thư mục qua liên kết công khai (Không cần đăng nhập)
+ * Truy cập xem tệp hoặc thư mục qua liên kết công khai 
  */
 const getPublicItem = async (req, res, next) => {
   try {
     const password = req.headers['x-share-password'] || req.query.password || null;
-    const result = await shareService.getPublicItem(req.params.shareToken, password);
+    const subfolderId = req.query.folderId || null;
+    const result = await shareService.getPublicItem(req.params.shareToken, password, subfolderId);
 
     if (result.requiresPassword) {
       return res.status(200).json({
@@ -127,7 +128,12 @@ const getPublicItem = async (req, res, next) => {
 const getPublicFileDownload = async (req, res, next) => {
   try {
     const password = req.headers['x-share-password'] || req.query.password || null;
-    const { fileStream, downloadName, mimeType, file } = await shareService.getPublicFileDownload(req.params.shareToken, password);
+    const fileId = req.query.fileId || null;
+    const { fileStream, downloadName, mimeType, file } = await shareService.getPublicFileDownload(
+      req.params.shareToken,
+      password,
+      fileId
+    );
 
     const encodedFilename = encodeURIComponent(downloadName);
     res.setHeader('Content-Type', mimeType || 'application/octet-stream');
@@ -154,7 +160,12 @@ const getPublicFileDownload = async (req, res, next) => {
 const getPublicFilePreview = async (req, res, next) => {
   try {
     const password = req.headers['x-share-password'] || req.query.password || null;
-    const { fileStream, mimeType, file } = await shareService.getPublicFilePreview(req.params.shareToken, password);
+    const fileId = req.query.fileId || null;
+    const { fileStream, mimeType, file } = await shareService.getPublicFilePreview(
+      req.params.shareToken,
+      password,
+      fileId
+    );
 
     const encodedFilename = encodeURIComponent(file.name);
     res.setHeader('Content-Type', mimeType || 'application/octet-stream');

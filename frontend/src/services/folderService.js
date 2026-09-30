@@ -33,6 +33,22 @@ const folderService = {
 
   getFolderFiles: async (folderId, params = {}) => {
     return await axiosClient.get(`/folders/${folderId}/files`, { params });
+  },
+
+  getTrashFolders: async () => {
+    return await axiosClient.get('/folders/trash');
+  },
+
+  restoreFolder: async (folderId) => {
+    return await axiosClient.patch(`/folders/${folderId}/restore`);
+  },
+
+  ensureFolderPath: async (baseFolderId, relativeDirPath) => {
+    return await axiosClient.post('/folders/ensure-path', { baseFolderId, relativeDirPath });
+  },
+
+  togglePinFolder: async (folderId) => {
+    return await axiosClient.patch(`/folders/${folderId}/pin`);
   }
 };
 

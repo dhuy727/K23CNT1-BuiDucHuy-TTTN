@@ -1,5 +1,6 @@
 const authService = require('../services/auth.service');
 const userService = require('../services/user.service');
+const activityService = require('../services/activity.service');
 const { sendSuccess } = require('../utils/apiResponse');
 
 /**
@@ -99,6 +100,21 @@ const getUser = async (req, res, next) => {
 const updateUser = async (req, res, next) => {
   try {
     const updatedUser = await userService.updateUser(req.params.id, req.body, req.user);
+
+    if (req.user?.role === 'admin') {
+      activityService.logActivity({
+        userId: req.user._id,
+        action: 'admin_user_update',
+        targetType: 'user',
+        targetId: updatedUser._id,
+        targetName: updatedUser.name || updatedUser.email,
+        description: `Quản trị viên đã cập nhật người dùng "${updatedUser.name}" (Role: ${updatedUser.role}, Trạng thái: ${updatedUser.isActive ? 'Kích hoạt' : 'Khóa'})`,
+        metadata: { role: updatedUser.role, isActive: updatedUser.isActive },
+        ip: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+    }
+
     return sendSuccess(res, {
       message: 'Cập nhật thông tin người dùng thành công',
       data: updatedUser
@@ -114,6 +130,19 @@ const updateUser = async (req, res, next) => {
 const deleteUser = async (req, res, next) => {
   try {
     const result = await userService.deleteUser(req.params.id, req.user._id);
+
+    if (req.user?.role === 'admin') {
+      activityService.logActivity({
+        userId: req.user._id,
+        action: 'admin_user_delete',
+        targetType: 'user',
+        targetId: req.params.id,
+        description: `Quản trị viên đã xóa người dùng ID: ${req.params.id}`,
+        ip: req.ip,
+        userAgent: req.headers['user-agent']
+      });
+    }
+
     return sendSuccess(res, {
       message: result.message,
       data: null
@@ -133,4 +162,3 @@ module.exports = {
   updateUser,
   deleteUser
 };
-

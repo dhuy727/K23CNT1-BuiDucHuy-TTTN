@@ -77,6 +77,11 @@ const getFolders = async (userId, query = {}) => {
     }
   }
 
+  // Lọc theo trạng thái ghim
+  if (query.isPinned !== undefined) {
+    filter.isPinned = query.isPinned === 'true' || query.isPinned === true;
+  }
+
   // Tìm kiếm theo tên thư mục
   if (query.search) {
     filter.name = { $regex: query.search, $options: 'i' };
@@ -86,17 +91,31 @@ const getFolders = async (userId, query = {}) => {
   const limit = parseInt(query.limit, 10) || 50;
   const skip = (page - 1) * limit;
 
+  const sortField = query.sortBy || 'updatedAt';
+  const sortDirection = query.sortOrder === 'asc' ? 1 : -1;
+
   const [folders, total] = await Promise.all([
     Folder.find(filter)
-      .sort({ createdAt: -1 })
+      .sort({ [sortField]: sortDirection })
       .skip(skip)
       .limit(limit)
       .lean(),
     Folder.countDocuments(filter)
   ]);
 
+  // Đếm nhanh số file trong các thư mục trả về
+  const foldersWithCount = await Promise.all(
+    folders.map(async (folder) => {
+      const fileCount = await File.countDocuments({ folder: folder._id, isTrash: false });
+      return {
+        ...folder,
+        fileCount
+      };
+    })
+  );
+
   return {
-    folders,
+    folders: foldersWithCount,
     pagination: {
       total,
       page,
@@ -471,6 +490,136 @@ const getFolderFiles = async (userId, folderId, query = {}) => {
   };
 };
 
+/**
+ * 9. Lấy danh sách thư mục trong thùng rác
+ */
+const getTrashFolders = async (userId) => {
+  const folders = await Folder.find({
+    user: userId,
+    isTrash: true
+  })
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  const trashedIds = new Set(folders.map((f) => f._id.toString()));
+  // Chỉ lấy các thư mục gốc của cụm bị xóa (cha của nó không nằm trong thùng rác)
+  const topLevelTrashFolders = folders.filter((f) => {
+    if (!f.parent) return true;
+    return !trashedIds.has(f.parent.toString());
+  });
+
+  return topLevelTrashFolders;
+};
+
+/**
+ * 10. Khôi phục thư mục từ thùng rác (đệ quy)
+ */
+const restoreFolder = async (userId, folderId) => {
+  if (!mongoose.Types.ObjectId.isValid(folderId)) {
+    throw new ApiError(400, 'ID thư mục không hợp lệ');
+  }
+
+  const folder = await Folder.findOne({ _id: folderId, user: userId, isTrash: true });
+  if (!folder) {
+    throw new ApiError(404, 'Không tìm thấy thư mục trong thùng rác');
+  }
+
+  // Nếu thư mục cha vẫn đang nằm trong thùng rác hoặc không tồn tại, đưa thư mục này về Root
+  if (folder.parent) {
+    const parentStillValid = await Folder.findOne({
+      _id: folder.parent,
+      user: userId,
+      isTrash: false
+    });
+    if (!parentStillValid) {
+      folder.parent = null;
+      folder.path = `/${folder._id}/`;
+      await folder.save();
+    }
+  }
+
+  // Tìm tất cả các thư mục con cháu có path bắt đầu bằng path của folder này
+  const descendants = await Folder.find({
+    user: userId,
+    path: { $regex: `^${folder.path}` }
+  }).select('_id');
+
+  const allFolderIds = descendants.map((f) => f._id);
+  if (!allFolderIds.some((id) => id.toString() === folder._id.toString())) {
+    allFolderIds.push(folder._id);
+  }
+
+  // Khôi phục tất cả folder và file con
+  await Promise.all([
+    Folder.updateMany({ user: userId, _id: { $in: allFolderIds } }, { isTrash: false }),
+    File.updateMany({ user: userId, folder: { $in: allFolderIds } }, { isTrash: false })
+  ]);
+
+  return {
+    message: 'Khôi phục thư mục thành công',
+    restoredFoldersCount: allFolderIds.length
+  };
+};
+
+/**
+ * 11. Đảm bảo cấu trúc đường dẫn thư mục phân cấp tồn tại (cho upload thư mục)
+ */
+const ensureFolderPath = async (userId, baseFolderId, relativeDirPath) => {
+  if (!relativeDirPath || typeof relativeDirPath !== 'string' || relativeDirPath.trim() === '') {
+    return baseFolderId && baseFolderId !== 'root' ? baseFolderId : null;
+  }
+
+  const parts = relativeDirPath.split('/').map((p) => p.trim()).filter(Boolean);
+  let currentParentId =
+    baseFolderId && baseFolderId !== 'root' && mongoose.Types.ObjectId.isValid(baseFolderId)
+      ? baseFolderId
+      : null;
+
+  for (const part of parts) {
+    let existing = await Folder.findOne({
+      user: userId,
+      parent: currentParentId,
+      name: part,
+      isTrash: false
+    });
+
+    if (!existing) {
+      existing = await createFolder(userId, {
+        name: part,
+        parentId: currentParentId
+      });
+    }
+
+    currentParentId = existing._id;
+  }
+
+  return currentParentId;
+};
+
+/**
+ * 12. Ghim / Bỏ ghim thư mục
+ */
+const togglePinFolder = async (userId, folderId) => {
+  if (!mongoose.Types.ObjectId.isValid(folderId)) {
+    throw new ApiError(400, 'ID thư mục không hợp lệ');
+  }
+
+  const folder = await Folder.findOne({
+    _id: folderId,
+    user: userId,
+    isTrash: false
+  });
+
+  if (!folder) {
+    throw new ApiError(404, 'Thư mục không tồn tại');
+  }
+
+  folder.isPinned = !folder.isPinned;
+  await folder.save();
+
+  return folder;
+};
+
 module.exports = {
   createFolder,
   getFolders,
@@ -479,5 +628,9 @@ module.exports = {
   moveFolder,
   deleteFolder,
   getFolderTree,
-  getFolderFiles
+  getFolderFiles,
+  getTrashFolders,
+  restoreFolder,
+  ensureFolderPath,
+  togglePinFolder
 };

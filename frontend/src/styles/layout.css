@@ -289,11 +289,148 @@
 }
 
 /* Sidebar Folder Tree Widget */
+.app-sidebar.is-collapsed .sidebar-folders-section {
+  display: none;
+}
+
+.sidebar-folders-section {
+  margin-top: 14px;
+}
+
+.sidebar-folders-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px 6px 12px;
+}
+
+.sidebar-folder-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--bg-surface-hover);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.sidebar-folder-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.68rem;
+  padding: 2px 5px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sidebar-folder-tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.sidebar-folder-tab-btn.active {
+  background: var(--bg-surface);
+  color: var(--primary-600);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme='dark'] .sidebar-folder-tab-btn.active {
+  color: var(--primary-400);
+}
+
+.sidebar-folder-tab-btn .tab-badge {
+  font-size: 0.6rem;
+  background: var(--primary-500);
+  color: white;
+  border-radius: 999px;
+  padding: 0 3px;
+  line-height: 1.1;
+  font-weight: 700;
+}
+
 .sidebar-tree-container {
   padding: 0 4px;
-  max-height: 200px;
+  max-height: 220px;
   overflow-y: auto;
 }
+
+.sidebar-folder-mini-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 4px;
+}
+
+.sidebar-folder-mini-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--text-primary);
+}
+
+.sidebar-folder-mini-item:hover {
+  background: var(--bg-surface-hover);
+  transform: translateX(2px);
+}
+
+.sidebar-folder-mini-item.drop-target-active,
+.nav-item.drop-target-active {
+  background: rgba(99, 102, 241, 0.18) !important;
+  color: var(--primary-600) !important;
+  outline: 1.5px dashed var(--primary-500) !important;
+  outline-offset: -1px;
+  transform: translateX(3px) scale(1.02);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22) !important;
+}
+[data-theme='dark'] .sidebar-folder-mini-item.drop-target-active,
+[data-theme='dark'] .nav-item.drop-target-active {
+  background: rgba(99, 102, 241, 0.28) !important;
+  color: var(--primary-300) !important;
+  outline-color: var(--primary-400) !important;
+}
+
+.mini-folder-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.79rem;
+  font-weight: 500;
+}
+
+.mini-folder-pinned-icon {
+  color: var(--accent-amber, #f59e0b);
+  flex-shrink: 0;
+}
+
+.mini-folder-file-count {
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+}
+
+.sidebar-folder-empty-hint {
+  padding: 14px 10px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.35;
+}
+
 
 /* Sidebar Storage Meter */
 .sidebar-footer {

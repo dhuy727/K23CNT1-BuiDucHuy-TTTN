@@ -9,6 +9,7 @@ import { useToast } from '../../contexts/ToastContext';
 
 const MainLayout = () => {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [uploadMode, setUploadMode] = useState('file');
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderColor, setNewFolderColor] = useState('#3b82f6');
@@ -88,7 +89,14 @@ const MainLayout = () => {
         onToggleCollapse={toggleSidebar}
         isMobileOpen={isMobileDrawerOpen}
         onCloseMobile={handleCloseMobileDrawer}
-        onOpenUpload={() => setIsUploadOpen(true)}
+        onOpenUpload={() => {
+          setUploadMode('file');
+          setIsUploadOpen(true);
+        }}
+        onOpenUploadFolder={() => {
+          setUploadMode('folder');
+          setIsUploadOpen(true);
+        }}
         onOpenCreateFolder={() => setIsCreateFolderOpen(true)}
       />
 
@@ -110,6 +118,7 @@ const MainLayout = () => {
         onClose={() => setIsUploadOpen(false)}
         currentFolderId={folderId || null}
         onUploadSuccess={handleUploadSuccess}
+        initialMode={uploadMode}
       />
 
       {/* Create Folder Modal */}

@@ -8,9 +8,11 @@ import EmptyState from '../../components/common/EmptyState';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import InspectorPanel from '../../components/drive/InspectorPanel';
 import fileService from '../../services/fileService';
+import folderService from '../../services/folderService';
 import { useToast } from '../../contexts/ToastContext';
 
 const TrashPage = () => {
+  const [folders, setFolders] = useState([]);
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('drive_view_mode') || 'grid');
@@ -26,8 +28,12 @@ const TrashPage = () => {
   const fetchTrash = async () => {
     setLoading(true);
     try {
-      const res = await fileService.getTrashFiles();
-      setFiles(res.data || []);
+      const [fileRes, folderRes] = await Promise.all([
+        fileService.getTrashFiles(),
+        folderService.getTrashFolders()
+      ]);
+      setFiles(fileRes.data || []);
+      setFolders(folderRes.data || []);
     } catch (err) {
       console.error('Lỗi lấy thùng rác:', err);
       toast.error('Không thể tải danh sách thùng rác');
@@ -49,9 +55,15 @@ const TrashPage = () => {
   }, []);
 
   const handleRestore = async (type, item) => {
+    const isFolderItem = type === 'folder' || (item && item.color !== undefined && !item.mimeType);
     try {
-      await fileService.restoreFile(item._id);
-      toast.success(`Đã khôi phục "${item.name}"`);
+      if (isFolderItem) {
+        await folderService.restoreFolder(item._id);
+        toast.success(`Đã khôi phục thư mục "${item.name}"`);
+      } else {
+        await fileService.restoreFile(item._id);
+        toast.success(`Đã khôi phục tệp "${item.name}"`);
+      }
       if (selectedItem?.data?._id === item._id) setSelectedItem(null);
       fetchTrash();
       window.dispatchEvent(new Event('folder:updated'));
@@ -61,15 +73,22 @@ const TrashPage = () => {
   };
 
   const handlePermanentDelete = async (type, item) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa VĨNH VIỄN "${item.name}"? Thao tác này không thể hoàn tác.`)) {
+    const isFolderItem = type === 'folder' || (item && item.color !== undefined && !item.mimeType);
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa VĨNH VIỄN ${isFolderItem ? 'thư mục' : 'tệp'} "${item.name}"? Thao tác này không thể hoàn tác.`)) {
       return;
     }
 
     try {
-      await fileService.deleteFile(item._id, true);
-      toast.success(`Đã xóa vĩnh viễn "${item.name}"`);
+      if (isFolderItem) {
+        await folderService.deleteFolder(item._id, true);
+        toast.success(`Đã xóa vĩnh viễn thư mục "${item.name}"`);
+      } else {
+        await fileService.deleteFile(item._id, true);
+        toast.success(`Đã xóa vĩnh viễn tệp "${item.name}"`);
+      }
       if (selectedItem?.data?._id === item._id) setSelectedItem(null);
       fetchTrash();
+      window.dispatchEvent(new Event('folder:updated'));
     } catch (err) {
       toast.error('Xóa vĩnh viễn thất bại');
     }
@@ -97,11 +116,11 @@ const TrashPage = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
             <Trash2 size={20} style={{ color: 'var(--accent-rose)' }} />
             <span>Thùng rác</span>
-            <span className="badge badge-rose">{files.length}</span>
+            <span className="badge badge-rose">{folders.length + files.length}</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {files.length > 0 && (
+            {(files.length > 0 || folders.length > 0) && (
               <button
                 className="btn btn-danger"
                 style={{ padding: '5px 12px', fontSize: '0.8rem' }}
@@ -148,7 +167,6 @@ const TrashPage = () => {
         )}
 
         <div
-
           style={{
             padding: '8px 14px',
             backgroundColor: 'var(--bg-surface-hover)',
@@ -162,7 +180,7 @@ const TrashPage = () => {
           }}
         >
           <AlertTriangle size={15} style={{ color: 'var(--accent-amber)', flexShrink: 0 }} />
-          <span>Các tệp trong thùng rác có thể được khôi phục hoặc xóa vĩnh viễn khỏi hệ thống lưu trữ.</span>
+          <span>Các tệp và thư mục trong thùng rác có thể được khôi phục hoặc xóa vĩnh viễn khỏi hệ thống lưu trữ.</span>
         </div>
 
         {loading ? (
@@ -170,7 +188,7 @@ const TrashPage = () => {
             <span className="spinner" style={{ width: 32, height: 32, margin: '0 auto' }} />
             <div style={{ marginTop: '14px', fontSize: '0.835rem' }}>Đang tải danh sách thùng rác...</div>
           </div>
-        ) : files.length === 0 ? (
+        ) : folders.length === 0 && files.length === 0 ? (
           <EmptyState
             icon={Trash2}
             title="Thùng rác trống"
@@ -178,7 +196,7 @@ const TrashPage = () => {
           />
         ) : viewMode === 'grid' ? (
           <FileGrid
-            folders={[]}
+            folders={folders}
             files={files}
             isTrash={true}
             selectedItem={selectedItem}
@@ -188,7 +206,7 @@ const TrashPage = () => {
           />
         ) : (
           <FileTable
-            folders={[]}
+            folders={folders}
             files={files}
             isTrash={true}
             selectedItem={selectedItem}

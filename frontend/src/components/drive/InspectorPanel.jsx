@@ -15,7 +15,9 @@ import {
   Info,
   ExternalLink,
   HardDrive,
-  RotateCcw
+  RotateCcw,
+  Tags,
+  Pin
 } from 'lucide-react';
 import FileIcon from './FileIcon';
 
@@ -34,7 +36,9 @@ const InspectorPanel = ({
   onVersionHistory,
   onDeleteItem,
   onRestoreItem,
-  isTrash = false
+  isTrash = false,
+  onAssignCategory,
+  onTogglePinFolder
 }) => {
   if (!isOpen) return null;
 
@@ -137,6 +141,12 @@ const InspectorPanel = ({
                     </span>
                   </div>
                 )}
+                <div className="inspector-meta-row">
+                  <span className="inspector-meta-key">Lối tắt:</span>
+                  <span className="inspector-meta-val" style={{ color: item.isPinned ? 'var(--accent-amber, #f59e0b)' : 'inherit', fontWeight: item.isPinned ? 600 : 400 }}>
+                    {item.isPinned ? '📌 Đã ghim' : 'Chưa ghim'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -151,6 +161,21 @@ const InspectorPanel = ({
                     >
                       <ExternalLink size={15} />
                       <span>Mở thư mục</span>
+                    </button>
+                  )}
+                  {onTogglePinFolder && (
+                    <button
+                      className="inspector-action-btn"
+                      onClick={() => onTogglePinFolder(item._id)}
+                    >
+                      <Pin
+                        size={15}
+                        style={{
+                          color: item.isPinned ? 'var(--accent-amber, #f59e0b)' : 'inherit',
+                          fill: item.isPinned ? 'var(--accent-amber, #f59e0b)' : 'none'
+                        }}
+                      />
+                      <span>{item.isPinned ? 'Bỏ ghim thư mục' : 'Ghim lên lối tắt'}</span>
                     </button>
                   )}
                   {onShareItem && (
@@ -241,32 +266,66 @@ const InspectorPanel = ({
               </div>
             </div>
 
-            {/* AI Classification Block */}
-            {item.aiCategory && item.aiCategory !== 'Chưa phân loại' && (
-              <div className="inspector-ai-block">
-                <div className="inspector-ai-title">
+            {/* Category & AI Classification Block */}
+            <div className="inspector-ai-block">
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <div className="inspector-ai-title" style={{ marginBottom: 0 }}>
                   <Sparkles size={14} />
-                  <span>Phân loại thông minh</span>
+                  <span>Danh mục & Phân loại</span>
                 </div>
-                <div style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  {item.aiCategory}
-                </div>
-                {item.aiSummary && (
-                  <div className="inspector-ai-summary">
-                    {item.aiSummary}
-                  </div>
-                )}
-                {item.aiTags && item.aiTags.length > 0 && (
-                  <div className="inspector-tags-wrap">
-                    {item.aiTags.map((tag, idx) => (
-                      <span key={idx} className="inspector-tag">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
+                {onAssignCategory && !isTrash && (
+                  <button
+                    type="button"
+                    onClick={() => onAssignCategory(item)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--primary-color)',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      padding: '2px 4px'
+                    }}
+                    title="Đổi hoặc gán danh mục"
+                  >
+                    <Tags size={12} />
+                    <span>Đổi</span>
+                  </button>
                 )}
               </div>
-            )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span
+                  style={{
+                    display: 'inline-block',
+                    padding: '3px 9px',
+                    borderRadius: '999px',
+                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                    color: 'var(--primary-color)',
+                    fontSize: '0.8rem',
+                    fontWeight: 600
+                  }}
+                >
+                  {item.aiCategory || 'Chưa phân loại'}
+                </span>
+              </div>
+              {item.aiSummary && (
+                <div className="inspector-ai-summary" style={{ marginTop: '8px' }}>
+                  {item.aiSummary}
+                </div>
+              )}
+              {item.aiTags && item.aiTags.length > 0 && (
+                <div className="inspector-tags-wrap" style={{ marginTop: '8px' }}>
+                  {item.aiTags.map((tag, idx) => (
+                    <span key={idx} className="inspector-tag">
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
 
             {/* File Metadata */}
             <div>
@@ -379,6 +438,15 @@ const InspectorPanel = ({
                     >
                       <History size={15} />
                       <span>Lịch sử phiên bản</span>
+                    </button>
+                  )}
+                  {onAssignCategory && (
+                    <button
+                      className="inspector-action-btn"
+                      onClick={() => onAssignCategory(item)}
+                    >
+                      <Tags size={15} />
+                      <span>Phân loại danh mục</span>
                     </button>
                   )}
                   {onDeleteItem && (

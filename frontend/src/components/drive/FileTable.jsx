@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Folder,
+  FolderOpen,
   Star,
   Download,
   Share2,
@@ -16,7 +17,8 @@ import {
   RefreshCw,
   Clock,
   XCircle,
-  RotateCcw
+  RotateCcw,
+  Pin
 } from 'lucide-react';
 import FileIcon from './FileIcon';
 
@@ -117,13 +119,22 @@ const FolderRow = ({
   onMoveItem,
   onDeleteItem,
   isTrash,
-  onRestoreItem
+  onRestoreItem,
+  onDirectDrop,
+  onTogglePinFolder
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isDropTarget, setIsDropTarget] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const buttonRef = useRef(null);
 
   const menuItems = [
     onOpenFolder && { icon: <Folder size={14} />, label: 'Mở thư mục', onClick: () => onOpenFolder(folder._id) },
+    onTogglePinFolder && {
+      icon: <Pin size={14} style={{ color: folder.isPinned ? '#f59e0b' : 'inherit' }} />,
+      label: folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục',
+      onClick: () => onTogglePinFolder(folder._id)
+    },
     onShareItem && { icon: <Share2 size={14} />, label: 'Chia sẻ', onClick: () => onShareItem('folder', folder) },
     onRenameItem && { icon: <Edit2 size={14} />, label: 'Đổi tên', onClick: () => onRenameItem('folder', folder) },
     onMoveItem && { icon: <FolderInput size={14} />, label: 'Di chuyển', onClick: () => onMoveItem('folder', folder) },
@@ -131,23 +142,91 @@ const FolderRow = ({
     onDeleteItem && { icon: <Trash2 size={14} />, label: 'Xóa vào thùng rác', danger: true, onClick: () => onDeleteItem('folder', folder) }
   ].filter(Boolean);
 
+  const handleDragStart = (e) => {
+    if (isTrash) return;
+    setIsDragging(true);
+    e.dataTransfer.setData('application/json', JSON.stringify({
+      type: 'folder',
+      id: folder._id,
+      name: folder.name
+    }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e) => {
+    if (isTrash) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setIsDropTarget(true);
+  };
+
+  const handleDragLeave = (e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDropTarget(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDropTarget(false);
+    if (isTrash) return;
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      if (!raw) return;
+      const item = JSON.parse(raw);
+      if (item && item.id !== folder._id && onDirectDrop) {
+        onDirectDrop(item, folder);
+      }
+    } catch (err) {
+      console.error('Lỗi drop:', err);
+    }
+  };
+
   return (
     <tr
-      className={`${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
+      className={`folder-row ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDropTarget ? 'drop-target-active' : ''} ${isDragging ? 'is-dragging' : ''}`}
+      draggable={!isTrash}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       onClick={() => onSelectItem && onSelectItem({ type: 'folder', data: folder })}
       onDoubleClick={() => onOpenFolder && onOpenFolder(folder._id)}
     >
       <td className="col-name">
         <div className="table-name-cell">
-          <Folder
-            size={18}
-            style={{
-              color: folder.color || 'var(--primary-600)',
-              fill: folder.color ? `${folder.color}33` : 'var(--primary-200)',
-              flexShrink: 0
-            }}
-          />
+          {isDropTarget ? (
+            <FolderOpen
+              size={18}
+              style={{
+                color: 'var(--primary-600)',
+                fill: 'var(--primary-200)',
+                flexShrink: 0
+              }}
+            />
+          ) : (
+            <Folder
+              size={18}
+              style={{
+                color: folder.color || 'var(--primary-600)',
+                fill: folder.color ? `${folder.color}33` : 'var(--primary-200)',
+                flexShrink: 0
+              }}
+            />
+          )}
           <span title={folder.name}>{folder.name}</span>
+          {folder.isPinned && (
+            <Pin
+              size={12}
+              style={{ color: 'var(--accent-amber, #f59e0b)', fill: 'var(--accent-amber, #f59e0b)', flexShrink: 0 }}
+              title="Thư mục đã ghim"
+            />
+          )}
         </div>
       </td>
       <td className="col-ai">
@@ -164,6 +243,24 @@ const FolderRow = ({
           {!isTrash ? (
             <>
               <div className="table-row-hover-actions">
+                {onTogglePinFolder && (
+                  <button
+                    className={`btn-icon home-quick-btn ${folder.isPinned ? 'is-pinned' : ''}`}
+                    title={folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTogglePinFolder(folder._id);
+                    }}
+                  >
+                    <Pin
+                      size={14}
+                      style={{
+                        color: folder.isPinned ? '#f59e0b' : 'inherit',
+                        fill: folder.isPinned ? '#f59e0b' : 'none'
+                      }}
+                    />
+                  </button>
+                )}
                 {onShareItem && (
                   <button
                     className="btn-icon home-quick-btn"
@@ -253,6 +350,7 @@ const FileRow = ({
   onRetryAi
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const buttonRef = useRef(null);
 
   const menuItems = [
@@ -277,10 +375,28 @@ const FileRow = ({
     onDeleteItem && { icon: <Trash2 size={14} />, label: 'Xóa vào thùng rác', danger: true, onClick: () => onDeleteItem('file', file) }
   ].filter(Boolean);
 
+  const handleDragStart = (e) => {
+    if (isTrash) return;
+    setIsDragging(true);
+    e.dataTransfer.setData('application/json', JSON.stringify({
+      type: 'file',
+      id: file._id,
+      name: file.name
+    }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+  };
+
   return (
     <tr
       data-file-id={file._id}
-      className={`${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
+      className={`${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDragging ? 'is-dragging' : ''}`}
+      draggable={!isTrash}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       onClick={() => onSelectItem && onSelectItem({ type: 'file', data: file })}
       onDoubleClick={() => onPreviewFile && onPreviewFile(file)}
     >
@@ -471,7 +587,9 @@ const FileTable = ({
   onDeleteItem,
   isTrash = false,
   onRestoreItem,
-  onRetryAi
+  onRetryAi,
+  onDirectDrop,
+  onTogglePinFolder
 }) => {
   const formatSize = (bytes) => {
     if (!bytes && bytes !== 0) return '-';
@@ -508,6 +626,8 @@ const FileTable = ({
               onDeleteItem={onDeleteItem}
               isTrash={isTrash}
               onRestoreItem={onRestoreItem}
+              onDirectDrop={onDirectDrop}
+              onTogglePinFolder={onTogglePinFolder}
             />
           ))}
 

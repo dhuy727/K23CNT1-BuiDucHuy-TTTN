@@ -6,6 +6,9 @@ const AI_CATEGORIES = [
   'CV',
   'Biên bản',
   'Tài liệu kỹ thuật',
+  'Hình ảnh',
+  'Video',
+  'Âm thanh',
   'Khác'
 ];
 
