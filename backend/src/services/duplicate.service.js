@@ -110,14 +110,26 @@ const backfillContentHashes = async (userId) => {
  * Lấy trạng thái phiên quét hoặc kết quả đã lưu trong database
  */
 const getScanStatus = async (userId, folderScope = null) => {
-  const query = { user: userId };
-  if (folderScope && mongoose.Types.ObjectId.isValid(folderScope)) {
-    query.folderScope = folderScope;
+  let scopeId = null;
+  if (folderScope && folderScope !== 'root' && folderScope !== 'null' && folderScope !== '') {
+    if (mongoose.Types.ObjectId.isValid(folderScope)) {
+      scopeId = folderScope;
+    }
   }
 
+  const query = { user: userId, folderScope: scopeId };
+
   const scan = await DuplicateScan.findOne(query)
-    .populate('clusters.originalFile', '_id name size mimeType extension folder createdAt updatedAt isStarred aiCategory aiSummary')
-    .populate('clusters.duplicateFiles.file', '_id name size mimeType extension folder createdAt updatedAt isStarred aiCategory aiSummary')
+    .populate({
+      path: 'clusters.originalFile',
+      select: '_id name size mimeType extension folder createdAt updatedAt isStarred aiCategory aiSummary',
+      populate: { path: 'folder', select: '_id name color' }
+    })
+    .populate({
+      path: 'clusters.duplicateFiles.file',
+      select: '_id name size mimeType extension folder createdAt updatedAt isStarred aiCategory aiSummary',
+      populate: { path: 'folder', select: '_id name color' }
+    })
     .populate('folderScope', '_id name')
     .lean();
 
@@ -174,7 +186,7 @@ const getScanStatus = async (userId, folderScope = null) => {
  */
 const startScan = async (userId, folderScope = null) => {
   let scopeId = null;
-  if (folderScope && folderScope !== 'root' && folderScope !== 'null') {
+  if (folderScope && folderScope !== 'root' && folderScope !== 'null' && folderScope !== '') {
     if (mongoose.Types.ObjectId.isValid(folderScope)) {
       scopeId = folderScope;
     }
@@ -205,7 +217,24 @@ const startScan = async (userId, folderScope = null) => {
       isTrash: false
     };
     if (scopeId) {
-      baseFilter.folder = scopeId;
+      const scopeFolder = await Folder.findOne({ _id: scopeId, user: userId, isTrash: false });
+      if (scopeFolder) {
+        const descendants = await Folder.find({
+          user: userId,
+          $or: [
+            { path: { $regex: scopeFolder._id.toString() } },
+            { parent: scopeFolder._id }
+          ],
+          isTrash: false
+        }).select('_id');
+        const folderIdSet = new Set([
+          scopeFolder._id.toString(),
+          ...descendants.map((d) => d._id.toString())
+        ]);
+        baseFilter.folder = { $in: Array.from(folderIdSet) };
+      } else {
+        baseFilter.folder = scopeId;
+      }
     }
 
     const allFiles = await File.find(baseFilter)
@@ -377,8 +406,32 @@ const getLargeFiles = async (userId, options = {}) => {
     size: { $gte: minBytes, $lte: maxBytes }
   };
 
-  if (options.folderScope && mongoose.Types.ObjectId.isValid(options.folderScope)) {
-    filter.folder = options.folderScope;
+  let scopeId = null;
+  if (options.folderScope && options.folderScope !== 'root' && options.folderScope !== 'null' && options.folderScope !== '') {
+    if (mongoose.Types.ObjectId.isValid(options.folderScope)) {
+      scopeId = options.folderScope;
+    }
+  }
+
+  if (scopeId) {
+    const scopeFolder = await Folder.findOne({ _id: scopeId, user: userId, isTrash: false });
+    if (scopeFolder) {
+      const descendants = await Folder.find({
+        user: userId,
+        $or: [
+          { path: { $regex: scopeFolder._id.toString() } },
+          { parent: scopeFolder._id }
+        ],
+        isTrash: false
+      }).select('_id');
+      const folderIdSet = new Set([
+        scopeFolder._id.toString(),
+        ...descendants.map((d) => d._id.toString())
+      ]);
+      filter.folder = { $in: Array.from(folderIdSet) };
+    } else {
+      filter.folder = scopeId;
+    }
   }
 
   const files = await File.find(filter)

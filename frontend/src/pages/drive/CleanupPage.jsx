@@ -47,6 +47,16 @@ const CleanupPage = () => {
 
   useEffect(() => {
     loadFolders();
+    const handleDriveRefresh = () => {
+      loadFolders();
+    };
+    window.addEventListener('drive:refresh', handleDriveRefresh);
+    return () => {
+      window.removeEventListener('drive:refresh', handleDriveRefresh);
+    };
+  }, []);
+
+  useEffect(() => {
     loadScanStatus();
   }, [scopeFolderId]);
 
@@ -63,10 +73,58 @@ const CleanupPage = () => {
 
   const loadFolders = async () => {
     try {
-      const res = await folderService.getFolders();
-      setFolders(res.data?.folders || []);
+      const res = await folderService.getFolderTree();
+      const rawTree = Array.isArray(res?.data)
+        ? res.data
+        : (Array.isArray(res) ? res : []);
+
+      if (rawTree.length > 0) {
+        const flatten = (nodes, depth = 0) => {
+          let list = [];
+          for (const node of nodes) {
+            const indent = depth > 0 ? `${'\u00A0'.repeat(depth * 3)}└── ` : '';
+            list.push({
+              _id: node._id,
+              name: node.name,
+              displayName: `${indent}📁 ${node.name}`
+            });
+            if (node.children && node.children.length > 0) {
+              list = list.concat(flatten(node.children, depth + 1));
+            }
+          }
+          return list;
+        };
+        setFolders(flatten(rawTree));
+      } else {
+        const flatRes = await folderService.getFolders({ limit: 1000 });
+        const rawList = Array.isArray(flatRes?.data)
+          ? flatRes.data
+          : (Array.isArray(flatRes) ? flatRes : (flatRes?.data?.folders || []));
+        setFolders(
+          rawList.map((f) => ({
+            _id: f._id,
+            name: f.name,
+            displayName: `📁 ${f.name}`
+          }))
+        );
+      }
     } catch (err) {
-      console.error('Không thể lấy danh sách thư mục:', err);
+      console.error('Không thể lấy danh sách cây thư mục, thử fallback getFolders:', err);
+      try {
+        const flatRes = await folderService.getFolders({ limit: 1000 });
+        const rawList = Array.isArray(flatRes?.data)
+          ? flatRes.data
+          : (Array.isArray(flatRes) ? flatRes : (flatRes?.data?.folders || []));
+        setFolders(
+          rawList.map((f) => ({
+            _id: f._id,
+            name: f.name,
+            displayName: `📁 ${f.name}`
+          }))
+        );
+      } catch (fallbackErr) {
+        console.error('Không thể lấy danh sách thư mục:', fallbackErr);
+      }
     }
   };
 
@@ -312,10 +370,10 @@ const CleanupPage = () => {
               onChange={(e) => setScopeFolderId(e.target.value)}
               disabled={isScanning}
             >
-              <option value="">Phạm vi: Toàn bộ Drive</option>
+              <option value="">📁 Phạm vi: Toàn bộ Drive</option>
               {folders.map((f) => (
                 <option key={f._id} value={f._id}>
-                  Thư mục: {f.name}
+                  {f.displayName || `📁 ${f.name}`}
                 </option>
               ))}
             </select>

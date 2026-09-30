@@ -22,7 +22,7 @@ router.post('/start-scan', duplicateController.startScan);
 
 /**
  * @route   GET /api/duplicates/large-files
- * @desc    Lấy danh sách các tệp tin dung lượng lớn (< 500MB hoặc theo ngưỡng)
+ * @desc    Lấy danh sách các tệp tin dung lượng lớn
  * @access  Private
  */
 router.get('/large-files', duplicateController.getLargeFiles);

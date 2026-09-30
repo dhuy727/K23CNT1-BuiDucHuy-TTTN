@@ -32,7 +32,7 @@ const startScan = async (req, res, next) => {
 };
 
 /**
- * Lấy danh sách tệp tin dung lượng lớn (< 500MB hoặc theo ngưỡng)
+ * Lấy danh sách tệp tin dung lượng lớn
  */
 const getLargeFiles = async (req, res, next) => {
   try {

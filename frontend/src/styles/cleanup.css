@@ -107,6 +107,12 @@
   border-color: var(--border-focus);
 }
 
+.cleanup-select-scope option {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  padding: 6px 10px;
+}
+
 .btn-scan-trigger {
   display: inline-flex;
   align-items: center;
