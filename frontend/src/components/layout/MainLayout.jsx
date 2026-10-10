@@ -6,6 +6,7 @@ import UploadModal from '../drive/UploadModal';
 import Modal from '../common/Modal';
 import folderService from '../../services/folderService';
 import { useToast } from '../../contexts/ToastContext';
+import AiCopilotDrawer from '../rag/AiCopilotDrawer';
 
 const MainLayout = () => {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -23,6 +24,43 @@ const MainLayout = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
+
+  // State quản lý Trợ lý AI SmartDocs Copilot
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [copilotScope, setCopilotScope] = useState({
+    type: 'all',
+    targetId: null,
+    name: 'Toàn bộ Drive'
+  });
+
+  // Lắng nghe sự kiện mở Copilot toàn cục và phím tắt Ctrl + J
+  useEffect(() => {
+    const handleOpenCopilot = (e) => {
+      if (e.detail?.scope) {
+        setCopilotScope(e.detail.scope);
+      } else if (folderId) {
+        setCopilotScope({ type: 'folder', targetId: folderId, name: 'Thư mục hiện tại' });
+      } else {
+        setCopilotScope({ type: 'all', targetId: null, name: 'Toàn bộ Drive' });
+      }
+      setIsCopilotOpen(true);
+    };
+
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setIsCopilotOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('open-rag-drawer', handleOpenCopilot);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('open-rag-drawer', handleOpenCopilot);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [folderId]);
 
   // Tự động đóng menu drawer trên mobile khi chuyển trang
   useEffect(() => {
@@ -182,6 +220,13 @@ const MainLayout = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Global AI Copilot Slide-over Drawer */}
+      <AiCopilotDrawer
+        isOpen={isCopilotOpen}
+        onClose={() => setIsCopilotOpen(false)}
+        initialScope={copilotScope}
+      />
     </div>
   );
 };

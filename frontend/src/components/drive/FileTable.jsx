@@ -366,6 +366,23 @@ const FileRow = ({
     onMoveItem && { icon: <FolderInput size={14} />, label: 'Di chuyển', onClick: () => onMoveItem('file', file) },
     onCopyItem && { icon: <Copy size={14} />, label: 'Sao chép vào', onClick: () => onCopyItem('file', file) },
     onVersionHistory && { icon: <History size={14} />, label: 'Lịch sử phiên bản', onClick: () => onVersionHistory(file) },
+    !isTrash && {
+      icon: <Sparkles size={14} style={{ color: 'var(--primary-500)' }} />,
+      label: 'Hỏi AI về tệp này',
+      onClick: () => {
+        window.dispatchEvent(
+          new CustomEvent('open-rag-drawer', {
+            detail: {
+              scope: {
+                type: 'file',
+                targetId: file._id,
+                name: file.name
+              }
+            }
+          })
+        );
+      }
+    },
     onRetryAi && (file.aiStatus === 'failed' || file.aiStatus === 'skipped') && {
       icon: <RefreshCw size={14} />,
       label: 'Phân tích lại AI',

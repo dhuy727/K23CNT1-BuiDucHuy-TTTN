@@ -117,6 +117,14 @@ const processFile = async (fileId) => {
       console.error('[AI] Lỗi khi kích hoạt automation hook sau AI_COMPLETED:', automationErr.message);
     }
 
+    // Tự động đưa tệp tin vào hàng đợi lập chỉ mục RAG
+    try {
+      const { enqueueRagIndexing } = require('./rag-indexing.service');
+      enqueueRagIndexing(file._id);
+    } catch (ragErr) {
+      console.error('[AI] Lỗi kích hoạt hàng đợi RAG indexing:', ragErr.message);
+    }
+
     return file;
   } catch (error) {
     console.error(`[AI] Lỗi khi xử lý file ${file.name} (${file._id}):`, error.message);

@@ -12,6 +12,7 @@ import './styles/modals.css';
 import './styles/auth.css';
 import './styles/activity.css';
 import './styles/analytics.css';
+import './styles/rag.css';
 
 function App() {
   return (

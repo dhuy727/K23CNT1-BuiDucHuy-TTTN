@@ -13,7 +13,8 @@ import {
   PanelRight,
   PanelLeft,
   Menu,
-  Clock
+  Clock,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import searchService from '../../services/searchService';
@@ -178,6 +179,18 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => 
 
       {/* Header Actions */}
       <div className="header-actions">
+        {/* Nút Trợ lý AI Copilot */}
+        <button
+          type="button"
+          className="header-copilot-btn"
+          onClick={() => window.dispatchEvent(new CustomEvent('open-rag-drawer'))}
+          title="Mở Trợ lý AI SmartDocs (Ctrl + J)"
+        >
+          <Sparkles size={14} />
+          <span>Hỏi AI</span>
+          <kbd>Ctrl+J</kbd>
+        </button>
+
         {/* Notification Dropdown Menu */}
         <NotificationDropdown />
 

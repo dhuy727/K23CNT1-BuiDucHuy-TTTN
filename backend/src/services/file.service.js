@@ -566,7 +566,7 @@ const copyFile = async (userId, fileId, targetFolderId = undefined) => {
     ? await normalizeAndValidateFolder(userId, targetFolderId)
     : originalFile.folder;
 
-  // Bản sao lưu trữ (hỗ trợ cả MinIO và local)
+  // Bản sao lưu trữ 
   const copyStorage = await storageService.copyFile(originalFile, originalFile.name);
 
   // Tạo tên hiển thị cho bản sao (ví dụ: Bản sao của abc.pdf hoặc abc (Copy).pdf)
@@ -623,6 +623,11 @@ const deleteFile = async (userId, fileId, permanent = false) => {
   }
 
   if (permanent) {
+    try {
+      require('./rag-indexing.service').deleteFileChunks(fileId);
+    } catch (ragCleanErr) {
+      console.warn('[RAG Clean] Lỗi xóa chunks của file:', ragCleanErr.message);
+    }
     await storageService.deleteFile(file);
     await File.deleteOne({ _id: fileId, user: userId });
 
@@ -729,8 +734,13 @@ const restoreFile = async (userId, fileId) => {
 const emptyTrash = async (userId) => {
   const trashFiles = await File.find({ user: userId, isTrash: true });
 
-  // Xóa các file vật lý trên hệ thống lưu trữ (MinIO hoặc Local)
+  // Xóa các file vật lý và vector chunks
   for (const file of trashFiles) {
+    try {
+      require('./rag-indexing.service').deleteFileChunks(file._id);
+    } catch (ragCleanErr) {
+      // bỏ qua lỗi xóa chunks
+    }
     await storageService.deleteFile(file);
   }
 

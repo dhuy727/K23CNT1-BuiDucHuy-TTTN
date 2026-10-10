@@ -158,13 +158,12 @@ const UsersPage = () => {
                     <td>{u.phone || '-'}</td>
                     <td>
                       <span
-                        className={`badge ${
-                          u.role === 'admin'
+                        className={`badge ${u.role === 'admin'
                             ? 'badge-rose'
                             : u.role === 'manager'
-                            ? 'badge-amber'
-                            : 'badge-blue'
-                        }`}
+                              ? 'badge-amber'
+                              : 'badge-blue'
+                          }`}
                       >
                         {u.role ? u.role.toUpperCase() : 'USER'}
                       </span>
@@ -243,7 +242,6 @@ const UsersPage = () => {
               onChange={(e) => setEditRole(e.target.value)}
             >
               <option value="user">User (Người dùng thông thường)</option>
-              <option value="manager">Manager (Quản lý)</option>
               <option value="admin">Admin (Quản trị viên tối cao)</option>
             </select>
           </div>

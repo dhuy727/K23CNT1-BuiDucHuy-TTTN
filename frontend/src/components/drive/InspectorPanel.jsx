@@ -20,6 +20,7 @@ import {
   Pin
 } from 'lucide-react';
 import FileIcon from './FileIcon';
+import RagStatusBadge from '../rag/RagStatusBadge';
 
 const InspectorPanel = ({
   isOpen = true,
@@ -296,7 +297,7 @@ const InspectorPanel = ({
                   </button>
                 )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                 <span
                   style={{
                     display: 'inline-block',
@@ -310,7 +311,48 @@ const InspectorPanel = ({
                 >
                   {item.aiCategory || 'Chưa phân loại'}
                 </span>
+                <RagStatusBadge file={item} />
               </div>
+
+              {/* Nút hành động nhanh: Chat với tệp này */}
+              {!isTrash && (
+                <button
+                  type="button"
+                  style={{
+                    width: '100%',
+                    marginTop: 8,
+                    padding: '6px 10px',
+                    borderRadius: 8,
+                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(236, 72, 153, 0.08) 100%)',
+                    border: '1px solid rgba(139, 92, 246, 0.25)',
+                    color: 'var(--primary-600)',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6
+                  }}
+                  onClick={() => {
+                    window.dispatchEvent(
+                      new CustomEvent('open-rag-drawer', {
+                        detail: {
+                          scope: {
+                            type: 'file',
+                            targetId: item._id,
+                            name: item.name
+                          }
+                        }
+                      })
+                    );
+                  }}
+                  title="Hỏi AI về nội dung tệp tin này"
+                >
+                  <Sparkles size={13} />
+                  <span>Hỏi AI về tệp tin này</span>
+                </button>
+              )}
               {item.aiSummary && (
                 <div className="inspector-ai-summary" style={{ marginTop: '8px' }}>
                   {item.aiSummary}

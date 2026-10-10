@@ -12,6 +12,7 @@ const duplicateRoutes = require('./duplicate.routes');
 const activityRoutes = require('./activity.routes');
 const analyticsRoutes = require('./analytics.routes');
 const categoryRoutes = require('./category.routes');
+const ragRoutes = require('./rag.routes');
 
 // Health check endpoint
 router.get('/health', (req, res) => {
@@ -35,6 +36,7 @@ router.use('/duplicates', duplicateRoutes);
 router.use('/activities', activityRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/categories', categoryRoutes);
+router.use('/rag', ragRoutes);
 
 module.exports = router;
 

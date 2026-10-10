@@ -10,7 +10,7 @@
     "start:all": "npm run build --prefix ../frontend && node server.js",
     "dev:all": "npm run build --prefix ../frontend && nodemon server.js",
     "test:api": "node test-api.js",
-    "migrate:s3": "node scripts/migrate-to-s3.js"
+    "rag:index-all": "node scripts/index-all-rag.js"
   },
   "keywords": [
     "nodejs",

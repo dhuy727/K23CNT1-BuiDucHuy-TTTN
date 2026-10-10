@@ -18,12 +18,14 @@ import {
   CheckCircle2,
   XCircle,
   Brain,
-  ExternalLink
+  ExternalLink,
+  MessageSquare
 } from 'lucide-react';
 import fileService from '../../services/fileService';
 import aiService from '../../services/aiService';
 import FileIcon from './FileIcon';
 import DocxViewer from './DocxViewer';
+import DocChatTab from '../rag/DocChatTab';
 
 const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) => {
   const [currentFile, setCurrentFile] = useState(file);
@@ -35,6 +37,7 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [showAiPanel, setShowAiPanel] = useState(true);
+  const [aiSubTab, setAiSubTab] = useState('info'); // 'info' | 'chat'
   const [actionLoading, setActionLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -541,17 +544,74 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
           {/* Cột phải: Sidebar AI phân tích tài liệu */}
           {showAiPanel && (
             <aside className="preview-ai-sidebar">
-              <div className="preview-ai-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Brain size={18} className="text-primary" />
-                  <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>
-                    Phân tích thông minh AI
-                  </span>
+              <div className="preview-ai-header" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Brain size={18} className="text-primary" />
+                    <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>
+                      Trợ lý AI SmartDocs
+                    </span>
+                  </div>
+                  {renderStatusBadge()}
                 </div>
-                {renderStatusBadge()}
+
+                {/* Segmented Switcher giữa Thông tin AI và Hỏi đáp RAG */}
+                <div style={{ display: 'flex', gap: 4, background: 'var(--bg-app)', padding: 3, borderRadius: 8 }}>
+                  <button
+                    type="button"
+                    style={{
+                      flex: 1,
+                      padding: '5px 8px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      borderRadius: 6,
+                      border: 'none',
+                      background: aiSubTab === 'info' ? 'var(--bg-surface)' : 'transparent',
+                      color: aiSubTab === 'info' ? 'var(--primary-600)' : 'var(--text-muted)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 5,
+                      boxShadow: aiSubTab === 'info' ? 'var(--shadow-xs)' : 'none'
+                    }}
+                    onClick={() => setAiSubTab('info')}
+                  >
+                    <Brain size={13} />
+                    <span>Tổng quan</span>
+                  </button>
+                  <button
+                    type="button"
+                    style={{
+                      flex: 1,
+                      padding: '5px 8px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      borderRadius: 6,
+                      border: 'none',
+                      background: aiSubTab === 'chat' ? 'var(--bg-surface)' : 'transparent',
+                      color: aiSubTab === 'chat' ? 'var(--primary-600)' : 'var(--text-muted)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 5,
+                      boxShadow: aiSubTab === 'chat' ? 'var(--shadow-xs)' : 'none'
+                    }}
+                    onClick={() => setAiSubTab('chat')}
+                  >
+                    <MessageSquare size={13} />
+                    <span>Hỏi đáp RAG</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="preview-ai-content">
+              {aiSubTab === 'chat' ? (
+                <div style={{ padding: '0 16px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <DocChatTab file={currentFile} />
+                </div>
+              ) : (
+                <div className="preview-ai-content">
                 {/* Trạng thái đang xử lý */}
                 {(currentFile.aiStatus === 'processing' || currentFile.aiStatus === 'pending') && (
                   <div className="ai-processing-state">
@@ -700,6 +760,7 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
                   </button>
                 </div>
               </div>
+              )}
             </aside>
           )}
         </div>
