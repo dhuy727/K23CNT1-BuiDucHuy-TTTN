@@ -72,7 +72,7 @@ const keepExtension = (suggestedName, originalName) => {
 };
 
 const buildPrompt = ({ fileName, mimeType, extension, extractedText }) => `
-Bạn là bộ phân loại tài liệu cho hệ thống SmartDocs.
+Bạn là bộ phân loại tài liệu cho hệ thống DocuFlow.
 Chỉ trả về JSON hợp lệ, không markdown, với đúng các khóa:
 {
   "category": một trong ${JSON.stringify(AI_CATEGORIES)},
@@ -219,7 +219,7 @@ const classifyDocument = async ({ fileName, mimeType, extension, extractedText }
 };
 
 const buildComparePrompt = ({ fileA, fileB }) => `
-Bạn là chuyên gia thẩm định tài liệu cho hệ thống lưu trữ SmartDocs.
+Bạn là chuyên gia thẩm định tài liệu cho hệ thống lưu trữ DocuFlow.
 Nhiệm vụ của bạn là so sánh 2 tài liệu sau để xác định xem chúng có phải là bản trùng lặp nội dung, bản thảo, hoặc bản cập nhật gần giống nhau (near-duplicate) hay không.
 
 Chỉ trả về định dạng JSON hợp lệ, không bọc markdown, với đúng các thuộc tính:

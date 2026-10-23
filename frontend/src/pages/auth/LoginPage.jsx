@@ -6,12 +6,12 @@ import { useToast } from '../../contexts/ToastContext';
 
 const LoginPage = () => {
   const [email, setEmail] = useState(() => {
-    return localStorage.getItem('smartdocs_remember_email') || '';
+    return localStorage.getItem('docuflow_remember_email') || localStorage.getItem('smartdocs_remember_email') || '';
   });
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(() => {
-    return localStorage.getItem('smartdocs_remember_me') === 'true';
+    return (localStorage.getItem('docuflow_remember_me') || localStorage.getItem('smartdocs_remember_me')) === 'true';
   });
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -44,14 +44,16 @@ const LoginPage = () => {
 
       // Xử lý ghi nhớ mật khẩu / tài khoản
       if (rememberMe) {
-        localStorage.setItem('smartdocs_remember_email', email.trim());
-        localStorage.setItem('smartdocs_remember_me', 'true');
+        localStorage.setItem('docuflow_remember_email', email.trim());
+        localStorage.setItem('docuflow_remember_me', 'true');
       } else {
+        localStorage.removeItem('docuflow_remember_email');
+        localStorage.removeItem('docuflow_remember_me');
         localStorage.removeItem('smartdocs_remember_email');
         localStorage.removeItem('smartdocs_remember_me');
       }
 
-      toast.success('Đăng nhập SmartDocs thành công');
+      toast.success('Đăng nhập DocuFlow thành công');
       navigate(from, { replace: true });
     } catch (err) {
       console.error('Đăng nhập thất bại:', err);
@@ -83,8 +85,8 @@ const LoginPage = () => {
           <div className="auth-logo-badge">
             <Layers size={24} />
           </div>
-          <div className="auth-brand-tag">SmartDocs Workspace</div>
-          <h1 className="auth-title">Đăng nhập SmartDocs</h1>
+          <div className="auth-brand-tag">DocuFlow Workspace</div>
+          <h1 className="auth-title">Đăng nhập DocuFlow</h1>
           <p className="auth-subtitle">Hệ thống quản lý và chia sẻ tài liệu thông minh</p>
         </div>
 

@@ -184,7 +184,7 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => 
           type="button"
           className="header-copilot-btn"
           onClick={() => window.dispatchEvent(new CustomEvent('open-rag-drawer'))}
-          title="Mở Trợ lý AI SmartDocs (Ctrl + J)"
+          title="Mở Trợ lý AI DocuFlow (Ctrl + J)"
         >
           <Sparkles size={14} />
           <span>Hỏi AI</span>

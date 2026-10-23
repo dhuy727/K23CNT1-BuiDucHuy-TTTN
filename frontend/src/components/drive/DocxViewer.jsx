@@ -257,7 +257,7 @@ const DocxViewer = ({
           <Info size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
           <div>
             <strong>Thông báo lưu trữ:</strong> Tệp tin này được tải lên trước khi hệ thống kích hoạt kho lưu trữ đám mây AWS S3. 
-            SmartDocs đang hiển thị toàn bộ <strong>{charCount.toLocaleString()} ký tự</strong> nội dung văn bản đã được AI trích xuất và phân tích đầy đủ.
+            DocuFlow đang hiển thị toàn bộ <strong>{charCount.toLocaleString()} ký tự</strong> nội dung văn bản đã được AI trích xuất và phân tích đầy đủ.
           </div>
         </div>
       )}

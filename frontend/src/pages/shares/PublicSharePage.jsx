@@ -254,7 +254,7 @@ const PublicSharePage = () => {
     if (!qrDataUrl) return;
     const a = document.createElement('a');
     a.href = qrDataUrl;
-    a.download = `SmartDocs-QR-${data?.item?.name || 'Share'}.png`;
+    a.download = `DocuFlow-QR-${data?.item?.name || 'Share'}.png`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -378,7 +378,7 @@ const PublicSharePage = () => {
           <div className="public-brand-logo">
             <Layers size={18} />
           </div>
-          <span className="public-brand-title">SmartDocs</span>
+          <span className="public-brand-title">DocuFlow</span>
           <span className="badge badge-blue">
             <Globe size={12} style={{ marginRight: '4px' }} />
             Chia sẻ công khai
@@ -466,13 +466,13 @@ const PublicSharePage = () => {
             )}
           </div>
 
-          {/* SmartDocs AI Intelligence Card (if available) */}
+          {/* DocuFlow AI Intelligence Card (if available) */}
           {isFile && (item?.aiCategory || (item?.aiTags && item.aiTags.length > 0) || item?.aiSummary) && (
             <div className="public-ai-card">
               <div className="public-ai-card-header">
                 <div className="public-ai-card-title">
                   <Sparkles size={16} style={{ color: '#f59e0b' }} />
-                  <span>Trí tuệ nhân tạo SmartDocs AI</span>
+                  <span>Trí tuệ nhân tạo DocuFlow AI</span>
                 </div>
                 {item?.aiCategory && (
                   <span className="badge badge-purple" style={{ fontSize: '0.75rem' }}>

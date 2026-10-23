@@ -133,7 +133,7 @@ const ResetPasswordPage = () => {
           </div>
           <div className="auth-brand-tag">Bảo mật tài khoản</div>
           <h1 className="auth-title">Đặt lại mật khẩu mới</h1>
-          <p className="auth-subtitle">Nhập mật khẩu mới an toàn cho tài khoản SmartDocs của bạn</p>
+          <p className="auth-subtitle">Nhập mật khẩu mới an toàn cho tài khoản DocuFlow của bạn</p>
         </div>
 
         {errorMsg && (

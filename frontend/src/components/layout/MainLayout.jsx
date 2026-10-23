@@ -25,7 +25,7 @@ const MainLayout = () => {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
 
-  // State quản lý Trợ lý AI SmartDocs Copilot
+  // State quản lý Trợ lý AI DocuFlow Copilot
   const [isCopilotOpen, setIsCopilotOpen] = useState(false);
   const [copilotScope, setCopilotScope] = useState({
     type: 'all',

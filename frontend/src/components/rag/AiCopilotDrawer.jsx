@@ -335,7 +335,7 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
   return (
     <>
       <div className="copilot-backdrop" onClick={onClose} />
-      <aside className="copilot-drawer" aria-label="SmartDocs AI Copilot">
+      <aside className="copilot-drawer" aria-label="DocuFlow AI Copilot">
         {/* Header */}
         <div className="copilot-header">
           <div className="copilot-brand">
@@ -343,7 +343,7 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
               <Sparkles size={17} />
             </div>
             <div className="copilot-title-wrap">
-              <span className="copilot-title">SmartDocs AI Copilot</span>
+              <span className="copilot-title">DocuFlow AI Copilot</span>
               <span className="copilot-subtitle">Hỏi đáp ngữ cảnh & Trích dẫn nguồn</span>
             </div>
           </div>

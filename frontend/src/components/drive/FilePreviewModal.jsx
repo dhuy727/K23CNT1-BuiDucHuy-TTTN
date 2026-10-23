@@ -549,7 +549,7 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Brain size={18} className="text-primary" />
                     <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>
-                      Trợ lý AI SmartDocs
+                      Trợ lý AI DocuFlow
                     </span>
                   </div>
                   {renderStatusBadge()}

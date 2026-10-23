@@ -139,15 +139,15 @@ const sendVerificationEmail = async (
   code
 ) => {
   await sendMail({
-    from: `"Ứng dụng Quản lý tài liệu" <${process.env.EMAIL_USER}>`,
+    from: `"DocuFlow - Quản lý tài liệu" <${process.env.EMAIL_USER}>`,
     to: email,
-    subject: "Xác thực tài khoản SmartDocs",
+    subject: "Xác thực tài khoản DocuFlow",
 
     html: `
       <h2>Xin chào ${name}</h2>
 
       <p>
-        Cảm ơn bạn đã đăng ký tài khoản SmartDocs.
+        Cảm ơn bạn đã đăng ký tài khoản DocuFlow.
       </p>
 
       <p>
@@ -174,9 +174,9 @@ const sendPasswordResetEmail = async (
     `${process.env.CLIENT_URL}/reset-password?token=${token}`;
 
   await sendMail({
-    from: `"Ứng dụng Quản lý tài liệu" <${process.env.EMAIL_USER}>`,
+    from: `"DocuFlow - Quản lý tài liệu" <${process.env.EMAIL_USER}>`,
     to: email,
-    subject: "Đặt lại mật khẩu SmartDocs",
+    subject: "Đặt lại mật khẩu DocuFlow",
 
     html: `
       <h2>Xin chào ${name}</h2>

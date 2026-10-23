@@ -18,7 +18,7 @@ const getProvider = () => (process.env.AI_PROVIDER || 'gemini').trim().toLowerCa
  */
 const buildSystemPrompt = (citations = []) => {
   if (citations.length === 0) {
-    return `Bạn là Trợ lý AI Quản lý Tài liệu SmartDocs.
+    return `Bạn là Trợ lý AI Quản lý Tài liệu DocuFlow.
 Hiện tại không tìm thấy đoạn trích tài liệu nào khớp với câu hỏi của người dùng.
 Hãy lịch sự thông báo cho người dùng rằng kho tài liệu được chỉ định không chứa thông tin này, hoặc gợi ý họ kiểm tra lại phạm vi tìm kiếm hoặc đảm bảo tài liệu đã được tải lên và lập chỉ mục. Không được tự bịa ra thông tin.`;
   }
@@ -36,7 +36,7 @@ ${c.content}
     )
     .join('\n\n');
 
-  return `Bạn là Trợ lý AI thông minh chuyên gia phân tích tài liệu của hệ thống SmartDocs.
+  return `Bạn là Trợ lý AI thông minh chuyên gia phân tích tài liệu của hệ thống DocuFlow.
 Nhiệm vụ của bạn là trả lời câu hỏi của người dùng một cách chính xác, mạch lạc, dễ hiểu và chuyên nghiệp dựa TRỰC TIẾP trên các đoạn trích tài liệu được cung cấp dưới đây.
 
 QUY TẮC BẮT BUỘC (ANTI-HALLUCINATION & CITATION RULES):

@@ -211,13 +211,13 @@ const Sidebar = ({
             <NavLink
               to="/drive"
               className="sidebar-brand"
-              title="SmartDocs"
+              title="DocuFlow"
               onClick={() => onCloseMobile && onCloseMobile()}
             >
               <div className="brand-icon">
                 <Layers size={18} />
               </div>
-              <span>SmartDocs</span>
+              <span>DocuFlow</span>
             </NavLink>
             <div className="sidebar-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <button
@@ -244,7 +244,7 @@ const Sidebar = ({
           <div
             className="brand-icon"
             onClick={onToggleCollapse}
-            title="Mở rộng Sidebar (SmartDocs)"
+            title="Mở rộng Sidebar (DocuFlow)"
             style={{ cursor: 'pointer', margin: '0 auto' }}
           >
             <Layers size={18} />
