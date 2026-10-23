@@ -176,7 +176,8 @@ const searchItems = async (userId, query = {}) => {
       { originalName: searchRegex },
       { aiSummary: searchRegex },
       { aiTags: { $in: [searchRegex] } },
-      { aiCategory: searchRegex }
+      { aiCategory: searchRegex },
+      { extractedText: searchRegex }
     ];
 
     folderFilter.$or = [

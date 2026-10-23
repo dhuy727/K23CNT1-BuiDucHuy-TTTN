@@ -174,46 +174,76 @@ const searchDenseVectors = async (queryEmbedding, accessibleFileIds, topK = 20) 
   return scored.slice(0, topK);
 };
 
+const VIETNAMESE_STOP_WORDS = new Set([
+  'các', 'những', 'của', 'tôi', 'cho', 'về', 'trong', 'tại', 'với', 'file', 'tệp',
+  'tài liệu', 'được', 'làm', 'có', 'là', 'và', 'này', 'đó', 'gì', 'nào', 'sao', 'thế', 'ở', 'đâu'
+]);
+
 /**
- * Tìm kiếm Sparse Keyword trên nội dung chunk
+ * Tìm kiếm Sparse Keyword trên nội dung chunk và tên file
  */
 const searchSparseKeywords = async (queryText, accessibleFileIds, topK = 20) => {
   if (accessibleFileIds.length === 0 || !queryText.trim()) return [];
 
+  // Tách từ và loại bỏ stop words tiếng Việt
+  const rawWords = queryText
+    .toLowerCase()
+    .split(/[\s,.;:!?()]+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 2 && !VIETNAMESE_STOP_WORDS.has(w));
+
+  const meaningfulWords = rawWords.length > 0 ? rawWords : queryText.split(/\s+/).filter(w => w.length >= 2);
+  if (meaningfulWords.length === 0) return [];
+
+  const escapedWords = meaningfulWords.slice(0, 5).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const regex = new RegExp(escapedWords.join('|'), 'i');
+
   try {
-    // Thử dùng Full-Text Search nếu có text index
-    const results = await DocumentChunk.find({
+    // 1. Tìm các file khớp tên với từ khóa (File metadata matching)
+    const matchingFiles = await File.find({
+      _id: { $in: accessibleFileIds },
+      name: regex
+    }).select('_id').limit(10).lean();
+
+    const matchingFileIds = matchingFiles.map(f => f._id);
+
+    // Ưu tiên lấy chunks từ các file khớp tên
+    let nameMatchedChunks = [];
+    if (matchingFileIds.length > 0) {
+      nameMatchedChunks = await DocumentChunk.find({
+        file: { $in: matchingFileIds }
+      })
+        .select('_id file chunkIndex content pageNumber sectionTitle')
+        .limit(Math.floor(topK / 2))
+        .lean();
+    }
+
+    // 2. Tìm chunks có nội dung khớp regex
+    const contentMatchedChunks = await DocumentChunk.find({
       file: { $in: accessibleFileIds },
-      $text: { $search: queryText }
+      content: regex
     })
       .select('_id file chunkIndex content pageNumber sectionTitle')
       .limit(topK)
       .lean();
 
-    if (results.length > 0) {
-      return results.map((r, idx) => ({ ...r, rank: idx + 1 }));
+    // Kết hợp và khử trùng lặp
+    const combined = [...nameMatchedChunks, ...contentMatchedChunks];
+    const seen = new Set();
+    const unique = [];
+    for (const item of combined) {
+      const idStr = item._id.toString();
+      if (!seen.has(idStr)) {
+        seen.add(idStr);
+        unique.push(item);
+      }
     }
-  } catch (textErr) {
-    // Nếu text index chưa có hoặc lỗi, fallback sang Regex search
+
+    return unique.slice(0, topK).map((r, idx) => ({ ...r, rank: idx + 1 }));
+  } catch (err) {
+    console.warn('[RAG Retrieval] Lỗi trong searchSparseKeywords:', err.message);
+    return [];
   }
-
-  const words = queryText
-    .split(/\s+/)
-    .map((w) => w.trim())
-    .filter((w) => w.length >= 2);
-
-  if (words.length === 0) return [];
-
-  const regex = new RegExp(words.slice(0, 3).join('|'), 'i');
-  const fallbackResults = await DocumentChunk.find({
-    file: { $in: accessibleFileIds },
-    content: regex
-  })
-    .select('_id file chunkIndex content pageNumber sectionTitle')
-    .limit(topK)
-    .lean();
-
-  return fallbackResults.map((r, idx) => ({ ...r, rank: idx + 1 }));
 };
 
 /**
@@ -262,9 +292,19 @@ const hybridRetrieve = async (userId, queryText, scope = { type: 'all', targetId
   });
 
   // 4. Sắp xếp và lấy Top Chunks
-  const sortedChunks = Array.from(chunkScores.values())
-    .sort((a, b) => b.rrfScore - a.rrfScore)
-    .slice(0, limit);
+  let sortedChunks = Array.from(chunkScores.values())
+    .sort((a, b) => b.rrfScore - a.rrfScore);
+
+  // Lọc bớt chunks rác nếu top chunks có điểm cosine rõ rệt
+  if (sortedChunks.length > 0) {
+    const topScore = sortedChunks[0].rawSimilarity || 0;
+    if (topScore > 0.65) {
+      // Giữ lại các chunk có điểm không bị quá thấp so với top score
+      sortedChunks = sortedChunks.filter(c => (c.rawSimilarity || 0) >= Math.max(0.55, topScore - 0.22));
+    }
+  }
+
+  sortedChunks = sortedChunks.slice(0, limit);
 
   if (sortedChunks.length === 0) {
     return [];

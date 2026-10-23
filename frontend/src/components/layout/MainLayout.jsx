@@ -5,8 +5,10 @@ import Header from './Header';
 import UploadModal from '../drive/UploadModal';
 import Modal from '../common/Modal';
 import folderService from '../../services/folderService';
+import fileService from '../../services/fileService';
 import { useToast } from '../../contexts/ToastContext';
 import AiCopilotDrawer from '../rag/AiCopilotDrawer';
+import FilePreviewModal from '../drive/FilePreviewModal';
 
 const MainLayout = () => {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -16,6 +18,7 @@ const MainLayout = () => {
   const [newFolderColor, setNewFolderColor] = useState('#3b82f6');
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [previewTargetFile, setPreviewTargetFile] = useState(null);
 
   const { folderId } = useParams();
   const location = useLocation();
@@ -32,6 +35,32 @@ const MainLayout = () => {
     targetId: null,
     name: 'Toàn bộ Drive'
   });
+
+  // Lắng nghe sự kiện mở Preview File toàn cục (từ RAG Copilot, Search, Notifications, v.v.)
+  useEffect(() => {
+    const handleOpenPreview = async (e) => {
+      const { fileId, file } = e.detail || {};
+      if (file) {
+        setPreviewTargetFile(file);
+        return;
+      }
+      if (fileId) {
+        try {
+          const res = await fileService.getFileById(fileId, { includeText: true });
+          const fileData = res?.data || res;
+          if (fileData) {
+            setPreviewTargetFile(fileData);
+          }
+        } catch (err) {
+          console.error('Không thể tải tệp để xem trước:', err);
+          toast.error('Không thể mở tài liệu xem trước');
+        }
+      }
+    };
+
+    window.addEventListener('open-preview-file', handleOpenPreview);
+    return () => window.removeEventListener('open-preview-file', handleOpenPreview);
+  }, [toast]);
 
   // Lắng nghe sự kiện mở Copilot toàn cục và phím tắt Ctrl + J
   useEffect(() => {
@@ -226,6 +255,23 @@ const MainLayout = () => {
         isOpen={isCopilotOpen}
         onClose={() => setIsCopilotOpen(false)}
         initialScope={copilotScope}
+      />
+
+      {/* Global File Preview Modal (hỗ trợ mở file trực tiếp từ RAG Citations và toàn hệ thống) */}
+      <FilePreviewModal
+        file={previewTargetFile}
+        isOpen={Boolean(previewTargetFile)}
+        onClose={() => setPreviewTargetFile(null)}
+        onDownload={async (f) => {
+          try {
+            await fileService.downloadFileBlob(f._id);
+          } catch (err) {
+            toast.error('Không thể tải xuống tệp tin');
+          }
+        }}
+        onFileUpdated={() => {
+          window.dispatchEvent(new Event('drive:refresh'));
+        }}
       />
     </div>
   );

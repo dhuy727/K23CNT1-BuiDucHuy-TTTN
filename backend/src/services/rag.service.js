@@ -280,17 +280,43 @@ const chatStream = async ({
     });
   }
 
-  // 7. Lưu tin nhắn Assistant vào CSDL
+  // 7. Lọc trích dẫn thông minh (Smart Citations Filtering)
+  // Quét các footnote thực tế mà LLM đã trích dẫn trong câu trả lời (dạng [^1], [^2], ...)
+  const footnoteRegex = /\[\^(\d+)\]/g;
+  const usedIndices = new Set();
+  let fnMatch;
+  while ((fnMatch = footnoteRegex.exec(fullAnswer)) !== null) {
+    usedIndices.add(parseInt(fnMatch[1], 10));
+  }
+
+  let finalCitations = [];
+  if (usedIndices.size > 0) {
+    // Chỉ giữ lại những tài liệu mà LLM thực sự sử dụng và trích dẫn số nguồn
+    finalCitations = citations.filter((_, idx) => usedIndices.has(idx + 1));
+  } else {
+    // Nếu LLM không gắn footnote cụ thể, lọc theo điểm độ tương đồng
+    const maxScore = Math.max(...citations.map((c) => c.similarityScore || 0));
+    finalCitations = citations.filter(
+      (c) => (c.similarityScore || 0) >= Math.max(0.60, maxScore - 0.15)
+    );
+  }
+
+  // Nếu vẫn rỗng nhưng citations ban đầu có thì lấy tối đa 2 nguồn cao điểm nhất
+  if (finalCitations.length === 0 && citations.length > 0) {
+    finalCitations = citations.slice(0, 2);
+  }
+
+  // 8. Lưu tin nhắn Assistant vào CSDL với danh sách trích dẫn đã được lọc sạch
   const savedAssistantMessage = await RagMessage.create({
     conversation: conversation._id,
     role: 'assistant',
     content: fullAnswer,
-    citations: citations.map((c) => ({
+    citations: finalCitations.map((c) => ({
       fileId: c.fileId,
       fileName: c.fileName,
       pageNumber: c.pageNumber,
       sectionTitle: c.sectionTitle,
-      snippet: c.content.slice(0, 300),
+      snippet: c.content?.slice(0, 300) || '',
       similarityScore: c.similarityScore
     }))
   });
@@ -302,7 +328,7 @@ const chatStream = async ({
   return {
     conversationId: conversation._id,
     messageId: savedAssistantMessage._id,
-    citations
+    citations: finalCitations
   };
 };
 

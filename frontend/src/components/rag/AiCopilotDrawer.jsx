@@ -21,7 +21,7 @@ import CitationPill from './CitationPill';
 import { useToast } from '../../contexts/ToastContext';
 
 // Hàm render Markdown cơ bản không cần thư viện bên ngoài
-const SimpleMarkdown = ({ text }) => {
+const SimpleMarkdown = ({ text, citations = [] }) => {
   if (!text) return null;
 
   // Xử lý các dòng
@@ -63,19 +63,46 @@ const SimpleMarkdown = ({ text }) => {
       } else if (token.startsWith('`') && token.endsWith('`')) {
         parts.push(<code key={match.index}>{token.slice(1, -1)}</code>);
       } else if (token.startsWith('[^') && token.endsWith(']')) {
+        const fnNum = parseInt(token.slice(2, -1), 10);
+        const targetCitation = Array.isArray(citations) ? citations[fnNum - 1] : null;
+
         parts.push(
-          <span
+          <button
             key={match.index}
+            type="button"
+            className="rag-inline-footnote"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (targetCitation?.fileId) {
+                window.dispatchEvent(
+                  new CustomEvent('open-preview-file', {
+                    detail: { fileId: targetCitation.fileId }
+                  })
+                );
+              }
+            }}
+            title={targetCitation ? `Mở tệp: ${targetCitation.fileName}` : `Trích dẫn nguồn [^${fnNum}]`}
             style={{
-              color: 'var(--primary-600)',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'var(--primary-50)',
+              color: 'var(--primary-700)',
+              border: '1px solid var(--primary-200)',
+              borderRadius: '4px',
+              padding: '0 4px',
+              fontSize: '10.5px',
               fontWeight: 700,
-              fontSize: 11,
-              marginLeft: 2,
-              cursor: 'help'
+              marginLeft: '2px',
+              cursor: targetCitation?.fileId ? 'pointer' : 'default',
+              verticalAlign: 'baseline',
+              lineHeight: 1.3,
+              transition: 'all 0.15s ease'
             }}
           >
             {token}
-          </span>
+          </button>
         );
       }
       lastIdx = regex.lastIndex;
@@ -295,13 +322,16 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
       onDone: (result) => {
         setIsStreaming(false);
         setStreamDelta('');
+        const finalCitations = (Array.isArray(result?.citations) && result.citations.length > 0)
+          ? result.citations
+          : receivedCitations;
         // Lưu tin nhắn trợ lý hoàn chỉnh vào messages array
         setMessages((prev) => [
           ...prev,
           {
             role: 'assistant',
             content: fullAccumulated,
-            citations: receivedCitations,
+            citations: finalCitations,
             createdAt: new Date()
           }
         ]);
@@ -514,7 +544,7 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
                     <div className="rag-bubble-user">{msg.content}</div>
                   ) : (
                     <div className="rag-bubble-assistant">
-                      <SimpleMarkdown text={msg.content} />
+                      <SimpleMarkdown text={msg.content} citations={msg.citations} />
 
                       {/* Hiển thị Trích dẫn Citations */}
                       {Array.isArray(msg.citations) && msg.citations.length > 0 && (
@@ -553,7 +583,7 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
                   <div className="rag-bubble-assistant">
                     {streamDelta ? (
                       <>
-                        <SimpleMarkdown text={streamDelta} />
+                        <SimpleMarkdown text={streamDelta} citations={streamCitations} />
                         <span className="rag-cursor-pulse" />
                       </>
                     ) : (

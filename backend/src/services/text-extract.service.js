@@ -1,6 +1,7 @@
 const mammoth = require('mammoth');
 const path = require('path');
 const storageService = require('./storage.service');
+const ocrService = require('./ocr.service');
 
 const MAX_EXTRACT_CHARS = 15000;
 const UNSUPPORTED_MESSAGE = 'Không trích xuất được nội dung';
@@ -26,7 +27,12 @@ const normalizeExtension = (file) => {
 
 const isSupportedExtractType = (file) => {
   const ext = normalizeExtension(file);
-  return PDF_EXTENSIONS.has(ext) || DOCX_EXTENSIONS.has(ext) || TEXT_EXTENSIONS.has(ext);
+  return (
+    PDF_EXTENSIONS.has(ext) ||
+    DOCX_EXTENSIONS.has(ext) ||
+    TEXT_EXTENSIONS.has(ext) ||
+    ocrService.isImageFile(ext)
+  );
 };
 
 const clipText = (text) => {
@@ -83,6 +89,8 @@ const extractText = async (file) => {
     raw = await readDocxText(buffer);
   } else if (TEXT_EXTENSIONS.has(ext)) {
     raw = readPlainText(buffer);
+  } else if (ocrService.isImageFile(ext)) {
+    raw = await ocrService.extractTextFromImageBuffer(buffer);
   } else {
     throw new UnsupportedExtractError(UNSUPPORTED_MESSAGE);
   }
@@ -150,6 +158,12 @@ const extractDocumentForRag = async (file) => {
     }
   } else if (TEXT_EXTENSIONS.has(ext)) {
     const raw = readPlainText(buffer);
+    fullText = sanitizeText(raw);
+    if (fullText) {
+      pages.push({ pageNumber: 1, text: fullText });
+    }
+  } else if (ocrService.isImageFile(ext)) {
+    const raw = await ocrService.extractTextFromImageBuffer(buffer);
     fullText = sanitizeText(raw);
     if (fullText) {
       pages.push({ pageNumber: 1, text: fullText });
