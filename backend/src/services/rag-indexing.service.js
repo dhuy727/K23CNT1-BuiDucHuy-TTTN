@@ -111,15 +111,19 @@ const indexFileForRag = async (fileId) => {
 };
 
 /**
- * Đưa vào hàng đợi xử lý bất đồng bộ
+ * Đưa vào hàng đợi xử lý bất đồng bộ qua Queue Engine
  */
 const enqueueRagIndexing = (fileId) => {
   if (!fileId) return;
-  setImmediate(() => {
-    indexFileForRag(fileId).catch((err) => {
-      console.error(`[RAG Queue] Lỗi ngầm khi lập chỉ mục file ${fileId}:`, err.message);
+  try {
+    const { enqueueRagIndex } = require('../queues/queue.engine');
+    enqueueRagIndex(fileId);
+  } catch (err) {
+    console.error(`[RAG Queue] Lỗi đưa file ${fileId} vào hàng đợi:`, err.message);
+    setImmediate(() => {
+      indexFileForRag(fileId).catch((e) => console.error(`[RAG Fallback] Lỗi lập chỉ mục file ${fileId}:`, e.message));
     });
-  });
+  }
 };
 
 /**

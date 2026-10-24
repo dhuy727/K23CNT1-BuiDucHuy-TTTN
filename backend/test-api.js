@@ -916,6 +916,16 @@ async function runTests() {
     console.log('✅ [THÀNH CÔNG]: Document-Level ACL loại trừ chính xác file rác và share hết hạn');
     // ── KẾT THÚC BẢO MẬT RAG TESTS ───────────────────────────────────────────
 
+    // ── KIỂM THỬ XUẤT BÁO CÁO THỐNG KÊ CSV (ANALYTICS EXPORT) ───────────────
+    console.log('\n[68] Kiểm tra Xuất Báo cáo Thống kê CSV (/api/analytics/export/csv)');
+    const resExportCsv = await request('/analytics/export/csv?scope=personal', {
+      headers: { Authorization: `Bearer ${userToken}` },
+      isRaw: true
+    });
+    assert(resExportCsv.status === 200, 'Xuất file CSV trả về HTTP 200');
+    assert(resExportCsv.headers.get('content-type').includes('text/csv'), 'Content-Type đúng định dạng text/csv');
+    assert(resExportCsv.text.includes('STT,Tên tệp tin,Định dạng,Kích thước'), 'Header CSV chứa đầy đủ tiêu đề cột tiếng Việt chuẩn');
+
     // Dọn dẹp dữ liệu test
     await Share.deleteMany({ $or: [{ owner: userId }, { sharedWith: userId }, { sharedWith: collabUserId }] });
     await Version.deleteMany({ user: userId });
@@ -925,7 +935,7 @@ async function runTests() {
     await User.findByIdAndDelete(collabUserId);
     console.log('\n-> Đã dọn dẹp toàn bộ dữ liệu kiểm thử User, Folders, Files, Shares, Versions thành công');
 
-    console.log('\n🎉 TẤT CẢ 67 BƯỚC KIỂM THỬ ĐÃ THÀNH CÔNG RỰC RỠ! 🎉\n');
+    console.log('\n🎉 TẤT CẢ 68 BƯỚC KIỂM THỬ ĐÃ THÀNH CÔNG RỰC RỠ! 🎉\n');
   } catch (error) {
     console.error('Lỗi khi chạy test:', error);
   } finally {

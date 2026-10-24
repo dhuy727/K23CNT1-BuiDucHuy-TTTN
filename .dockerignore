@@ -1,0 +1,17 @@
+node_modules
+*/node_modules
+.git
+.gitignore
+.env
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+frontend/dist
+backend/uploads/*
+!backend/uploads/.gitkeep
+.agent
+.agents
+.claude
+.codex
+.cursor

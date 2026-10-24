@@ -13,7 +13,9 @@ import {
   PieChart,
   Shield,
   Layers,
-  ChevronRight
+  ChevronRight,
+  Download,
+  Printer
 } from 'lucide-react';
 import analyticsService from '../../services/analyticsService';
 import DonutChart from '../../components/analytics/DonutChart';
@@ -31,6 +33,32 @@ const AnalyticsPage = () => {
   const [personalData, setPersonalData] = useState(null);
   const [systemData, setSystemData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportCsv = async () => {
+    setExporting(true);
+    try {
+      const response = await analyticsService.exportCsv(activeTab);
+      const url = window.URL.createObjectURL(new Blob([response]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Bao_Cao_${activeTab === 'system' ? 'He_Thong' : 'Ca_Nhan'}_${Date.now()}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      toast.success('Đã tải xuống tệp thống kê CSV thành công');
+    } catch (err) {
+      console.error('Lỗi khi xuất CSV:', err);
+      toast.error('Không thể xuất tệp CSV báo cáo');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handlePrintPdf = () => {
+    window.print();
+  };
 
   const fetchAnalytics = useCallback(async () => {
     setLoading(true);
@@ -90,6 +118,28 @@ const AnalyticsPage = () => {
                 </button>
               </div>
             )}
+
+            <button
+              className="btn btn-secondary"
+              onClick={handleExportCsv}
+              disabled={loading || exporting}
+              title="Xuất danh sách tệp tin dưới dạng CSV/Excel"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Download size={15} className={exporting ? 'spinner' : ''} />
+              <span>{exporting ? 'Đang xuất...' : 'Xuất CSV'}</span>
+            </button>
+
+            <button
+              className="btn btn-secondary"
+              onClick={handlePrintPdf}
+              disabled={loading}
+              title="In hoặc Lưu báo cáo dưới dạng PDF"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            >
+              <Printer size={15} />
+              <span>In Báo cáo (PDF)</span>
+            </button>
 
             <button
               className="btn btn-secondary"

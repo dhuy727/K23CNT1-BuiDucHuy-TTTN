@@ -319,7 +319,97 @@ const getSystemAnalytics = async () => {
   };
 };
 
+/**
+ * Xuất dữ liệu thống kê danh sách tệp tin dưới dạng CSV chuẩn UTF-8 (BOM)
+ */
+const exportFilesCsv = async (userId, role = 'user', scope = 'personal') => {
+  const isSystem = role === 'admin' && scope === 'system';
+  const filter = isSystem ? {} : { user: userId };
+
+  const query = File.find(filter)
+    .populate('folder', 'name')
+    .sort({ createdAt: -1 });
+
+  if (isSystem) {
+    query.populate('user', 'name email');
+  }
+
+  const files = await query.lean();
+
+  const escapeCsv = (val) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val).replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  const formatDate = (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    return d.toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
+  };
+
+  // Tiêu đề các cột
+  const headers = [
+    'STT',
+    'Tên tệp tin',
+    'Định dạng',
+    'Kích thước',
+    'Dung lượng (Bytes)',
+    'Thư mục',
+    'Phân loại AI',
+    'Thẻ nhãn AI',
+    'Trạng thái AI',
+    'Trạng thái RAG',
+    'Đánh dấu sao',
+    'Trong thùng rác',
+    'Ngày tạo',
+    'Cập nhật lần cuối'
+  ];
+
+  if (isSystem) {
+    headers.push('Chủ sở hữu (Email)', 'Họ tên chủ sở hữu');
+  }
+
+  const rows = files.map((file, idx) => {
+    const row = [
+      idx + 1,
+      escapeCsv(file.name),
+      escapeCsv(file.extension || ''),
+      escapeCsv(formatFileSize(file.size)),
+      file.size || 0,
+      escapeCsv(file.folder?.name || 'Thư mục gốc'),
+      escapeCsv(file.aiCategory || 'Chưa phân loại'),
+      escapeCsv(Array.isArray(file.aiTags) ? file.aiTags.join(', ') : ''),
+      escapeCsv(file.aiStatus || 'chưa xử lý'),
+      escapeCsv(file.ragStatus || 'chưa lập chỉ mục'),
+      file.isStarred ? 'Có' : 'Không',
+      file.isTrash ? 'Có' : 'Không',
+      escapeCsv(formatDate(file.createdAt)),
+      escapeCsv(formatDate(file.updatedAt))
+    ];
+
+    if (isSystem) {
+      row.push(escapeCsv(file.user?.email || ''), escapeCsv(file.user?.name || ''));
+    }
+
+    return row.join(',');
+  });
+
+  // Ký tự BOM (\uFEFF) giúp Excel tự động nhận diện UTF-8 tiếng Việt chuẩn
+  const csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.join('\n');
+  const filename = isSystem
+    ? `Bao_Cao_He_Thong_${Date.now()}.csv`
+    : `Bao_Cao_Tai_Lieu_${Date.now()}.csv`;
+
+  return {
+    csvContent,
+    filename,
+    totalCount: files.length
+  };
+};
+
 module.exports = {
   getUserAnalytics,
-  getSystemAnalytics
+  getSystemAnalytics,
+  exportFilesCsv
 };

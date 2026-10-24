@@ -38,7 +38,29 @@ const getSystemAnalytics = async (req, res, next) => {
   }
 };
 
+/**
+ * Xuất dữ liệu thống kê danh sách tệp tin dưới dạng tệp CSV
+ * GET /api/analytics/export/csv?scope=personal|system
+ */
+const exportCsv = async (req, res, next) => {
+  try {
+    const scope = req.query.scope === 'system' && req.user.role === 'admin' ? 'system' : 'personal';
+    const { csvContent, filename } = await analyticsService.exportFilesCsv(
+      req.user._id,
+      req.user.role,
+      scope
+    );
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.status(200).send(csvContent);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getMyAnalytics,
-  getSystemAnalytics
+  getSystemAnalytics,
+  exportCsv
 };

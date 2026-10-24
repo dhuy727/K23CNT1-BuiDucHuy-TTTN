@@ -13,6 +13,15 @@ const analyticsService = {
    */
   getSystemAnalytics: async () => {
     return await axiosClient.get('/analytics/system');
+  },
+
+  /**
+   * Tải về tệp CSV thống kê
+   */
+  exportCsv: async (scope = 'personal') => {
+    return await axiosClient.get(`/analytics/export/csv?scope=${scope}`, {
+      responseType: 'blob'
+    });
   }
 };
 

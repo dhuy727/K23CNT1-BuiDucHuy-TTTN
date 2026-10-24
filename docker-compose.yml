@@ -1,0 +1,90 @@
+services:
+  # ----------------------------------------------------------------------------
+  # 1. Ứng dụng DocuFlow (Backend Express + Frontend React tích hợp)
+  # ----------------------------------------------------------------------------
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: docuflow-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - MONGO_URI=mongodb://mongodb:27017/docuflow_db
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET:-super_secret_access_key_k23cnt1_2026}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-15m}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-super_secret_refresh_key_k23cnt1_2026}
+      - JWT_REFRESH_EXPIRES_IN=${JWT_REFRESH_EXPIRES_IN:-7d}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - AI_PROVIDER=${AI_PROVIDER:-gemini}
+      - AI_MODEL=${AI_MODEL:-gemini-3.6-flash}
+      - STORAGE_DRIVER=${STORAGE_DRIVER:-local}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - docuflow_uploads:/app/backend/uploads
+    networks:
+      - docuflow-network
+
+  # ----------------------------------------------------------------------------
+  # 2. Cơ sở dữ liệu MongoDB
+  # ----------------------------------------------------------------------------
+  mongodb:
+    image: mongo:7.0
+    container_name: docuflow-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - docuflow_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - docuflow-network
+
+  # ----------------------------------------------------------------------------
+  # 3. Máy chủ Redis (Phục vụ BullMQ Background Queue & Bộ nhớ đệm)
+  # ----------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: docuflow-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - docuflow_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - docuflow-network
+
+# ------------------------------------------------------------------------------
+# Khai báo Volumes và Networks
+# ------------------------------------------------------------------------------
+volumes:
+  docuflow_mongo_data:
+    name: docuflow_mongo_data
+  docuflow_redis_data:
+    name: docuflow_redis_data
+  docuflow_uploads:
+    name: docuflow_uploads
+
+networks:
+  docuflow-network:
+    name: docuflow-network
+    driver: bridge

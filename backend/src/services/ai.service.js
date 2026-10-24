@@ -83,7 +83,9 @@ const processFile = async (fileId) => {
     const suggestedFolder = await matchFolderByCategory(file.user, classification.category);
 
     file.extractedText = extractedText;
-    file.aiCategory = classification.category;
+    if (!file.aiCategory || file.aiCategory === 'Chưa phân loại') {
+      file.aiCategory = classification.category;
+    }
     file.aiTags = classification.tags;
     file.aiSummary = classification.summary;
     file.aiConfidence = classification.confidence;
@@ -148,15 +150,19 @@ const processFile = async (fileId) => {
 };
 
 /**
- * Không chặn response 201: chạy sau event loop hiện tại.
+ * Đẩy tác vụ xử lý tệp vào Hàng đợi nền (Queue Engine)
  */
 const enqueueProcess = (fileId) => {
   if (!fileId) return;
-  setImmediate(() => {
-    processFile(fileId).catch((error) => {
-      console.error(`[AI] Lỗi job xử lý file ${fileId}:`, error.message);
+  try {
+    const { enqueueAiProcess } = require('../queues/queue.engine');
+    enqueueAiProcess(fileId);
+  } catch (err) {
+    console.error(`[AI Queue] Lỗi đưa file ${fileId} vào hàng đợi:`, err.message);
+    setImmediate(() => {
+      processFile(fileId).catch((e) => console.error(`[AI Fallback] Lỗi xử lý file ${fileId}:`, e.message));
     });
-  });
+  }
 };
 
 /**

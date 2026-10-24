@@ -20,4 +20,11 @@ router.get('/me', analyticsController.getMyAnalytics);
  */
 router.get('/system', authorize('admin'), analyticsController.getSystemAnalytics);
 
+/**
+ * @route   GET /api/analytics/export/csv
+ * @desc    Xuất danh sách tệp tin báo cáo thống kê dưới dạng CSV
+ * @access  Private
+ */
+router.get('/export/csv', analyticsController.exportCsv);
+
 module.exports = router;

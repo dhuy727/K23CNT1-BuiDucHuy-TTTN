@@ -400,3 +400,70 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   Print Stylesheet for Professional PDF Export
+   ========================================================================== */
+@media print {
+  header,
+  nav,
+  aside,
+  .sidebar,
+  .navbar,
+  .analytics-tab-group,
+  .btn,
+  .theme-toggle,
+  .copilot-floating-btn,
+  .copilot-drawer,
+  .analytics-header button,
+  .no-print {
+    display: none !important;
+  }
+
+  body, html {
+    background: #ffffff !important;
+    color: #111827 !important;
+    font-size: 10.5pt !important;
+  }
+
+  .main-layout,
+  .main-content,
+  .page-body,
+  .analytics-page {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    background: transparent !important;
+  }
+
+  .analytics-header {
+    border-bottom: 2px solid #374151 !important;
+    padding-bottom: 14px !important;
+    margin-bottom: 18px !important;
+  }
+
+  .analytics-stat-card,
+  .analytics-chart-panel,
+  .analytics-table-card {
+    border: 1px solid #d1d5db !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    break-inside: avoid !important;
+    margin-bottom: 14px !important;
+  }
+
+  .analytics-charts-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 16px !important;
+  }
+
+  .analytics-header::before {
+    content: "BÁO CÁO THỐNG KÊ LƯU TRỮ HỆ THỐNG DOCUFLOW";
+    display: block;
+    font-size: 13pt;
+    font-weight: bold;
+    color: #1e3a8a;
+    margin-bottom: 4px;
+  }
+}
