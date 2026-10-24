@@ -28,28 +28,76 @@ const cosineSimilarity = (vecA, vecB) => {
 
 /**
  * Xác định danh sách File ID mà người dùng có quyền truy cập theo Scope
+ * Cơ chế bảo vệ đa lớp (Multi-layer Document ACL):
+ * 1. Loại trừ hoàn toàn các tệp tin trong thùng rác (isTrash: true)
+ * 2. Lọc bỏ các liên kết chia sẻ đã hết hạn (expiresAt <= now)
+ * 3. Xác minh quyền sở hữu hoặc quyền chia sẻ hợp lệ theo từng Folder Scope
+ * 4. Double-check xác thực tệp tin tồn tại thực tế trong CSDL
  */
 const resolveAccessibleFileIds = async (userId, scope = { type: 'all', targetId: null }) => {
   const userObjectId = new mongoose.Types.ObjectId(userId);
+  const now = new Date();
+
+  // Điều kiện chia sẻ hợp lệ: đúng người nhận và chưa hết hạn (hoặc không đặt hạn)
+  const activeShareCondition = {
+    sharedWith: userObjectId,
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }]
+  };
 
   // 1. Nếu phạm vi là 1 tệp tin cụ thể (Single File QA)
   if (scope.type === 'file' && scope.targetId) {
     if (!mongoose.Types.ObjectId.isValid(scope.targetId)) return [];
 
-    const file = await File.findOne({
+    const targetFile = await File.findOne({
       _id: scope.targetId,
-      isTrash: false,
-      $or: [
-        { user: userObjectId },
-        {
-          _id: {
-            $in: await Share.find({ sharedWith: userObjectId, itemType: 'file' }).distinct('file')
-          }
-        }
-      ]
+      isTrash: false
+    }).select('_id user folder');
+
+    if (!targetFile) return [];
+
+    // Trường hợp A: File do chính user sở hữu
+    if (targetFile.user.toString() === userObjectId.toString()) {
+      return [targetFile._id];
+    }
+
+    // Trường hợp B: File được chia sẻ trực tiếp và còn hạn
+    const activeFileShare = await Share.findOne({
+      ...activeShareCondition,
+      file: targetFile._id,
+      itemType: 'file'
     }).select('_id');
 
-    return file ? [file._id] : [];
+    if (activeFileShare) {
+      return [targetFile._id];
+    }
+
+    // Trường hợp C: Thư mục chứa file (hoặc tổ tiên) được chia sẻ còn hạn
+    if (targetFile.folder) {
+      const parentFolder = await Folder.findOne({ _id: targetFile.folder, isTrash: false });
+      if (parentFolder) {
+        const folderIds = [parentFolder._id];
+        if (parentFolder.path) {
+          const ancestorFolders = await Folder.find({
+            path: { $regex: `^${parentFolder.path.split('/')[0]}` },
+            isTrash: false
+          }).distinct('_id');
+          folderIds.push(...ancestorFolders);
+        }
+
+        const activeFolderShare = await Share.findOne({
+          ...activeShareCondition,
+          folder: { $in: folderIds },
+          itemType: 'folder'
+        }).select('_id');
+
+        if (activeFolderShare) {
+          return [targetFile._id];
+        }
+      }
+    }
+
+    // Không thỏa mãn bất kỳ quyền nào
+    return [];
   }
 
   // 2. Nếu phạm vi là 1 thư mục cụ thể (Folder-scoped QA)
@@ -59,6 +107,23 @@ const resolveAccessibleFileIds = async (userId, scope = { type: 'all', targetId:
     const parentFolder = await Folder.findOne({ _id: scope.targetId, isTrash: false });
     if (!parentFolder) return [];
 
+    const isOwner = parentFolder.user.toString() === userObjectId.toString();
+    let hasAccess = isOwner;
+
+    if (!hasAccess) {
+      // Kiểm tra xem thư mục có được chia sẻ còn hạn cho user không
+      const activeShare = await Share.findOne({
+        ...activeShareCondition,
+        folder: parentFolder._id,
+        itemType: 'folder'
+      }).select('_id');
+      hasAccess = !!activeShare;
+    }
+
+    if (!hasAccess) {
+      return [];
+    }
+
     // Tìm tất cả thư mục con cháu
     const descendants = await Folder.find({
       path: { $regex: `^${parentFolder.path}` },
@@ -67,10 +132,10 @@ const resolveAccessibleFileIds = async (userId, scope = { type: 'all', targetId:
 
     const folderIds = [parentFolder._id, ...descendants.map((d) => d._id)];
 
+    // Lấy tất cả file chưa vào thùng rác trong phạm vi thư mục được phép
     const files = await File.find({
       folder: { $in: folderIds },
-      isTrash: false,
-      user: userObjectId
+      isTrash: false
     }).select('_id');
 
     return files.map((f) => f._id);
@@ -78,33 +143,45 @@ const resolveAccessibleFileIds = async (userId, scope = { type: 'all', targetId:
 
   // 3. Phạm vi mặc định: Toàn bộ Drive (Global Multi-document QA)
   const [ownedFiles, directSharedFiles, sharedFolders] = await Promise.all([
-    // File do chính người dùng sở hữu
+    // File do chính người dùng sở hữu và không nằm trong thùng rác
     File.find({ user: userObjectId, isTrash: false }).select('_id'),
 
-    // File được người khác chia sẻ trực tiếp
-    Share.find({ sharedWith: userObjectId, itemType: 'file' }).distinct('file'),
+    // File được người khác chia sẻ trực tiếp (còn hạn)
+    Share.find({ ...activeShareCondition, itemType: 'file' }).distinct('file'),
 
-    // Thư mục được chia sẻ cho người dùng
-    Share.find({ sharedWith: userObjectId, itemType: 'folder' }).distinct('folder')
+    // Thư mục được chia sẻ cho người dùng (còn hạn)
+    Share.find({ ...activeShareCondition, itemType: 'folder' }).distinct('folder')
   ]);
 
   let folderSharedFiles = [];
   if (sharedFolders && sharedFolders.length > 0) {
     const parentFolders = await Folder.find({ _id: { $in: sharedFolders }, isTrash: false });
-    const paths = parentFolders.map((f) => new RegExp(`^${f.path}`));
-    const allDescendantFolders = await Folder.find({ path: { $in: paths }, isTrash: false }).distinct('_id');
-    const allFolderIds = [...sharedFolders, ...allDescendantFolders];
+    if (parentFolders.length > 0) {
+      const paths = parentFolders.map((f) => new RegExp(`^${f.path}`));
+      const allDescendantFolders = await Folder.find({ path: { $in: paths }, isTrash: false }).distinct('_id');
+      const allFolderIds = [...sharedFolders, ...allDescendantFolders];
 
-    folderSharedFiles = await File.find({ folder: { $in: allFolderIds }, isTrash: false }).distinct('_id');
+      folderSharedFiles = await File.find({ folder: { $in: allFolderIds }, isTrash: false }).distinct('_id');
+    }
   }
 
-  const allFileIds = new Set([
+  const candidateFileIds = new Set([
     ...ownedFiles.map((f) => f._id.toString()),
     ...directSharedFiles.map((id) => id.toString()),
     ...folderSharedFiles.map((id) => id.toString())
   ]);
 
-  return Array.from(allFileIds).map((id) => new mongoose.Types.ObjectId(id));
+  if (candidateFileIds.size === 0) {
+    return [];
+  }
+
+  // DOUBLE-CHECK BẢO MẬT: Xác thực lại tất cả file thực sự tồn tại và KHÔNG nằm trong thùng rác
+  const validFiles = await File.find({
+    _id: { $in: Array.from(candidateFileIds) },
+    isTrash: false
+  }).select('_id');
+
+  return validFiles.map((f) => f._id);
 };
 
 /**

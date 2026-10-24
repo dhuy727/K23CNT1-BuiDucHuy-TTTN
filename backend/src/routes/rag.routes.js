@@ -3,15 +3,17 @@ const router = express.Router();
 const ragController = require('../controllers/rag.controller');
 const { verifyAuth } = require('../middlewares/auth.middleware');
 
+const { ragChatLimiter } = require('../middlewares/rateLimiter.middleware');
+
 // Toàn bộ các API RAG đều yêu cầu xác thực người dùng
 router.use(verifyAuth);
 
 /**
  * @route   POST /api/rag/chat/stream
- * @desc    Streaming hỏi đáp RAG qua Server-Sent Events (SSE)
+ * @desc    Streaming hỏi đáp RAG qua Server-Sent Events (SSE) (Có áp dụng rate limit 15 req/phút)
  * @access  Private
  */
-router.post('/chat/stream', ragController.chatStream);
+router.post('/chat/stream', ragChatLimiter, ragController.chatStream);
 
 /**
  * @route   GET /api/rag/conversations

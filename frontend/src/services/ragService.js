@@ -73,11 +73,16 @@ const ragService = {
 
       if (!response.ok) {
         let errMessage = `Lỗi máy chủ (${response.status})`;
+        let retryAfter = null;
         try {
           const errJson = await response.json();
           errMessage = errJson.message || errMessage;
+          retryAfter = errJson.retryAfter || null;
         } catch (_) {}
-        throw new Error(errMessage);
+        const error = new Error(errMessage);
+        error.status = response.status;
+        error.retryAfter = retryAfter;
+        throw error;
       }
 
       const reader = response.body.getReader();

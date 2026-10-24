@@ -14,7 +14,9 @@ import {
   Copy,
   Check,
   RotateCcw,
-  Info
+  Info,
+  ShieldCheck,
+  ShieldAlert
 } from 'lucide-react';
 import ragService from '../../services/ragService';
 import CitationPill from './CitationPill';
@@ -180,6 +182,7 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
   const [showScopeDropdown, setShowScopeDropdown] = useState(false);
   const [showThreadsPanel, setShowThreadsPanel] = useState(false);
   const [copiedIdx, setCopiedIdx] = useState(null);
+  const [rateLimitSeconds, setRateLimitSeconds] = useState(0);
 
   // Scope hiện tại: 'all' | 'folder' | 'file'
   const [scope, setScope] = useState({
@@ -192,6 +195,15 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
   const textareaRef = useRef(null);
   const abortControllerRef = useRef(null);
   const toast = useToast();
+
+  // Đếm ngược Rate Limit làm nguội hệ thống
+  useEffect(() => {
+    if (rateLimitSeconds <= 0) return;
+    const timer = setInterval(() => {
+      setRateLimitSeconds((prev) => (prev > 1 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [rateLimitSeconds]);
 
   // Đồng bộ initialScope nếu được truyền vào
   useEffect(() => {
@@ -342,7 +354,13 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
       },
       onError: (err) => {
         setIsStreaming(false);
-        toast.error(err.message || 'Lỗi khi giao tiếp với Trợ lý AI');
+        if (err.status === 429) {
+          const waitSec = Number(err.retryAfter) || 60;
+          setRateLimitSeconds(waitSec);
+          toast.warning(`Hệ thống đang làm nguội để bảo vệ tài nguyên. Vui lòng thử lại sau ${waitSec} giây.`);
+        } else {
+          toast.error(err.message || 'Lỗi khi giao tiếp với Trợ lý AI');
+        }
       }
     });
   };
@@ -422,11 +440,32 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
             </button>
           </div>
 
-          {activeConversationId && (
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              Đã lưu phiên
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 10.5,
+                fontWeight: 600,
+                color: '#166534',
+                backgroundColor: '#f0fdf4',
+                border: '1px solid #bbf7d0',
+                padding: '2px 8px',
+                borderRadius: '12px'
+              }}
+              title="Cơ chế Document-Level ACL đang kích hoạt: Dữ liệu được bảo vệ đa tầng và loại trừ tệp tin rác/hết hạn"
+            >
+              <ShieldCheck size={11} />
+              <span>ACL Bảo vệ</span>
             </span>
-          )}
+
+            {activeConversationId && (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                Đã lưu phiên
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Scope Dropdown Menu */}
@@ -617,13 +656,41 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
 
         {/* Input Footer */}
         <div className="copilot-footer">
+          {rateLimitSeconds > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 12px',
+                marginBottom: 8,
+                backgroundColor: '#fffbeb',
+                border: '1px solid #fde68a',
+                borderRadius: 8,
+                fontSize: 12,
+                color: '#92400e',
+                animation: 'copilotFadeIn 0.2s ease'
+              }}
+            >
+              <Clock size={14} style={{ flexShrink: 0 }} />
+              <span>
+                Hệ thống đang điều tiết lưu lượng (Rate Limit). Bạn có thể tiếp tục hỏi sau <strong>{rateLimitSeconds}s</strong>.
+              </span>
+            </div>
+          )}
+
           <div className="copilot-input-box">
             <textarea
               ref={textareaRef}
               className="copilot-textarea"
-              placeholder="Đặt câu hỏi về tài liệu của bạn..."
+              placeholder={
+                rateLimitSeconds > 0
+                  ? `Vui lòng chờ làm nguội (${rateLimitSeconds}s)...`
+                  : 'Đặt câu hỏi về tài liệu của bạn...'
+              }
               rows={1}
               value={input}
+              disabled={rateLimitSeconds > 0}
               onChange={(e) => {
                 setInput(e.target.value);
                 e.target.style.height = 'auto';
@@ -632,7 +699,9 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
               onKeyDown={handleKeyDown}
             />
             <div className="copilot-input-actions">
-              <span className="copilot-input-hint">Nhấn Enter để gửi, Shift+Enter xuống dòng</span>
+              <span className="copilot-input-hint">
+                {rateLimitSeconds > 0 ? `Đang chờ ${rateLimitSeconds}s` : 'Nhấn Enter để gửi, Shift+Enter xuống dòng'}
+              </span>
               {isStreaming ? (
                 <button
                   type="button"
@@ -648,8 +717,8 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
                   type="button"
                   className="copilot-send-btn"
                   onClick={() => handleSendMessage()}
-                  disabled={!input.trim()}
-                  title="Gửi câu hỏi"
+                  disabled={!input.trim() || rateLimitSeconds > 0}
+                  title={rateLimitSeconds > 0 ? `Vui lòng chờ ${rateLimitSeconds}s` : 'Gửi câu hỏi'}
                 >
                   <Send size={14} />
                 </button>

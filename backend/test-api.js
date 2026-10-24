@@ -3,6 +3,10 @@ process.env.NODE_ENV = 'test';
 const mongoose = require('mongoose');
 const app = require('./src/app');
 const User = require('./src/models/user.model');
+const File = require('./src/models/file.model');
+const Folder = require('./src/models/folder.model');
+const Share = require('./src/models/share.model');
+const Version = require('./src/models/version.model');
 const { hashToken } = require('./src/utils/otp');
 
 const PORT = 5001; // Dùng port riêng để test không bị xung đột
@@ -834,10 +838,85 @@ async function runTests() {
     });
     // ── KẾT THÚC VERSIONING TESTS ─────────────────────────────────────────────
 
+    // ── BẢO MẬT RAG & DOCUMENT ACL TESTS ─────────────────────────────────────
+    console.log('\n[66] Kiểm tra Bảo mật Conversation RAG (User B không thể truy cập hội thoại của User A)');
+    const RagConversation = require('./src/models/ragConversation.model');
+    const testConv = await RagConversation.create({
+      user: userId,
+      title: 'Hội thoại bí mật của User A',
+      scopeType: 'all'
+    });
+
+    // CollabUser cố tình truy cập hội thoại của User A
+    const resForbiddenConv = await request(`/rag/conversations/${testConv._id}/messages`, {
+      headers: { Authorization: `Bearer ${collabToken}` }
+    });
+    assert(resForbiddenConv.status === 404 || resForbiddenConv.status === 403, 'Chặn User B truy cập hội thoại bí mật của User A (404/403)');
+
+    // CollabUser cố tình xóa hội thoại của User A
+    const resForbiddenDel = await request(`/rag/conversations/${testConv._id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${collabToken}` }
+    });
+    assert(resForbiddenDel.status === 404 || resForbiddenDel.status === 403, 'Chặn User B xóa hội thoại của User A (404/403)');
+
+    await RagConversation.findByIdAndDelete(testConv._id);
+    console.log('✅ [THÀNH CÔNG]: Bảo vệ quyền sở hữu cuộc trò chuyện RAG hoạt động hoàn hảo');
+
+    console.log('\n[67] Kiểm tra Document-Level ACL trong RAG (File trong thùng rác hoặc chia sẻ hết hạn bị loại bỏ)');
+    const { resolveAccessibleFileIds } = require('./src/services/rag-retrieval.service');
+
+    // Tạo 1 file bình thường của user A
+    const aclFile1 = await File.create({
+      user: userId,
+      name: 'ACL_Active.txt',
+      originalName: 'ACL_Active.txt',
+      size: 100,
+      mimeType: 'text/plain',
+      extension: 'txt',
+      isTrash: false
+    });
+
+    // Tạo 1 file trong thùng rác của user A
+    const aclFileTrash = await File.create({
+      user: userId,
+      name: 'ACL_Trash.txt',
+      originalName: 'ACL_Trash.txt',
+      size: 100,
+      mimeType: 'text/plain',
+      extension: 'txt',
+      isTrash: true
+    });
+
+    // Tạo 1 share đã hết hạn từ user A sang collabUser
+    const aclExpiredShare = await Share.create({
+      owner: userId,
+      itemType: 'file',
+      file: aclFile1._id,
+      sharedWith: collabUserId,
+      shareType: 'user',
+      expiresAt: new Date(Date.now() - 3600000) // Hết hạn 1 tiếng trước
+    });
+
+    // Kiểm tra với User A: Chỉ lấy file còn hiệu lực (không lấy file rác)
+    const userAAccessible = await resolveAccessibleFileIds(userId, { type: 'all' });
+    const userAIds = userAAccessible.map((id) => id.toString());
+    assert(userAIds.includes(aclFile1._id.toString()), 'User A truy xuất được file còn hiệu lực');
+    assert(!userAIds.includes(aclFileTrash._id.toString()), 'User A KHÔNG truy xuất file trong thùng rác');
+
+    // Kiểm tra với Collab User: File share đã hết hạn nên Collab User không được quyền truy xuất
+    const collabAccessible = await resolveAccessibleFileIds(collabUserId, { type: 'all' });
+    const collabIds = collabAccessible.map((id) => id.toString());
+    assert(!collabIds.includes(aclFile1._id.toString()), 'Collab User KHÔNG truy xuất được file đã hết hạn chia sẻ');
+
+    // Dọn dẹp dữ liệu test ACL
+    await Share.findByIdAndDelete(aclExpiredShare._id);
+    await File.findByIdAndDelete(aclFile1._id);
+    await File.findByIdAndDelete(aclFileTrash._id);
+    console.log('✅ [THÀNH CÔNG]: Document-Level ACL loại trừ chính xác file rác và share hết hạn');
+    // ── KẾT THÚC BẢO MẬT RAG TESTS ───────────────────────────────────────────
+
     // Dọn dẹp dữ liệu test
-    const Folder = require('./src/models/folder.model');
-    const Share = require('./src/models/share.model');
-    const Version = require('./src/models/version.model');
     await Share.deleteMany({ $or: [{ owner: userId }, { sharedWith: userId }, { sharedWith: collabUserId }] });
     await Version.deleteMany({ user: userId });
     await Folder.deleteMany({ user: userId });
@@ -846,7 +925,7 @@ async function runTests() {
     await User.findByIdAndDelete(collabUserId);
     console.log('\n-> Đã dọn dẹp toàn bộ dữ liệu kiểm thử User, Folders, Files, Shares, Versions thành công');
 
-    console.log('\n🎉 TẤT CẢ 65 BƯỚC KIỂM THỬ ĐÃ THÀNH CÔNG RỰC RỠ! 🎉\n');
+    console.log('\n🎉 TẤT CẢ 67 BƯỚC KIỂM THỬ ĐÃ THÀNH CÔNG RỰC RỠ! 🎉\n');
   } catch (error) {
     console.error('Lỗi khi chạy test:', error);
   } finally {
