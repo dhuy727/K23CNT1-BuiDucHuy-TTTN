@@ -607,7 +607,7 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
               </div>
 
               {aiSubTab === 'chat' ? (
-                <div style={{ padding: '0 16px 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: '0 16px 16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                   <DocChatTab file={currentFile} />
                 </div>
               ) : (

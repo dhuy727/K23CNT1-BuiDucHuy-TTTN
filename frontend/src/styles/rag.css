@@ -657,3 +657,26 @@
   background: rgba(255, 255, 255, 0.25);
   color: #fff;
 }
+
+/* 11. Subtle slim scrollbar for DocChatTab & AI Sidebar Views */
+.preview-ai-sidebar *::-webkit-scrollbar,
+.doc-chat-scroll::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.preview-ai-sidebar *::-webkit-scrollbar-track,
+.doc-chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.preview-ai-sidebar *::-webkit-scrollbar-thumb,
+.doc-chat-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-main);
+  border-radius: 999px;
+}
+
+.preview-ai-sidebar *::-webkit-scrollbar-thumb:hover,
+.doc-chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
