@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Zap,
   Plus,
@@ -13,13 +13,15 @@ import {
   CheckCircle2,
   History,
   FileText,
-  Copy,
   FolderInput,
-  Info,
-  X
+  X,
+  AlertTriangle,
+  AlertCircle
 } from 'lucide-react';
 import automationService from '../../services/automationService';
 import folderService from '../../services/folderService';
+import { useToast } from '../../contexts/ToastContext';
+import { detectRuleConflicts } from '../../utils/automationConflictDetector';
 import '../../styles/automation.css';
 
 const AI_CATEGORIES = [
@@ -69,6 +71,7 @@ const ACTION_TYPES = [
 ];
 
 const AutomationPage = () => {
+  const toast = useToast();
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [folders, setFolders] = useState([]);
@@ -86,6 +89,11 @@ const AutomationPage = () => {
   });
   const [saving, setSaving] = useState(false);
   const [runningAll, setRunningAll] = useState(false);
+
+  // Delete Confirm Modal State
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [ruleToDelete, setRuleToDelete] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const formatConditionText = (c) => {
     const fieldMap = {
@@ -114,10 +122,10 @@ const AutomationPage = () => {
     setRunningAll(true);
     try {
       const res = await automationService.runAllRules();
-      alert(res?.data?.message || res?.message || 'Đã quét và áp dụng quy tắc thành công cho tất cả tệp tin!');
+      toast.success(res?.data?.message || res?.message || 'Đã quét và áp dụng quy tắc thành công cho tất cả tệp tin!');
       fetchRules();
     } catch (err) {
-      alert(err.response?.data?.message || 'Lỗi khi quét quy tắc');
+      toast.error(err.response?.data?.message || 'Lỗi khi quét quy tắc');
     } finally {
       setRunningAll(false);
     }
@@ -169,24 +177,42 @@ const AutomationPage = () => {
     .filter((r) => r.lastRunAt)
     .sort((a, b) => new Date(b.lastRunAt) - new Date(a.lastRunAt))[0];
 
+  // Phát hiện xung đột quy tắc tự động (Conflict Detection)
+  const ruleConflicts = useMemo(() => {
+    if (!modalOpen) return [];
+    return detectRuleConflicts(formData, rules, editingRuleId, flatFolderList);
+  }, [modalOpen, formData, rules, editingRuleId, flatFolderList]);
+
   const handleToggle = async (id, e) => {
     e.stopPropagation();
     try {
       const res = await automationService.toggleRule(id);
       const updated = res?.data || res;
       setRules((prev) => prev.map((r) => (r._id === id ? { ...r, isActive: updated.isActive } : r)));
+      toast.success(updated.isActive ? 'Đã kích hoạt quy tắc' : 'Đã tạm ngưng quy tắc');
     } catch (err) {
-      alert('Không thể đổi trạng thái quy tắc');
+      toast.error(err.response?.data?.message || 'Không thể đổi trạng thái quy tắc');
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Bạn có chắc muốn xóa quy tắc này không?')) return;
+  const handlePromptDelete = (rule) => {
+    setRuleToDelete(rule);
+    setDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!ruleToDelete) return;
+    setDeleting(true);
     try {
-      await automationService.deleteRule(id);
-      setRules((prev) => prev.filter((r) => r._id !== id));
+      await automationService.deleteRule(ruleToDelete._id);
+      setRules((prev) => prev.filter((r) => r._id !== ruleToDelete._id));
+      toast.success(`Đã xóa quy tắc "${ruleToDelete.name}" thành công!`);
+      setDeleteModalOpen(false);
+      setRuleToDelete(null);
     } catch (err) {
-      alert('Lỗi khi xóa quy tắc');
+      toast.error(err.response?.data?.message || 'Lỗi khi xóa quy tắc');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -229,11 +255,11 @@ const AutomationPage = () => {
   const handleSaveRule = async (e) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert('Vui lòng nhập tên quy tắc');
+      toast.warning('Vui lòng nhập tên quy tắc');
       return;
     }
     if (!formData.actions || formData.actions.length === 0) {
-      alert('Quy tắc phải có ít nhất một hành động');
+      toast.warning('Quy tắc phải có ít nhất một hành động');
       return;
     }
 
@@ -249,13 +275,15 @@ const AutomationPage = () => {
 
       if (editingRuleId) {
         await automationService.updateRule(editingRuleId, payload);
+        toast.success(`Đã cập nhật quy tắc "${formData.name}" thành công!`);
       } else {
         await automationService.createRule(payload);
+        toast.success(`Tạo mới quy tắc "${formData.name}" thành công!`);
       }
       setModalOpen(false);
       fetchRules();
     } catch (err) {
-      alert(err.response?.data?.message || 'Lỗi khi lưu quy tắc tự động hóa');
+      toast.error(err.response?.data?.message || 'Lỗi khi lưu quy tắc tự động hóa');
     } finally {
       setSaving(false);
     }
@@ -569,7 +597,7 @@ const AutomationPage = () => {
                   <button
                     className="btn-icon text-danger"
                     title="Xóa quy tắc"
-                    onClick={() => handleDelete(rule._id)}
+                    onClick={() => handlePromptDelete(rule)}
                   >
                     <Trash2 size={16} />
                   </button>
@@ -918,6 +946,46 @@ const AutomationPage = () => {
                 </div>
               </div>
 
+              {/* Banner cảnh báo xung đột (Conflict Warning) */}
+              {ruleConflicts.length > 0 && (
+                <div className="rule-conflict-banner">
+                  <div className="rule-conflict-header">
+                    <AlertTriangle size={18} />
+                    <span>Phát hiện {ruleConflicts.length} nguy cơ xung đột với quy tắc khác</span>
+                  </div>
+                  <div className="rule-conflict-list">
+                    {ruleConflicts.map((c) => (
+                      <div
+                        key={c.id}
+                        className={`rule-conflict-card ${c.severity === 'danger' ? 'is-danger' : 'is-warning'}`}
+                      >
+                        <div className="rule-conflict-card-header">
+                          <span className="rule-conflict-type-title">
+                            {c.severity === 'danger' ? (
+                              <AlertCircle size={15} style={{ color: '#ef4444' }} />
+                            ) : (
+                              <AlertTriangle size={15} style={{ color: '#f59e0b' }} />
+                            )}
+                            {c.title}
+                          </span>
+                          <span className={`rule-conflict-badge ${c.severity === 'danger' ? 'is-danger' : ''}`}>
+                            Luật liên quan: {c.ruleName}
+                          </span>
+                        </div>
+                        <div className="rule-conflict-desc">{c.description}</div>
+                        <div className="rule-conflict-suggestion">
+                          <Sparkles size={13} style={{ flexShrink: 0, marginTop: 2, color: '#38bdf8' }} />
+                          <span>{c.suggestion}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="rule-conflict-footer-note">
+                    * Hệ thống vẫn cho phép bạn lưu quy tắc này. Nếu xảy ra trường hợp xung đột khi xử lý tệp tin, quy tắc có <strong>Độ ưu tiên (Priority)</strong> cao hơn sẽ được tự động ưu tiên thi hành.
+                  </div>
+                </div>
+              )}
+
               <div className="modal-footer" style={{ marginTop: '20px' }}>
                 <button
                   type="button"
@@ -931,6 +999,55 @@ const AutomationPage = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal xác nhận xóa quy tắc tùy chỉnh sang trọng */}
+      {deleteModalOpen && ruleToDelete && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !deleting) {
+              setDeleteModalOpen(false);
+              setRuleToDelete(null);
+            }
+          }}
+        >
+          <div className="modal-card automation-delete-modal" role="dialog" aria-modal="true">
+            <div className="automation-delete-icon">
+              <Trash2 size={26} />
+            </div>
+            <h3 className="automation-delete-title">Xác nhận xóa quy tắc</h3>
+            <p className="automation-delete-text">
+              Bạn có chắc chắn muốn xóa quy tắc{' '}
+              <span className="automation-delete-highlight">"{ruleToDelete.name}"</span>?
+              <br />
+              Hệ thống sẽ không còn tự động xử lý tệp theo quy tắc này nữa. Thao tác này không thể hoàn tác.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setDeleteModalOpen(false);
+                  setRuleToDelete(null);
+                }}
+                disabled={deleting}
+                style={{ minWidth: '110px' }}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                style={{ minWidth: '120px' }}
+              >
+                {deleting ? 'Đang xóa...' : 'Xóa quy tắc'}
+              </button>
+            </div>
           </div>
         </div>
       )}
