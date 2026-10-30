@@ -50,6 +50,9 @@ const StarredPage = () => {
   useEffect(() => {
     fetchStarredFiles();
     setSelectedItem(null);
+    const onRefresh = () => fetchStarredFiles();
+    window.addEventListener('drive:refresh', onRefresh);
+    return () => window.removeEventListener('drive:refresh', onRefresh);
   }, []);
 
   // Toggle Inspector global event
@@ -157,7 +160,6 @@ const StarredPage = () => {
         )}
 
         {loading ? (
-
           <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text-muted)' }}>
             <span className="spinner" style={{ width: 32, height: 32, margin: '0 auto' }} />
             <div style={{ marginTop: '14px', fontSize: '0.835rem' }}>Đang tải tệp yêu thích...</div>

@@ -1,11 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, HardDrive } from 'lucide-react';
+import {
+  setActiveDragItem,
+  getActiveDragItem,
+  clearActiveDragItem,
+  isExternalFileDrag
+} from '../../utils/dragDropUpload';
+
+const AUTO_EXPAND_DELAY_MS = 600;
 
 const TreeNode = ({
   node,
   activeFolderId,
   onSelectFolder,
   onDirectDrop,
+  onExternalDrop,
   disabledFolderId = null,
   isParentDisabled = false,
   level = 0
@@ -13,14 +22,36 @@ const TreeNode = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isDropTarget, setIsDropTarget] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const expandTimerRef = useRef(null);
+  const nodeRef = useRef(null);
 
   const hasChildren = node.children && node.children.length > 0;
   const isActive = activeFolderId === node._id;
-  const isDisabled = isParentDisabled || Boolean(disabledFolderId && String(node._id) === String(disabledFolderId));
+
+  const activeDrag = getActiveDragItem();
+  const isSelfBeingDragged =
+    isDragging ||
+    Boolean(activeDrag && activeDrag.type === 'folder' && String(activeDrag.id) === String(node._id));
+
+  const isDisabled =
+    isParentDisabled ||
+    isSelfBeingDragged ||
+    Boolean(disabledFolderId && String(node._id) === String(disabledFolderId));
+
+  const clearExpandTimer = () => {
+    if (expandTimerRef.current) {
+      clearTimeout(expandTimerRef.current);
+      expandTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearExpandTimer();
+  }, []);
 
   const handleToggle = (e) => {
     e.stopPropagation();
-    setIsOpen(!isOpen);
+    setIsOpen((prev) => !prev);
   };
 
   const handleSelect = () => {
@@ -37,37 +68,50 @@ const TreeNode = ({
     }
     e.stopPropagation();
     setIsDragging(true);
-    e.dataTransfer.setData(
-      'application/json',
-      JSON.stringify({
-        type: 'folder',
-        id: node._id,
-        name: node.name,
-        path: node.path
-      })
-    );
+    const payload = {
+      type: 'folder',
+      id: node._id,
+      name: node.name,
+      path: node.path,
+      parentId: node.parentId || 'root'
+    };
+    setActiveDragItem(payload);
+    e.dataTransfer.setData('application/json', JSON.stringify(payload));
     e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleDragEnd = () => {
     setIsDragging(false);
+    clearExpandTimer();
+    clearActiveDragItem();
   };
 
   const handleDragOver = (e) => {
     if (isDisabled) return;
     e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.dropEffect = isExternalFileDrag(e) ? 'copy' : 'move';
+
     if (!isDropTarget) {
       setIsDropTarget(true);
+    }
+
+    // Tự động mở rộng thư mục có thư mục con khi giữ chuột kéo qua (~600ms) và cuộn nhẹ để hiển thị nhánh con
+    if (hasChildren && !isOpen && !expandTimerRef.current) {
+      expandTimerRef.current = setTimeout(() => {
+        setIsOpen(true);
+        expandTimerRef.current = null;
+        setTimeout(() => {
+          nodeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 60);
+      }, AUTO_EXPAND_DELAY_MS);
     }
   };
 
   const handleDragLeave = (e) => {
     e.preventDefault();
-    e.stopPropagation();
     if (!e.currentTarget.contains(e.relatedTarget)) {
       setIsDropTarget(false);
+      clearExpandTimer();
     }
   };
 
@@ -75,13 +119,23 @@ const TreeNode = ({
     e.preventDefault();
     e.stopPropagation();
     setIsDropTarget(false);
+    clearExpandTimer();
     if (isDisabled) return;
 
+    // 1. Trường hợp kéo thả tệp/thư mục từ máy tính (OS) vào thẳng nút cây thư mục
+    if (isExternalFileDrag(e)) {
+      if (onExternalDrop) {
+        onExternalDrop(e, node);
+      }
+      return;
+    }
+
+    // 2. Trường hợp kéo thả mục nội bộ trên Drive
     try {
       const raw = e.dataTransfer.getData('application/json');
-      if (!raw) return;
-      const sourceItem = JSON.parse(raw);
-      if (sourceItem && sourceItem.id !== node._id && onDirectDrop) {
+      const sourceItem = raw ? JSON.parse(raw) : getActiveDragItem();
+      clearActiveDragItem();
+      if (sourceItem && String(sourceItem.id) !== String(node._id) && onDirectDrop) {
         onDirectDrop(sourceItem, node);
       }
     } catch (err) {
@@ -90,7 +144,7 @@ const TreeNode = ({
   };
 
   return (
-    <div className="tree-node">
+    <div className="tree-node" ref={nodeRef}>
       <div
         className={`tree-item ${isActive ? 'active' : ''} ${isDropTarget ? 'drop-target-active' : ''} ${isDragging ? 'is-dragging' : ''}`}
         onClick={handleSelect}
@@ -148,7 +202,7 @@ const TreeNode = ({
         >
           {node.name}
         </span>
-        {isDisabled && (
+        {isDisabled && !isDragging && (
           <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto', fontStyle: 'italic' }}>
             (Không thể chọn)
           </span>
@@ -164,6 +218,7 @@ const TreeNode = ({
               activeFolderId={activeFolderId}
               onSelectFolder={onSelectFolder}
               onDirectDrop={onDirectDrop}
+              onExternalDrop={onExternalDrop}
               disabledFolderId={disabledFolderId}
               isParentDisabled={isDisabled}
               level={level + 1}
@@ -181,16 +236,16 @@ const FolderTree = ({
   activeFolderId = null,
   onSelectFolder,
   onDirectDrop,
+  onExternalDrop,
   includeRoot = false,
   disabledFolderId = null
 }) => {
   const [isRootDropTarget, setIsRootDropTarget] = useState(false);
-  const list = (tree && tree.length > 0) ? tree : (folders || []);
+  const list = tree && tree.length > 0 ? tree : folders || [];
 
   const handleRootDragOver = (e) => {
     e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.dropEffect = isExternalFileDrag(e) ? 'copy' : 'move';
     if (!isRootDropTarget) {
       setIsRootDropTarget(true);
     }
@@ -198,7 +253,6 @@ const FolderTree = ({
 
   const handleRootDragLeave = (e) => {
     e.preventDefault();
-    e.stopPropagation();
     if (!e.currentTarget.contains(e.relatedTarget)) {
       setIsRootDropTarget(false);
     }
@@ -208,12 +262,22 @@ const FolderTree = ({
     e.preventDefault();
     e.stopPropagation();
     setIsRootDropTarget(false);
+
+    const rootTarget = { _id: 'root', name: 'Drive của tôi' };
+
+    if (isExternalFileDrag(e)) {
+      if (onExternalDrop) {
+        onExternalDrop(e, rootTarget);
+      }
+      return;
+    }
+
     try {
       const raw = e.dataTransfer.getData('application/json');
-      if (!raw) return;
-      const sourceItem = JSON.parse(raw);
+      const sourceItem = raw ? JSON.parse(raw) : getActiveDragItem();
+      clearActiveDragItem();
       if (sourceItem && onDirectDrop) {
-        onDirectDrop(sourceItem, { _id: 'root', name: 'Drive của tôi' });
+        onDirectDrop(sourceItem, rootTarget);
       }
     } catch (err) {
       console.error('Lỗi drop vào Gốc FolderTree:', err);
@@ -254,6 +318,7 @@ const FolderTree = ({
           activeFolderId={activeFolderId}
           onSelectFolder={onSelectFolder}
           onDirectDrop={onDirectDrop}
+          onExternalDrop={onExternalDrop}
           disabledFolderId={disabledFolderId}
           level={0}
         />

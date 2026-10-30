@@ -1852,3 +1852,27 @@ tr.folder-row.drop-target-active {
   color: var(--accent-amber, #f59e0b) !important;
 }
 
+
+/* ── Workspace External File Drag-and-Drop Border Highlight ── */
+.page-body.workspace-drop-active {
+  outline: 2px dashed var(--primary-500);
+  outline-offset: -8px;
+  background-color: rgba(99, 102, 241, 0.035);
+  border-radius: var(--radius-lg);
+  transition: outline-color 160ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme='dark'] .page-body.workspace-drop-active {
+  outline-color: var(--primary-400);
+  background-color: rgba(99, 102, 241, 0.07);
+}
+
+.home-folder-scroll-card.is-dragging {
+  opacity: 0.45 !important;
+  border-style: dashed !important;
+  transform: scale(0.97) !important;
+  filter: grayscale(25%);
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}

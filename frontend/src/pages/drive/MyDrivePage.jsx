@@ -40,6 +40,15 @@ import folderService from '../../services/folderService';
 import fileService from '../../services/fileService';
 import aiService from '../../services/aiService';
 import { useToast } from '../../contexts/ToastContext';
+import {
+  setActiveDragItem,
+  getActiveDragItem,
+  clearActiveDragItem,
+  isExternalFileDrag,
+  uploadDroppedFilesFromEvent
+} from '../../utils/dragDropUpload';
+
+const SPRING_OPEN_FOLDER_DELAY_MS = 1000;
 
 /* ── Dropdown menu 3 chấm thẻ Quick Folder qua Portal chống bị che khuất ── */
 const QuickFolderMenu = ({ buttonRef, items, onClose }) => {
@@ -143,7 +152,20 @@ const QuickFolderCard = ({
   onDrop
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const moreBtnRef = useRef(null);
+  const springTimerRef = useRef(null);
+
+  const clearSpringTimer = () => {
+    if (springTimerRef.current) {
+      clearTimeout(springTimerRef.current);
+      springTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearSpringTimer();
+  }, []);
 
   const quickMenuItems = [
     {
@@ -187,16 +209,58 @@ const QuickFolderCard = ({
       })
     : '';
 
+  const handleDragStart = (e) => {
+    setIsDragging(true);
+    const payload = {
+      type: 'folder',
+      id: folder._id,
+      name: folder.name,
+      parentId: folder.parentId || 'root'
+    };
+    setActiveDragItem(payload);
+    e.dataTransfer.setData('application/json', JSON.stringify(payload));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    clearSpringTimer();
+    clearActiveDragItem();
+  };
+
   return (
     <div
       className={`home-folder-scroll-card ${isSelected ? 'is-selected' : ''} ${
         isDragTarget ? 'drop-target-active' : ''
-      }`}
+      } ${isDragging ? 'is-dragging' : ''}`}
+      draggable={true}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       onClick={() => onSelect(folder)}
       onDoubleClick={() => onOpen(folder._id)}
-      onDragOver={(e) => onDragOver(e, folder)}
-      onDragLeave={(e) => onDragLeave(e, folder)}
-      onDrop={(e) => onDrop(e, folder)}
+      onDragOver={(e) => {
+        const activeDrag = getActiveDragItem();
+        if (isDragging || (activeDrag?.type === 'folder' && String(activeDrag.id) === String(folder._id))) {
+          return;
+        }
+        onDragOver(e, folder);
+        if (!springTimerRef.current && onOpen) {
+          springTimerRef.current = setTimeout(() => {
+            springTimerRef.current = null;
+            onOpen(folder._id);
+          }, SPRING_OPEN_FOLDER_DELAY_MS);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) {
+          clearSpringTimer();
+          onDragLeave(e, folder);
+        }
+      }}
+      onDrop={(e) => {
+        clearSpringTimer();
+        onDrop(e, folder);
+      }}
     >
       <div className="home-folder-card-top">
         <div
@@ -309,8 +373,8 @@ const MyDrivePage = () => {
   const [pinnedFolders, setPinnedFolders] = useState([]);
   const [recentFolders, setRecentFolders] = useState([]);
   const quickScrollRef = useRef(null);
-  const [activeQuickMenuId, setActiveQuickMenuId] = useState(null);
   const [dragOverQuickFolderId, setDragOverQuickFolderId] = useState(null);
+  const [isWorkspaceExternalDragOver, setIsWorkspaceExternalDragOver] = useState(false);
 
   // Studio 3-column Inspector state
   const [selectedItem, setSelectedItem] = useState(null);
@@ -381,7 +445,7 @@ const MyDrivePage = () => {
 
       if (folderRes.status === 'fulfilled') {
         const raw = folderRes.value.data;
-        const list = Array.isArray(raw) ? raw : (raw?.folders || raw?.data || []);
+        const list = Array.isArray(raw) ? raw : raw?.folders || raw?.data || [];
         setFolders(list);
       }
       if (fileRes.status === 'fulfilled') {
@@ -389,12 +453,12 @@ const MyDrivePage = () => {
       }
       if (pinnedRes.status === 'fulfilled') {
         const raw = pinnedRes.value.data;
-        const list = Array.isArray(raw) ? raw : (raw?.folders || raw?.data || []);
+        const list = Array.isArray(raw) ? raw : raw?.folders || raw?.data || [];
         setPinnedFolders(list);
       }
       if (recentRes.status === 'fulfilled') {
         const raw = recentRes.value.data;
-        const list = Array.isArray(raw) ? raw : (raw?.folders || raw?.data || []);
+        const list = Array.isArray(raw) ? raw : raw?.folders || raw?.data || [];
         setRecentFolders(list.slice(0, 10));
       }
     } catch (err) {
@@ -403,7 +467,7 @@ const MyDrivePage = () => {
     } finally {
       setLoading(false);
     }
-  }, [folderId, filterType, filterCategory, sortBy, sortOrder]);
+  }, [folderId, filterType, filterCategory, sortBy, sortOrder, toast]);
 
   const handleTogglePinFolder = async (targetFolderId) => {
     try {
@@ -440,13 +504,50 @@ const MyDrivePage = () => {
     localStorage.setItem('drive_quick_tab', tab);
   };
 
+  const handleExternalDropToFolder = async (e, targetFolder) => {
+    setIsWorkspaceExternalDragOver(false);
+    setDragOverQuickFolderId(null);
+    const targetId = targetFolder?._id === 'root' ? 'root' : targetFolder?._id;
+    const targetName = targetFolder?.name || (targetId === 'root' ? 'Drive của tôi' : 'thư mục');
+    await uploadDroppedFilesFromEvent(e, targetId, targetName, toast, fetchDriveContent);
+  };
+
+  const handleWorkspaceDragOver = (e) => {
+    if (!isExternalFileDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!isWorkspaceExternalDragOver) {
+      setIsWorkspaceExternalDragOver(true);
+    }
+  };
+
+  const handleWorkspaceDragLeave = (e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsWorkspaceExternalDragOver(false);
+    }
+  };
+
+  const handleWorkspaceDrop = async (e) => {
+    if (!isExternalFileDrag(e)) return;
+    e.preventDefault();
+    setIsWorkspaceExternalDragOver(false);
+    const currentFolderName = breadcrumbs[breadcrumbs.length - 1]?.name || 'Drive của tôi';
+    await uploadDroppedFilesFromEvent(
+      e,
+      folderId || 'root',
+      currentFolderName,
+      toast,
+      fetchDriveContent
+    );
+  };
+
   const handleDirectDrop = async (sourceItem, targetFolder) => {
     if (!sourceItem || !targetFolder) return;
-    const previousParentId = folderId || 'root';
+    const previousParentId = sourceItem.parentId || folderId || 'root';
     const targetId = targetFolder._id === 'root' ? 'root' : targetFolder._id;
     const targetName = targetFolder.name || (targetId === 'root' ? 'Drive của tôi' : 'thư mục');
 
-    if (sourceItem.id === targetId) return;
+    if (String(sourceItem.id) === String(targetId)) return;
 
     try {
       if (sourceItem.type === 'file') {
@@ -498,11 +599,18 @@ const MyDrivePage = () => {
     e.preventDefault();
     e.stopPropagation();
     setDragOverQuickFolderId(null);
+    setIsWorkspaceExternalDragOver(false);
+
+    if (isExternalFileDrag(e)) {
+      await handleExternalDropToFolder(e, targetFolder);
+      return;
+    }
+
     try {
       const raw = e.dataTransfer.getData('application/json');
-      if (!raw) return;
-      const dragData = JSON.parse(raw);
-      if (dragData.id === targetFolder._id) return;
+      const dragData = raw ? JSON.parse(raw) : getActiveDragItem();
+      clearActiveDragItem();
+      if (!dragData || String(dragData.id) === String(targetFolder._id)) return;
       await handleDirectDrop(dragData, targetFolder);
     } catch (err) {
       console.error('Lỗi khi thả vào lối tắt thư mục:', err);
@@ -614,6 +722,7 @@ const MyDrivePage = () => {
 
   const handleOpenFolder = (id) => {
     setSelectedItem(null);
+    setDragOverQuickFolderId(null);
     if (id && id !== 'root') {
       navigate(`/drive/folder/${id}`);
     } else {
@@ -684,7 +793,6 @@ const MyDrivePage = () => {
     }
   };
 
-
   /* ── Render thẻ thư mục trong Quick Access Strip ── */
   const renderQuickFolderCard = (folder) => {
     const isSelected = selectedItem?.type === 'folder' && selectedItem?.data?._id === folder._id;
@@ -705,13 +813,11 @@ const MyDrivePage = () => {
         onDelete={(f) => setDeleteTarget({ type: 'folder', item: f })}
         onDragOver={(e) => {
           e.preventDefault();
-          e.stopPropagation();
-          e.dataTransfer.dropEffect = 'move';
+          e.dataTransfer.dropEffect = isExternalFileDrag(e) ? 'copy' : 'move';
           if (dragOverQuickFolderId !== folder._id) setDragOverQuickFolderId(folder._id);
         }}
         onDragLeave={(e) => {
           e.preventDefault();
-          e.stopPropagation();
           if (dragOverQuickFolderId === folder._id) setDragOverQuickFolderId(null);
         }}
         onDrop={(e) => handleQuickFolderDrop(e, folder)}
@@ -723,13 +829,21 @@ const MyDrivePage = () => {
 
   return (
     <>
-      <main className={`page-body ${isInspectorOpen ? 'has-inspector' : ''}`}>
+      <main
+        className={`page-body ${isInspectorOpen ? 'has-inspector' : ''} ${
+          isWorkspaceExternalDragOver ? 'workspace-drop-active' : ''
+        }`}
+        onDragOver={handleWorkspaceDragOver}
+        onDragLeave={handleWorkspaceDragLeave}
+        onDrop={handleWorkspaceDrop}
+      >
         {/* Top Action Bar */}
         <div className="drive-action-bar">
           <Breadcrumb
             breadcrumbs={breadcrumbs}
             onSelectFolder={handleOpenFolder}
             onDirectDrop={handleDirectDrop}
+            onExternalDrop={handleExternalDropToFolder}
           />
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -915,7 +1029,6 @@ const MyDrivePage = () => {
         )}
 
         {/* Content */}
-
         {loading ? (
           <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text-muted)' }}>
             <span className="spinner" style={{ width: 32, height: 32, margin: '0 auto' }} />
@@ -925,7 +1038,7 @@ const MyDrivePage = () => {
           <EmptyState
             icon={FolderOpen}
             title="Thư mục trống"
-            description="Chưa có tệp tin hoặc thư mục nào ở vị trí này. Bạn có thể nhấn nút Tạo mới để bắt đầu."
+            description="Chưa có tệp tin hoặc thư mục nào ở vị trí này. Bạn có thể kéo thả tệp từ máy tính vào đây hoặc nhấn nút Tạo mới để bắt đầu."
           />
         ) : viewMode === 'grid' ? (
           <FileGrid
@@ -945,6 +1058,7 @@ const MyDrivePage = () => {
             onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
             onRetryAi={handleRetryAi}
             onDirectDrop={handleDirectDrop}
+            onExternalDrop={handleExternalDropToFolder}
             onTogglePinFolder={handleTogglePinFolder}
           />
         ) : (
@@ -965,6 +1079,7 @@ const MyDrivePage = () => {
             onDeleteItem={(type, item) => setDeleteTarget({ type, item })}
             onRetryAi={handleRetryAi}
             onDirectDrop={handleDirectDrop}
+            onExternalDrop={handleExternalDropToFolder}
             onTogglePinFolder={handleTogglePinFolder}
           />
         )}

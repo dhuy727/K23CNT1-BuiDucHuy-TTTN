@@ -1,8 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ChevronRight, HardDrive, Folder, FolderOpen } from 'lucide-react';
+import {
+  getActiveDragItem,
+  clearActiveDragItem,
+  isExternalFileDrag
+} from '../../utils/dragDropUpload';
 
-const Breadcrumb = ({ breadcrumbs = [], onSelectFolder, onDirectDrop }) => {
+const SPRING_OPEN_BREADCRUMB_DELAY_MS = 1000;
+
+const Breadcrumb = ({ breadcrumbs = [], onSelectFolder, onDirectDrop, onExternalDrop }) => {
   const [dragOverId, setDragOverId] = useState(null);
+  const springTimerRef = useRef(null);
+
+  const clearSpringTimer = () => {
+    if (springTimerRef.current) {
+      clearTimeout(springTimerRef.current);
+      springTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearSpringTimer();
+  }, []);
 
   if (!breadcrumbs || breadcrumbs.length === 0) {
     return (
@@ -19,19 +38,31 @@ const Breadcrumb = ({ breadcrumbs = [], onSelectFolder, onDirectDrop }) => {
     if (isLast) return;
     e.preventDefault();
     e.stopPropagation();
-    e.dataTransfer.dropEffect = 'move';
+    e.dataTransfer.dropEffect = isExternalFileDrag(e) ? 'copy' : 'move';
     const targetKey = item._id || 'root';
     if (dragOverId !== targetKey) {
       setDragOverId(targetKey);
+      clearSpringTimer();
+      const isRoot = item._id === 'root' || item._id === null;
+      if (onSelectFolder) {
+        springTimerRef.current = setTimeout(() => {
+          springTimerRef.current = null;
+          setDragOverId(null);
+          onSelectFolder(isRoot ? null : item._id);
+        }, SPRING_OPEN_BREADCRUMB_DELAY_MS);
+      }
     }
   };
 
   const handleDragLeave = (e, item) => {
     e.preventDefault();
     e.stopPropagation();
-    const targetKey = item._id || 'root';
-    if (dragOverId === targetKey) {
-      setDragOverId(null);
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      const targetKey = item._id || 'root';
+      if (dragOverId === targetKey) {
+        setDragOverId(null);
+      }
+      clearSpringTimer();
     }
   };
 
@@ -40,16 +71,27 @@ const Breadcrumb = ({ breadcrumbs = [], onSelectFolder, onDirectDrop }) => {
     e.preventDefault();
     e.stopPropagation();
     setDragOverId(null);
+    clearSpringTimer();
+
+    const isRoot = item._id === 'root' || item._id === null;
+    const targetFolder = {
+      _id: isRoot ? 'root' : item._id,
+      name: item.name
+    };
+
+    if (isExternalFileDrag(e)) {
+      if (onExternalDrop) {
+        onExternalDrop(e, targetFolder);
+      }
+      return;
+    }
+
     try {
       const raw = e.dataTransfer.getData('application/json');
-      if (!raw) return;
-      const sourceItem = JSON.parse(raw);
+      const sourceItem = raw ? JSON.parse(raw) : getActiveDragItem();
+      clearActiveDragItem();
       if (sourceItem && onDirectDrop) {
-        const isRoot = item._id === 'root' || item._id === null;
-        onDirectDrop(sourceItem, {
-          _id: isRoot ? 'root' : item._id,
-          name: item.name
-        });
+        onDirectDrop(sourceItem, targetFolder);
       }
     } catch (err) {
       console.error('Lỗi drop vào Breadcrumb:', err);

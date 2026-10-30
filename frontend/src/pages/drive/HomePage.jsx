@@ -28,7 +28,6 @@ import FileIcon from '../../components/drive/FileIcon';
 import ContextualActionBar from '../../components/drive/ContextualActionBar';
 import FilePreviewModal from '../../components/drive/FilePreviewModal';
 
-
 import RenameModal from '../../components/drive/RenameModal';
 import MoveCopyModal from '../../components/drive/MoveCopyModal';
 import ShareModal from '../../components/drive/ShareModal';
@@ -39,6 +38,15 @@ import fileService from '../../services/fileService';
 import folderService from '../../services/folderService';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  setActiveDragItem,
+  getActiveDragItem,
+  clearActiveDragItem,
+  isExternalFileDrag,
+  uploadDroppedFilesFromEvent
+} from '../../utils/dragDropUpload';
+
+const SPRING_OPEN_FOLDER_DELAY_MS = 1000;
 
 /* ── Dropdown menu 3 chấm qua Portal chống bị che khuất bởi overflow ── */
 const MoreMenu = ({ buttonRef, items, onClose }) => {
@@ -142,7 +150,20 @@ const HomeFolderCard = ({
   onDrop
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const moreBtnRef = useRef(null);
+  const springTimerRef = useRef(null);
+
+  const clearSpringTimer = () => {
+    if (springTimerRef.current) {
+      clearTimeout(springTimerRef.current);
+      springTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearSpringTimer();
+  }, []);
 
   const folderMenuItems = [
     {
@@ -186,16 +207,58 @@ const HomeFolderCard = ({
       })
     : '';
 
+  const handleDragStart = (e) => {
+    setIsDragging(true);
+    const payload = {
+      type: 'folder',
+      id: folder._id,
+      name: folder.name,
+      parentId: folder.parentId || 'root'
+    };
+    setActiveDragItem(payload);
+    e.dataTransfer.setData('application/json', JSON.stringify(payload));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    clearSpringTimer();
+    clearActiveDragItem();
+  };
+
   return (
     <div
       className={`home-folder-scroll-card ${isSelected ? 'is-selected' : ''} ${
         isDragTarget ? 'drop-target-active' : ''
-      }`}
+      } ${isDragging ? 'is-dragging' : ''}`}
+      draggable={true}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       onClick={() => onSelect(folder)}
       onDoubleClick={() => onOpen(folder._id)}
-      onDragOver={(e) => onDragOver(e, folder)}
-      onDragLeave={(e) => onDragLeave(e, folder)}
-      onDrop={(e) => onDrop(e, folder)}
+      onDragOver={(e) => {
+        const activeDrag = getActiveDragItem();
+        if (isDragging || (activeDrag?.type === 'folder' && String(activeDrag.id) === String(folder._id))) {
+          return;
+        }
+        onDragOver(e, folder);
+        if (!springTimerRef.current && onOpen) {
+          springTimerRef.current = setTimeout(() => {
+            springTimerRef.current = null;
+            onOpen(folder._id);
+          }, SPRING_OPEN_FOLDER_DELAY_MS);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) {
+          clearSpringTimer();
+          onDragLeave(e, folder);
+        }
+      }}
+      onDrop={(e) => {
+        clearSpringTimer();
+        onDrop(e, folder);
+      }}
     >
       <div className="home-folder-card-top">
         <div
@@ -283,7 +346,7 @@ const HomeFolderCard = ({
 };
 
 /* ── Home Section Container ── */
-const HomeSection = ({ icon, title, count, onViewAll, children, emptyText }) => (
+const HomeSection = ({ icon, title, count, onViewAll, children }) => (
   <div className="home-section">
     <div className="home-section-header">
       <div className="home-section-title">
@@ -318,8 +381,8 @@ const HomePage = () => {
 
   // Horizontal scroll ref & active states
   const foldersScrollRef = useRef(null);
-  const [activeFolderMenuId, setActiveFolderMenuId] = useState(null);
   const [dragOverFolderId, setDragOverFolderId] = useState(null);
+  const [isWorkspaceExternalDragOver, setIsWorkspaceExternalDragOver] = useState(false);
 
   // Modals state
   const [previewFile, setPreviewFile] = useState(null);
@@ -347,7 +410,7 @@ const HomePage = () => {
       }
       if (folderRes.status === 'fulfilled') {
         const raw = folderRes.value.data;
-        const list = Array.isArray(raw) ? raw : (raw?.folders || raw?.data || []);
+        const list = Array.isArray(raw) ? raw : raw?.folders || raw?.data || [];
         setRecentFolders(list.slice(0, 10));
       }
     } catch (err) {
@@ -446,15 +509,19 @@ const HomePage = () => {
 
   /* ── Kéo thả tệp tin vào thư mục ── */
   const handleFileDragStart = (e, file) => {
-    e.dataTransfer.setData(
-      'application/json',
-      JSON.stringify({
-        type: 'file',
-        id: file._id,
-        name: file.name
-      })
-    );
+    const payload = {
+      type: 'file',
+      id: file._id,
+      name: file.name,
+      parentId: file.folderId || 'root'
+    };
+    setActiveDragItem(payload);
+    e.dataTransfer.setData('application/json', JSON.stringify(payload));
     e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleFileDragEnd = () => {
+    clearActiveDragItem();
   };
 
   /* ── Ghim / Bỏ ghim thư mục ── */
@@ -483,16 +550,46 @@ const HomePage = () => {
     }
   };
 
+  /* ── Kéo thả tệp/thư mục từ máy tính vào Trang chủ ── */
+  const handleWorkspaceDragOver = (e) => {
+    if (!isExternalFileDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!isWorkspaceExternalDragOver) {
+      setIsWorkspaceExternalDragOver(true);
+    }
+  };
+
+  const handleWorkspaceDragLeave = (e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsWorkspaceExternalDragOver(false);
+    }
+  };
+
+  const handleWorkspaceDrop = async (e) => {
+    if (!isExternalFileDrag(e)) return;
+    e.preventDefault();
+    setIsWorkspaceExternalDragOver(false);
+    await uploadDroppedFilesFromEvent(e, 'root', 'Drive của tôi', toast, fetchData);
+  };
+
   /* ── Kéo thả tệp tin hoặc thư mục vào thư mục với nút Hoàn tác ── */
   const handleFolderDrop = async (e, targetFolder) => {
     e.preventDefault();
     e.stopPropagation();
     setDragOverFolderId(null);
+    setIsWorkspaceExternalDragOver(false);
+
+    if (isExternalFileDrag(e)) {
+      await uploadDroppedFilesFromEvent(e, targetFolder._id, targetFolder.name, toast, fetchData);
+      return;
+    }
+
     try {
       const raw = e.dataTransfer.getData('application/json');
-      if (!raw) return;
-      const dragData = JSON.parse(raw);
-      if (dragData.id === targetFolder._id) return;
+      const dragData = raw ? JSON.parse(raw) : getActiveDragItem();
+      clearActiveDragItem();
+      if (!dragData || String(dragData.id) === String(targetFolder._id)) return;
 
       if (dragData.type === 'file' && dragData.id) {
         const prevId = dragData.parentId || 'root';
@@ -564,13 +661,11 @@ const HomePage = () => {
         onDelete={(f) => setDeleteTarget({ type: 'folder', item: f })}
         onDragOver={(e) => {
           e.preventDefault();
-          e.stopPropagation();
-          e.dataTransfer.dropEffect = 'move';
+          e.dataTransfer.dropEffect = isExternalFileDrag(e) ? 'copy' : 'move';
           if (dragOverFolderId !== folder._id) setDragOverFolderId(folder._id);
         }}
         onDragLeave={(e) => {
           e.preventDefault();
-          e.stopPropagation();
           if (dragOverFolderId === folder._id) setDragOverFolderId(null);
         }}
         onDrop={(e) => handleFolderDrop(e, folder)}
@@ -592,6 +687,7 @@ const HomePage = () => {
         className={`file-card ${isSelected ? 'is-selected' : ''}`}
         draggable={true}
         onDragStart={(e) => handleFileDragStart(e, file)}
+        onDragEnd={handleFileDragEnd}
         onClick={() => setSelectedItem({ type: 'file', data: file })}
         onDoubleClick={() => setPreviewFile(file)}
       >
@@ -659,9 +755,16 @@ const HomePage = () => {
 
   return (
     <>
-      <main className={`page-body ${isInspectorOpen ? 'has-inspector' : ''}`}>
+      <main
+        className={`page-body ${isInspectorOpen ? 'has-inspector' : ''} ${
+          isWorkspaceExternalDragOver ? 'workspace-drop-active' : ''
+        }`}
+        onDragOver={handleWorkspaceDragOver}
+        onDragLeave={handleWorkspaceDragLeave}
+        onDrop={handleWorkspaceDrop}
+      >
         <div className="home-page">
-          {/* Thanh thao tác ngữ cảnh khi chọn tệp/thư mục (Ảnh 1) */}
+          {/* Thanh thao tác ngữ cảnh khi chọn tệp/thư mục */}
           {selectedItem && (
             <ContextualActionBar
               selectedItem={selectedItem}
@@ -681,7 +784,6 @@ const HomePage = () => {
           )}
 
           {/* Studio Workspace Header Hero */}
-
           <div className="home-studio-hero">
             <div>
               <h1 className="home-studio-greeting-title">

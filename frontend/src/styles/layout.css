@@ -1639,4 +1639,29 @@ tr.file-highlight-pulse {
 .notif-footer-hint {
   font-size: 0.7rem;
   color: var(--text-muted);
-}
+}
+
+
+/* ── Trash Drop Target (Danger State) on Sidebar ── */
+.nav-item.drop-target-danger {
+  background: rgba(239, 68, 68, 0.14) !important;
+  color: var(--accent-rose, #e11d48) !important;
+  outline: 1.5px dashed var(--accent-rose, #e11d48) !important;
+  outline-offset: -1px;
+  transform: translateX(3px) scale(1.02);
+  box-shadow: 0 4px 12px rgba(225, 29, 72, 0.18) !important;
+}
+
+[data-theme='dark'] .nav-item.drop-target-danger {
+  background: rgba(244, 63, 94, 0.22) !important;
+  color: #fda4af !important;
+  outline-color: #fb7185 !important;
+  box-shadow: 0 4px 14px rgba(244, 63, 94, 0.28) !important;
+}
+
+/* Cho phép toàn bộ danh sách và cây thư mục trên Sidebar cuộn thống nhất qua .sidebar-nav */
+.sidebar-tree-container {
+  max-height: none;
+  overflow-y: visible;
+  padding-bottom: 12px;
+}

@@ -45,6 +45,9 @@ const TrashPage = () => {
   useEffect(() => {
     fetchTrash();
     setSelectedItem(null);
+    const onRefresh = () => fetchTrash();
+    window.addEventListener('drive:refresh', onRefresh);
+    return () => window.removeEventListener('drive:refresh', onRefresh);
   }, []);
 
   // Toggle Inspector global event
