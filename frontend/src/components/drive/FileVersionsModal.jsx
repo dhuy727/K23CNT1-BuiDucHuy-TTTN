@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
+import ConfirmDialog from '../common/ConfirmDialog';
 import { History, Download, RotateCcw, Trash2, Plus, Sparkles } from 'lucide-react';
 import versionService from '../../services/versionService';
 import { useToast } from '../../contexts/ToastContext';
@@ -9,6 +10,8 @@ const FileVersionsModal = ({ isOpen, onClose, file, onRestoreSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [note, setNote] = useState('');
+  const [confirmAction, setConfirmAction] = useState(null); // { type: 'restore' | 'delete', version }
+  const [actionLoading, setActionLoading] = useState(false);
   const toast = useToast();
 
   useEffect(() => {
@@ -64,30 +67,38 @@ const FileVersionsModal = ({ isOpen, onClose, file, onRestoreSuccess }) => {
     }
   };
 
-  const handleRestoreVersion = async (version) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn khôi phục về Phiên bản ${version.versionNumber}?`)) {
-      return;
-    }
-    try {
-      await versionService.restoreVersion(file._id, version._id);
-      toast.success(`Đã khôi phục file về phiên bản ${version.versionNumber}`);
-      onRestoreSuccess && onRestoreSuccess();
-      onClose();
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Khôi phục phiên bản thất bại');
-    }
+  const handleRestoreVersion = (version) => {
+    setConfirmAction({ type: 'restore', version });
   };
 
-  const handleDeleteVersion = async (versionId) => {
-    if (!window.confirm('Bạn có chắc chắn muốn xóa bản sao lưu phiên bản này?')) {
-      return;
-    }
+  const handleDeleteVersion = (version) => {
+    setConfirmAction({ type: 'delete', version });
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+    const { type, version } = confirmAction;
+    setActionLoading(true);
     try {
-      await versionService.deleteVersion(file._id, versionId);
-      toast.success('Đã xóa phiên bản');
-      loadVersions();
+      if (type === 'restore') {
+        await versionService.restoreVersion(file._id, version._id);
+        toast.success(`Đã khôi phục tệp về phiên bản ${version.versionNumber}`);
+        setConfirmAction(null);
+        onRestoreSuccess && onRestoreSuccess();
+        onClose();
+      } else {
+        await versionService.deleteVersion(file._id, version._id);
+        toast.success(`Đã xóa bản sao lưu phiên bản ${version.versionNumber}`);
+        setConfirmAction(null);
+        loadVersions();
+      }
     } catch (err) {
-      toast.error('Xóa phiên bản thất bại');
+      toast.error(
+        err.response?.data?.message ||
+          (type === 'restore' ? 'Khôi phục phiên bản thất bại' : 'Xóa phiên bản thất bại')
+      );
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -102,6 +113,7 @@ const FileVersionsModal = ({ isOpen, onClose, file, onRestoreSuccess }) => {
   if (!isOpen || !file) return null;
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={onClose}
@@ -176,7 +188,7 @@ const FileVersionsModal = ({ isOpen, onClose, file, onRestoreSuccess }) => {
                 <button
                   className="btn-icon"
                   title="Xóa phiên bản"
-                  onClick={() => handleDeleteVersion(ver._id)}
+                  onClick={() => handleDeleteVersion(ver)}
                 >
                   <Trash2 size={16} style={{ color: 'var(--accent-rose)' }} />
                 </button>
@@ -186,6 +198,26 @@ const FileVersionsModal = ({ isOpen, onClose, file, onRestoreSuccess }) => {
         </div>
       )}
     </Modal>
+
+    <ConfirmDialog
+      isOpen={Boolean(confirmAction)}
+      onClose={() => !actionLoading && setConfirmAction(null)}
+      onConfirm={handleConfirmAction}
+      title={
+        confirmAction?.type === 'restore'
+          ? `Khôi phục về Phiên bản ${confirmAction?.version?.versionNumber}?`
+          : `Xóa Phiên bản ${confirmAction?.version?.versionNumber}?`
+      }
+      message={
+        confirmAction?.type === 'restore'
+          ? `Bạn có chắc chắn muốn khôi phục tệp "${file.name}" về Phiên bản ${confirmAction?.version?.versionNumber}? Nội dung hiện tại sẽ được thay thế bằng bản sao lưu này.`
+          : `Bạn có chắc chắn muốn xóa bản sao lưu Phiên bản ${confirmAction?.version?.versionNumber}? Thao tác này không thể hoàn tác.`
+      }
+      confirmText={confirmAction?.type === 'restore' ? 'Khôi phục phiên bản' : 'Xóa phiên bản'}
+      isDanger={confirmAction?.type === 'delete'}
+      loading={actionLoading}
+    />
+    </>
   );
 };
 

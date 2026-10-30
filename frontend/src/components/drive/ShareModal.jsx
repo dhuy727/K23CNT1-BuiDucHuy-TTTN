@@ -20,7 +20,9 @@ import {
   Users,
   KeyRound,
   FileText,
-  Folder
+  Folder,
+  AlertCircle,
+  X
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import shareService from '../../services/shareService';
@@ -28,12 +30,40 @@ import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
 
 /**
- * ShareModal - Quản lý chia sẻ tài liệu và liên kết công khai 
- * Hỗ trợ:
- * 1. Quyền truy cập chung qua liên kết (Bất kỳ ai có link / Bị hạn chế, sao chép 1-click, quét QR, mật khẩu, hạn dùng)
- * 2. Phân quyền cộng tác viên theo email
+ * Kiểm tra chuỗi ngày hết hạn (YYYY-MM-DD)
+ * Trả về thông báo lỗi nếu ngày đã qua hôm nay hoặc không hợp lệ
  */
-const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
+const validateExpirationDate = (dateStr) => {
+  if (!dateStr || !dateStr.trim()) return '';
+  const parts = dateStr.trim().split('-').map(Number);
+  if (parts.length !== 3 || parts.some((n) => isNaN(n))) {
+    return 'Định dạng ngày hết hạn không hợp lệ.';
+  }
+  const [year, month, day] = parts;
+  const endOfSelectedDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+  if (isNaN(endOfSelectedDay.getTime())) {
+    return 'Định dạng ngày hết hạn không hợp lệ.';
+  }
+  if (endOfSelectedDay.getTime() <= Date.now()) {
+    return 'Ngày hết hạn không hợp lệ vì đã qua ngày hiện tại. Vui lòng chọn từ hôm nay trở đi.';
+  }
+  return '';
+};
+
+const formatDateInputLocal = (dateVal) => {
+  if (!dateVal) return '';
+  const d = new Date(dateVal);
+  if (isNaN(d.getTime())) return '';
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * ShareModal - Quản lý chia sẻ tài liệu và liên kết công khai
+ */
+const ShareModal = ({ isOpen, onClose, item, itemType = 'file', onUpdated }) => {
   const { user: currentUser } = useAuth();
   const toast = useToast();
 
@@ -50,6 +80,7 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [expiresAt, setExpiresAt] = useState('');
+  const [expiresError, setExpiresError] = useState('');
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
 
   // QR Code state
@@ -70,18 +101,27 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
 
   const loadShareData = async () => {
     setFetchingShares(true);
+    setExpiresError('');
     try {
       const res = await shareService.getItemShares(itemType, item._id);
       const data = res.data || {};
       setShares(data.collaborators || data.shares || []);
 
-      if (data.publicLink && data.publicLink.isPublic) {
+      if (data.publicLink && data.publicLink.isPublic !== false) {
         setPublicShare(data.publicLink);
         setIsPublic(true);
         setLinkRole(data.publicLink.role || 'viewer');
         setAllowDownload(data.publicLink.allowDownload !== false);
         if (data.publicLink.expiresAt) {
-          setExpiresAt(new Date(data.publicLink.expiresAt).toISOString().split('T')[0]);
+          const formatted = formatDateInputLocal(data.publicLink.expiresAt);
+          setExpiresAt(formatted);
+          const err = validateExpirationDate(formatted);
+          if (err) {
+            setExpiresError('Liên kết này đã quá hạn truy cập. Hãy chọn ngày mới hoặc xóa hạn dùng.');
+            setShowAdvancedSettings(true);
+          }
+        } else {
+          setExpiresAt('');
         }
       } else {
         setPublicShare(null);
@@ -124,6 +164,18 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
     }
   };
 
+  const handleExpiresDateChange = (e) => {
+    const val = e.target.value;
+    setExpiresAt(val);
+    const err = validateExpirationDate(val);
+    setExpiresError(err);
+  };
+
+  const handleClearExpiresDate = () => {
+    setExpiresAt('');
+    setExpiresError('');
+  };
+
   // Bật / tắt chế độ chia sẻ công khai
   const handleToggleAccessMode = async (mode) => {
     if (mode === 'public') {
@@ -135,6 +187,16 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
 
   // Kích hoạt liên kết công khai
   const handleEnablePublicLink = async (overrideRole = null) => {
+    if (expiresAt) {
+      const dateErr = validateExpirationDate(expiresAt);
+      if (dateErr) {
+        setExpiresError(dateErr);
+        setShowAdvancedSettings(true);
+        toast.error(dateErr);
+        return null;
+      }
+    }
+
     setLinkUpdating(true);
     try {
       const payload = {
@@ -144,14 +206,17 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
         role: overrideRole || linkRole,
         allowDownload,
         password: password.trim() || undefined,
-        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined
+        expiresAt: expiresAt ? expiresAt : null
       };
       const res = await shareService.createOrUpdatePublicLink(payload);
       setPublicShare(res.data);
       setIsPublic(true);
+      setExpiresError('');
+      onUpdated?.();
       return res.data;
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Không thể bật liên kết công khai');
+      const msg = err.response?.data?.message || 'Không thể bật liên kết công khai';
+      toast.error(msg);
       return null;
     } finally {
       setLinkUpdating(false);
@@ -167,7 +232,9 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
       setIsPublic(false);
       setPassword('');
       setExpiresAt('');
+      setExpiresError('');
       toast.success('Đã chuyển quyền truy cập sang Bị hạn chế');
+      onUpdated?.();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Không thể tắt liên kết');
     } finally {
@@ -177,6 +244,14 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
 
   // Cập nhật cấu hình bảo mật nâng cao (Mật khẩu, Hạn dùng, Quyền tải)
   const handleSaveSecuritySettings = async () => {
+    const dateErr = validateExpirationDate(expiresAt);
+    if (dateErr) {
+      setExpiresError(dateErr);
+      setShowAdvancedSettings(true);
+      toast.error(dateErr);
+      return;
+    }
+
     setLinkUpdating(true);
     try {
       const payload = {
@@ -186,34 +261,51 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
         role: linkRole,
         allowDownload,
         password: password.trim() || undefined,
-        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined
+        expiresAt: expiresAt ? expiresAt : null
       };
       const res = await shareService.createOrUpdatePublicLink(payload);
       setPublicShare(res.data);
+      setExpiresError('');
       toast.success('Đã cập nhật cài đặt liên kết bảo mật');
       setShowAdvancedSettings(false);
+      onUpdated?.();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Lỗi lưu cài đặt liên kết');
+      const msg = err.response?.data?.message || 'Lỗi lưu cài đặt liên kết';
+      if (msg.toLowerCase().includes('hết hạn')) {
+        setExpiresError(msg);
+      }
+      toast.error(msg);
     } finally {
       setLinkUpdating(false);
     }
   };
 
-  // Thay đổi quyền hạn của liên kết 
+  // Thay đổi quyền hạn của liên kết
   const handleChangeLinkRole = async (newRole) => {
     setLinkRole(newRole);
     if (isPublic) {
-      await handleEnablePublicLink(newRole);
-      toast.success(`Đã đổi quyền liên kết thành: ${newRole === 'editor' ? 'Chỉnh sửa' : 'Người xem'}`);
+      const updated = await handleEnablePublicLink(newRole);
+      if (updated) {
+        toast.success(`Đã đổi quyền liên kết thành: ${newRole === 'editor' ? 'Chỉnh sửa' : 'Người xem'}`);
+      }
     }
   };
 
-  // 1-Click Sao chép liên kết: Tự động kích hoạt nếu đang tắt 
+  // 1-Click Sao chép liên kết: Tự động kích hoạt nếu đang tắt
   const handleCopyLink = async () => {
+    if (expiresAt) {
+      const dateErr = validateExpirationDate(expiresAt);
+      if (dateErr) {
+        setExpiresError(dateErr);
+        setShowAdvancedSettings(true);
+        toast.error(dateErr);
+        return;
+      }
+    }
+
     let targetToken = publicShare?.shareToken;
 
     if (!isPublic || !targetToken) {
-      // Tự động kích hoạt liên kết công khai
       const created = await handleEnablePublicLink();
       if (created?.shareToken) {
         targetToken = created.shareToken;
@@ -277,6 +369,7 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
       toast.success(`Đã chia sẻ thành công cho ${email}`);
       setEmail('');
       loadShareData();
+      onUpdated?.();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Không thể chia sẻ tài liệu');
     } finally {
@@ -290,6 +383,7 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
       await shareService.updateCollaboratorRole(shareId, newRole);
       toast.success('Đã cập nhật quyền thành công');
       loadShareData();
+      onUpdated?.();
     } catch (err) {
       toast.error('Cập nhật quyền thất bại');
     }
@@ -301,6 +395,7 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
       await shareService.removeCollaborator(shareId);
       toast.success('Đã thu hồi quyền chia sẻ');
       loadShareData();
+      onUpdated?.();
     } catch (err) {
       toast.error('Thu hồi chia sẻ thất bại');
     }
@@ -359,7 +454,7 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
         }
       >
         <div className="share-modal-container">
-          {/* KHỐI 1: QUYỀN TRUY CẬP CHUNG QUA ĐƯỜNG LIÊN KẾT  */}
+          {/* KHỐI 1: QUYỀN TRUY CẬP CHUNG QUA ĐƯỜNG LIÊN KẾT */}
           <div className="share-card-section">
             <div className="share-card-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -393,9 +488,7 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
 
             {/* Trạng thái Access: Bất kỳ ai có liên kết vs Bị hạn chế */}
             <div className="general-access-item">
-              <div
-                className={`access-icon-wrapper ${isPublic ? 'active' : 'restricted'}`}
-              >
+              <div className={`access-icon-wrapper ${isPublic ? 'active' : 'restricted'}`}>
                 {isPublic ? <Globe size={20} /> : <Lock size={20} />}
               </div>
 
@@ -446,6 +539,15 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
+                  onClick={() => window.open(getFullPublicUrl(), '_blank')}
+                  title="Mở liên kết chia sẻ"
+                >
+                  <ExternalLink size={14} />
+                  <span>Mở link</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
                   onClick={handleCopyLink}
                   title="Sao chép liên kết"
                 >
@@ -472,13 +574,19 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
                   className="advanced-toggle-btn"
                   onClick={() => setShowAdvancedSettings(!showAdvancedSettings)}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                     <Shield size={14} className="text-primary-400" />
                     <span>Cài đặt bảo mật liên kết (Mật khẩu, Hạn dùng, Tải về)</span>
-                    {(publicShare?.hasPassword || publicShare?.expiresAt || !allowDownload) && (
-                      <span className="badge badge-blue" style={{ fontSize: '0.6875rem', padding: '1px 6px' }}>
-                        Đã kích hoạt
+                    {expiresError ? (
+                      <span className="badge badge-rose" style={{ fontSize: '0.6875rem', padding: '1px 6px' }}>
+                        Ngày hết hạn không hợp lệ
                       </span>
+                    ) : (
+                      (publicShare?.hasPassword || publicShare?.expiresAt || !allowDownload) && (
+                        <span className="badge badge-blue" style={{ fontSize: '0.6875rem', padding: '1px 6px' }}>
+                          Đã kích hoạt
+                        </span>
+                      )
                     )}
                   </div>
                   {showAdvancedSettings ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -515,16 +623,69 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
 
                       {/* Ngày hết hạn */}
                       <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <Calendar size={13} />
-                          <span>Hạn truy cập liên kết (Tùy chọn)</span>
+                        <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <Calendar size={13} />
+                            <span>Hạn truy cập liên kết (Tùy chọn)</span>
+                          </span>
+                          {expiresAt && (
+                            <button
+                              type="button"
+                              onClick={handleClearExpiresDate}
+                              style={{
+                                background: 'none',
+                                border: 'none',
+                                color: 'var(--text-muted)',
+                                fontSize: '0.72rem',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '2px'
+                              }}
+                              title="Xóa ngày hết hạn"
+                            >
+                              <X size={12} />
+                              <span>Xóa hạn</span>
+                            </button>
+                          )}
                         </label>
                         <input
                           type="date"
-                          className="form-input"
+                          className={`form-input ${expiresError ? 'input-error' : ''}`}
                           value={expiresAt}
-                          onChange={(e) => setExpiresAt(e.target.value)}
+                          onChange={handleExpiresDateChange}
+                          aria-invalid={Boolean(expiresError)}
+                          style={
+                            expiresError
+                              ? {
+                                borderColor: 'var(--accent-rose, #f43f5e)',
+                                boxShadow: '0 0 0 3px rgba(244, 63, 94, 0.14)'
+                              }
+                              : undefined
+                          }
                         />
+                        {expiresError && (
+                          <div
+                            role="alert"
+                            style={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              gap: '6px',
+                              marginTop: '6px',
+                              padding: '7px 10px',
+                              borderRadius: 'var(--radius-sm, 6px)',
+                              backgroundColor: 'rgba(244, 63, 94, 0.1)',
+                              border: '1px solid rgba(244, 63, 94, 0.28)',
+                              color: 'var(--accent-rose, #f43f5e)',
+                              fontSize: '0.75rem',
+                              fontWeight: 500,
+                              lineHeight: 1.4
+                            }}
+                          >
+                            <AlertCircle size={14} style={{ flexShrink: 0, marginTop: '1px' }} />
+                            <span>{expiresError}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -635,9 +796,7 @@ const ShareModal = ({ isOpen, onClose, item, itemType = 'file' }) => {
                   return (
                     <div key={shareId} className="collaborator-item">
                       <div className="collaborator-user-info">
-                        <div className="avatar-circle">
-                          {initialLetter}
-                        </div>
+                        <div className="avatar-circle">{initialLetter}</div>
                         <div>
                           <div style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                             {displayName}

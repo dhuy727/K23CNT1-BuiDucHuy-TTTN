@@ -17,6 +17,7 @@ const TrashPage = () => {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('drive_view_mode') || 'grid');
   const [emptyTrashConfirm, setEmptyTrashConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   // Studio Inspector state
@@ -75,12 +76,15 @@ const TrashPage = () => {
     }
   };
 
-  const handlePermanentDelete = async (type, item) => {
+  const handlePermanentDelete = (type, item) => {
     const isFolderItem = type === 'folder' || (item && item.color !== undefined && !item.mimeType);
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa VĨNH VIỄN ${isFolderItem ? 'thư mục' : 'tệp'} "${item.name}"? Thao tác này không thể hoàn tác.`)) {
-      return;
-    }
+    setDeleteTarget({ item, isFolderItem });
+  };
 
+  const handleConfirmPermanentDelete = async () => {
+    if (!deleteTarget) return;
+    const { item, isFolderItem } = deleteTarget;
+    setActionLoading(true);
     try {
       if (isFolderItem) {
         await folderService.deleteFolder(item._id, true);
@@ -90,10 +94,13 @@ const TrashPage = () => {
         toast.success(`Đã xóa vĩnh viễn tệp "${item.name}"`);
       }
       if (selectedItem?.data?._id === item._id) setSelectedItem(null);
+      setDeleteTarget(null);
       fetchTrash();
       window.dispatchEvent(new Event('folder:updated'));
     } catch (err) {
-      toast.error('Xóa vĩnh viễn thất bại');
+      toast.error(err.response?.data?.message || 'Xóa vĩnh viễn thất bại');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -231,8 +238,19 @@ const TrashPage = () => {
       />
 
       <ConfirmDialog
+        isOpen={Boolean(deleteTarget)}
+        onClose={() => !actionLoading && setDeleteTarget(null)}
+        onConfirm={handleConfirmPermanentDelete}
+        title={`Xóa vĩnh viễn ${deleteTarget?.isFolderItem ? 'thư mục' : 'tệp tin'}?`}
+        message={`Bạn có chắc chắn muốn xóa VĨNH VIỄN ${deleteTarget?.isFolderItem ? 'thư mục' : 'tệp'} "${deleteTarget?.item?.name}"? Thao tác này không thể hoàn tác.`}
+        confirmText="Xóa vĩnh viễn"
+        isDanger={true}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
         isOpen={emptyTrashConfirm}
-        onClose={() => setEmptyTrashConfirm(false)}
+        onClose={() => !actionLoading && setEmptyTrashConfirm(false)}
         onConfirm={handleEmptyTrash}
         title="Dọn sạch toàn bộ thùng rác?"
         message="Hành động này sẽ xóa VĨNH VIỄN toàn bộ tệp tin trong thùng rác và giải phóng dung lượng. Bạn không thể hoàn tác sau khi thực hiện."

@@ -36,6 +36,53 @@ const checkItemOwnership = async (userId, itemType, itemId) => {
 };
 
 /**
+ * Chuẩn hóa và kiểm tra ngày hết hạn chia sẻ
+ * - Nếu truyền chuỗi YYYY-MM-DD, đặt về cuối ngày 23:59:59.999
+ * - Báo lỗi 400 nếu ngày không hợp lệ hoặc đã qua thời điểm hiện tại
+ */
+const parseAndValidateExpiresAt = (expiresAt) => {
+  if (expiresAt === null || expiresAt === undefined || expiresAt === '') {
+    return null;
+  }
+
+  let parsedDate;
+  if (typeof expiresAt === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(expiresAt.trim())) {
+    const [year, month, day] = expiresAt.trim().split('-').map(Number);
+    parsedDate = new Date(year, month - 1, day, 23, 59, 59, 999);
+  } else {
+    parsedDate = new Date(expiresAt);
+    if (
+      !isNaN(parsedDate.getTime()) &&
+      typeof expiresAt === 'string' &&
+      /^\d{4}-\d{2}-\d{2}T00:00:00/.test(expiresAt.trim())
+    ) {
+      parsedDate = new Date(
+        parsedDate.getUTCFullYear(),
+        parsedDate.getUTCMonth(),
+        parsedDate.getUTCDate(),
+        23,
+        59,
+        59,
+        999
+      );
+    }
+  }
+
+  if (isNaN(parsedDate.getTime())) {
+    throw new ApiError(400, 'Định dạng ngày hết hạn không hợp lệ');
+  }
+
+  if (parsedDate.getTime() <= Date.now()) {
+    throw new ApiError(
+      400,
+      'Ngày hết hạn không hợp lệ vì đã qua ngày hiện tại. Vui lòng chọn ngày từ hôm nay trở đi.'
+    );
+  }
+
+  return parsedDate;
+};
+
+/**
  * 1. Chia sẻ tài liệu/thư mục cho người dùng khác qua Email
  */
 const shareWithUser = async (ownerId, { itemType, itemId, email, role = 'viewer' }) => {
@@ -99,7 +146,7 @@ const shareWithUser = async (ownerId, { itemType, itemId, email, role = 'viewer'
 };
 
 /**
- * 2. Cập nhật quyền của cộng tác viên
+ * 2. Cập nhật quyền của cộng tác viên hoặc liên kết chia sẻ công khai
  */
 const updateCollaboratorRole = async (ownerId, shareId, newRole) => {
   if (!mongoose.Types.ObjectId.isValid(shareId)) {
@@ -112,8 +159,7 @@ const updateCollaboratorRole = async (ownerId, shareId, newRole) => {
 
   const share = await Share.findOne({
     _id: shareId,
-    owner: ownerId,
-    shareType: 'user'
+    owner: ownerId
   });
 
   if (!share) {
@@ -122,13 +168,15 @@ const updateCollaboratorRole = async (ownerId, shareId, newRole) => {
 
   share.role = newRole.toLowerCase();
   await share.save();
-  await share.populate('sharedWith', '_id name email');
+  if (share.shareType === 'user') {
+    await share.populate('sharedWith', '_id name email');
+  }
 
   return share;
 };
 
 /**
- * 3. Thu hồi quyền chia sẻ của một cộng tác viên
+ * 3. Thu hồi quyền chia sẻ của một cộng tác viên hoặc liên kết công khai
  */
 const removeCollaborator = async (ownerId, shareId) => {
   if (!mongoose.Types.ObjectId.isValid(shareId)) {
@@ -137,8 +185,7 @@ const removeCollaborator = async (ownerId, shareId) => {
 
   const share = await Share.findOne({
     _id: shareId,
-    owner: ownerId,
-    shareType: 'user'
+    owner: ownerId
   });
 
   if (!share) {
@@ -188,14 +235,8 @@ const createOrUpdatePublicLink = async (
     hasPassword = true;
   }
 
-  // Xử lý ngày hết hạn
-  let validExpiresAt = null;
-  if (expiresAt) {
-    const d = new Date(expiresAt);
-    if (!isNaN(d.getTime())) {
-      validExpiresAt = d;
-    }
-  }
+  // Xử lý và kiểm tra ngày hết hạn
+  const validExpiresAt = parseAndValidateExpiresAt(expiresAt);
 
   if (publicShare) {
     publicShare.role = normalizedRole;
@@ -290,6 +331,7 @@ const getItemShares = async (ownerId, itemType, itemId) => {
     publicLink: publicLink
       ? {
         _id: publicLink._id,
+        isPublic: publicLink.isPublic !== false,
         shareToken: publicLink.shareToken,
         shareUrl: `/api/shares/public/${publicLink.shareToken}`,
         role: publicLink.role,
@@ -586,10 +628,10 @@ const getSharedByMe = async (userId, query = {}) => {
   }
 
   const page = parseInt(query.page, 10) || 1;
-  const limit = parseInt(query.limit, 10) || 20;
+  const limit = parseInt(query.limit, 10) || 50;
   const skip = (page - 1) * limit;
 
-  const [shares, total] = await Promise.all([
+  const [shares, publicShares, total] = await Promise.all([
     Share.find(filter)
       .populate('sharedWith', '_id name email')
       .populate({
@@ -604,8 +646,23 @@ const getSharedByMe = async (userId, query = {}) => {
       .skip(skip)
       .limit(limit)
       .lean(),
+    Share.find({
+      owner: userId,
+      shareType: 'public',
+      isPublic: true
+    })
+      .select('itemType file folder shareToken hasPassword expiresAt allowDownload')
+      .lean(),
     Share.countDocuments(filter)
   ]);
+
+  const publicLinkMap = new Map();
+  publicShares.forEach((ps) => {
+    const targetId = ps.itemType === 'file' ? ps.file : ps.folder;
+    if (targetId) {
+      publicLinkMap.set(`${ps.itemType}_${targetId.toString()}`, ps);
+    }
+  });
 
   const activeShares = shares.filter((s) => (s.itemType === 'file' ? s.file : s.folder));
 
@@ -616,6 +673,10 @@ const getSharedByMe = async (userId, query = {}) => {
     } : null;
     const folderData = s.itemType === 'folder' ? s.folder : null;
     const itemData = fileData || folderData;
+    const itemKey = itemData?._id ? `${s.itemType}_${itemData._id.toString()}` : null;
+    const linkedPublic = itemKey ? publicLinkMap.get(itemKey) : null;
+    const effectiveToken = s.shareToken || linkedPublic?.shareToken || null;
+    const effectiveExpiresAt = s.expiresAt || linkedPublic?.expiresAt || null;
 
     return {
       _id: s._id,
@@ -624,12 +685,14 @@ const getSharedByMe = async (userId, query = {}) => {
       shareType: s.shareType,
       role: s.role,
       sharedWith: s.sharedWith,
+      sharedEmail: s.sharedEmail,
       user: s.sharedWith,
-      shareToken: s.shareToken,
-      shareUrl: s.shareToken ? `/api/shares/public/${s.shareToken}` : null,
-      hasPassword: s.hasPassword,
-      expiresAt: s.expiresAt,
-      allowDownload: s.allowDownload,
+      shareToken: effectiveToken,
+      shareUrl: effectiveToken ? `/shares/public/${effectiveToken}` : null,
+      hasPassword: Boolean(s.hasPassword || linkedPublic?.hasPassword),
+      expiresAt: effectiveExpiresAt,
+      isExpired: Boolean(effectiveExpiresAt && new Date() > new Date(effectiveExpiresAt)),
+      allowDownload: s.allowDownload !== undefined ? s.allowDownload : true,
       createdAt: s.createdAt,
       file: fileData,
       folder: folderData,

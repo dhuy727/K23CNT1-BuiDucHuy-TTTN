@@ -26,8 +26,10 @@ import aiService from '../../services/aiService';
 import FileIcon from './FileIcon';
 import DocxViewer from './DocxViewer';
 import DocChatTab from '../rag/DocChatTab';
+import { useToast } from '../../contexts/ToastContext';
 
 const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) => {
+  const toast = useToast();
   const [currentFile, setCurrentFile] = useState(file);
   const [blobUrl, setBlobUrl] = useState(null);
   const [rawBlobData, setRawBlobData] = useState(null);
@@ -182,14 +184,16 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
       setActionLoading(true);
       const res = await aiService.acceptName(currentFile._id);
       const updated = res?.data || res;
+      const newName = updated.name || currentFile.aiSuggestedName;
       setCurrentFile((prev) => ({
         ...prev,
-        name: updated.name || prev.aiSuggestedName,
+        name: newName,
         aiSuggestedName: ''
       }));
+      toast.success(`Đã áp dụng tên đề xuất "${newName}"`);
       if (onFileUpdated) onFileUpdated(updated);
     } catch (err) {
-      alert(err.response?.data?.message || 'Không thể áp dụng tên đề xuất');
+      toast.error(err.response?.data?.message || 'Không thể áp dụng tên đề xuất');
     } finally {
       setActionLoading(false);
     }
@@ -201,14 +205,16 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
       setActionLoading(true);
       const res = await aiService.acceptFolder(currentFile._id);
       const updated = res?.data || res;
+      const folderName = currentFile.aiSuggestedFolder?.name || 'thư mục đề xuất';
       setCurrentFile((prev) => ({
         ...prev,
         folder: updated.folder || prev.aiSuggestedFolder,
         aiSuggestedFolder: null
       }));
+      toast.success(`Đã chuyển tệp vào "${folderName}"`);
       if (onFileUpdated) onFileUpdated(updated);
     } catch (err) {
-      alert(err.response?.data?.message || 'Không thể di chuyển đến thư mục đề xuất');
+      toast.error(err.response?.data?.message || 'Không thể di chuyển đến thư mục đề xuất');
     } finally {
       setActionLoading(false);
     }
@@ -224,9 +230,10 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
         aiSuggestedName: '',
         aiSuggestedFolder: null
       }));
+      toast.info('Đã bỏ qua các gợi ý từ AI');
       if (onFileUpdated) onFileUpdated(updated);
     } catch (err) {
-      alert(err.response?.data?.message || 'Lỗi khi bỏ qua gợi ý');
+      toast.error(err.response?.data?.message || 'Lỗi khi bỏ qua gợi ý');
     } finally {
       setActionLoading(false);
     }
@@ -242,9 +249,10 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
         aiStatus: 'processing',
         aiError: ''
       }));
+      toast.info('Đã bắt đầu phân tích lại tài liệu bằng AI');
       if (onFileUpdated) onFileUpdated(updated);
     } catch (err) {
-      alert(err.response?.data?.message || 'Không thể kích hoạt lại phân tích AI');
+      toast.error(err.response?.data?.message || 'Không thể kích hoạt lại phân tích AI');
     } finally {
       setActionLoading(false);
     }

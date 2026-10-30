@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
+import ConfirmDialog from '../common/ConfirmDialog';
 import { Tag, Plus, Edit2, Trash2, Check, Sparkles, Folder } from 'lucide-react';
 import categoryService from '../../services/categoryService';
 import { useToast } from '../../contexts/ToastContext';
@@ -19,6 +20,8 @@ const CategoryModal = ({ isOpen, onClose, onCategoryChanged }) => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Form mode: 'list' | 'add' | 'edit'
   const [mode, setMode] = useState('list');
@@ -115,24 +118,30 @@ const CategoryModal = ({ isOpen, onClose, onCategoryChanged }) => {
     }
   };
 
-  const handleDeleteCategory = async (cat) => {
-    if (!window.confirm(`Bạn có chắc muốn xóa danh mục "${cat.name}"? Các tài liệu thuộc danh mục này sẽ chuyển về "Chưa phân loại".`)) {
-      return;
-    }
+  const handleDeleteCategory = (cat) => {
+    setDeleteTarget(cat);
+  };
 
+  const handleConfirmDeleteCategory = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await categoryService.deleteCategory(cat._id);
-      toast.success(`Đã xóa danh mục "${cat.name}"`);
+      await categoryService.deleteCategory(deleteTarget._id);
+      toast.success(`Đã xóa danh mục "${deleteTarget.name}"`);
+      setDeleteTarget(null);
       await loadCategories();
       onCategoryChanged && onCategoryChanged();
       window.dispatchEvent(new CustomEvent('drive:refresh'));
     } catch (err) {
       console.error('Lỗi xóa danh mục:', err);
       toast.error(err.response?.data?.message || 'Xóa danh mục thất bại');
+    } finally {
+      setDeleting(false);
     }
   };
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={onClose}
@@ -302,6 +311,18 @@ const CategoryModal = ({ isOpen, onClose, onCategoryChanged }) => {
         </form>
       )}
     </Modal>
+
+    <ConfirmDialog
+      isOpen={Boolean(deleteTarget)}
+      onClose={() => !deleting && setDeleteTarget(null)}
+      onConfirm={handleConfirmDeleteCategory}
+      title="Xóa danh mục tài liệu?"
+      message={`Bạn có chắc chắn muốn xóa danh mục "${deleteTarget?.name}"? Các tài liệu thuộc danh mục này sẽ được chuyển về "Chưa phân loại".`}
+      confirmText="Xóa danh mục"
+      isDanger={true}
+      loading={deleting}
+    />
+    </>
   );
 };
 

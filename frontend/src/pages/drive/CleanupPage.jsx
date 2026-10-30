@@ -22,7 +22,9 @@ import fileService from '../../services/fileService';
 import { formatFileSize } from '../../utils/formatters';
 import DuplicateClusterCard from '../../components/drive/DuplicateClusterCard';
 import SideBySideModal from '../../components/drive/SideBySideModal';
+import ConfirmDialog from '../../components/common/ConfirmDialog';
 import FileIcon from '../../components/drive/FileIcon';
+import { useToast } from '../../contexts/ToastContext';
 import '../../styles/cleanup.css';
 
 const CleanupPage = () => {
@@ -34,7 +36,8 @@ const CleanupPage = () => {
   const [folders, setFolders] = useState([]);
   const [selectedFileIds, setSelectedFileIds] = useState(new Set());
   const [isCleaning, setIsCleaning] = useState(false);
-  const [toast, setToast] = useState(null);
+  const [confirmCleanTarget, setConfirmCleanTarget] = useState(null); // { type: 'batch' | 'single', ids: [] }
+  const toast = useToast();
 
   // Dữ liệu cho tab Tệp Dung Lượng Lớn
   const [largeFilesData, setLargeFilesData] = useState(null);
@@ -67,8 +70,11 @@ const CleanupPage = () => {
   }, [activeTab, largeFilesMinMB, scopeFolderId]);
 
   const showToast = (message, type = 'success') => {
-    setToast({ message, type });
-    setTimeout(() => setToast(null), 4000);
+    if (type === 'error') {
+      toast.error(message);
+    } else {
+      toast.success(message);
+    }
   };
 
   const loadFolders = async () => {
@@ -209,21 +215,37 @@ const CleanupPage = () => {
     setSelectedFileIds(new Set());
   };
 
-  const handleBatchClean = async () => {
+  const handleBatchClean = () => {
     const ids = Array.from(selectedFileIds);
     if (ids.length === 0) return;
+    setConfirmCleanTarget({ type: 'batch', ids });
+  };
 
-    if (!window.confirm(`Bạn có chắc chắn muốn chuyển ${ids.length} tệp tin đã chọn vào Thùng rác không?`)) {
-      return;
-    }
+  const handleDeleteSingle = (fileId) => {
+    setConfirmCleanTarget({ type: 'single', ids: [fileId] });
+  };
 
+  const handleConfirmClean = async () => {
+    if (!confirmCleanTarget) return;
+    const { type, ids } = confirmCleanTarget;
     try {
       setIsCleaning(true);
       const res = await duplicateService.cleanFiles(ids);
-      showToast(`Đã chuyển thành công ${res.data?.cleanedCount || ids.length} tệp vào Thùng rác (${res.data?.cleanedFormatted || ''})`);
+      if (type === 'batch') {
+        showToast(
+          `Đã chuyển thành công ${res.data?.cleanedCount || ids.length} tệp vào Thùng rác (${res.data?.cleanedFormatted || ''})`
+        );
+        setSelectedFileIds(new Set());
+      } else {
+        showToast('Đã chuyển tệp tin vào Thùng rác');
+        setSelectedFileIds((prev) => {
+          const next = new Set(prev);
+          next.delete(ids[0]);
+          return next;
+        });
+      }
 
-      // Cập nhật lại UI
-      setSelectedFileIds(new Set());
+      setConfirmCleanTarget(null);
       loadScanStatus();
       if (activeTab === 'large_files') {
         loadLargeFiles();
@@ -231,31 +253,10 @@ const CleanupPage = () => {
       window.dispatchEvent(new CustomEvent('file:updated'));
       window.dispatchEvent(new CustomEvent('drive:refresh'));
     } catch (err) {
-      console.error('Lỗi khi dọn dẹp hàng loạt:', err);
-      showToast(err.response?.data?.message || 'Dọn dẹp thất bại', 'error');
+      console.error('Lỗi khi dọn dẹp:', err);
+      showToast(err.response?.data?.message || 'Không thể chuyển tệp tin vào Thùng rác', 'error');
     } finally {
       setIsCleaning(false);
-    }
-  };
-
-  const handleDeleteSingle = async (fileId) => {
-    if (!window.confirm('Chuyển tệp tin này vào Thùng rác?')) return;
-    try {
-      await duplicateService.cleanFiles([fileId]);
-      showToast('Đã chuyển tệp tin vào Thùng rác');
-      setSelectedFileIds((prev) => {
-        const next = new Set(prev);
-        next.delete(fileId);
-        return next;
-      });
-      loadScanStatus();
-      if (activeTab === 'large_files') {
-        loadLargeFiles();
-      }
-      window.dispatchEvent(new CustomEvent('file:updated'));
-      window.dispatchEvent(new CustomEvent('drive:refresh'));
-    } catch (err) {
-      showToast('Không thể xóa tệp tin', 'error');
     }
   };
 
@@ -326,31 +327,6 @@ const CleanupPage = () => {
   return (
     <div className="cleanup-page-wrapper">
       <div className="cleanup-page">
-        {/* Toast Feedback */}
-        {toast && (
-          <div
-            style={{
-              position: 'fixed',
-              top: 24,
-              right: 24,
-              background: toast.type === 'error' ? 'var(--accent-rose)' : 'var(--primary-600)',
-              color: '#fff',
-              padding: '12px 20px',
-              borderRadius: 'var(--radius-md)',
-              boxShadow: 'var(--shadow-lg)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              zIndex: 9999,
-              fontWeight: 500,
-              fontSize: '0.875rem'
-            }}
-          >
-            {toast.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
-            <span>{toast.message}</span>
-          </div>
-        )}
-
         {/* Header */}
         <div className="cleanup-header">
           <div className="cleanup-title-group">
@@ -704,6 +680,22 @@ const CleanupPage = () => {
             window.dispatchEvent(new CustomEvent('drive:refresh'));
           }}
           onIgnorePair={handleIgnorePair}
+        />
+
+        {/* Modal xác nhận chuyển tệp vào Thùng rác */}
+        <ConfirmDialog
+          isOpen={Boolean(confirmCleanTarget)}
+          onClose={() => !isCleaning && setConfirmCleanTarget(null)}
+          onConfirm={handleConfirmClean}
+          title="Chuyển tệp tin vào Thùng rác?"
+          message={
+            confirmCleanTarget?.type === 'batch'
+              ? `Bạn có chắc chắn muốn chuyển ${confirmCleanTarget.ids.length} tệp tin đã chọn vào Thùng rác không?`
+              : 'Bạn có chắc chắn muốn chuyển tệp tin này vào Thùng rác không?'
+          }
+          confirmText="Chuyển vào Thùng rác"
+          isDanger={true}
+          loading={isCleaning}
         />
       </div>
     </div>
