@@ -16,6 +16,20 @@ import {
 } from 'lucide-react';
 
 /**
+ * Loại bỏ các chuỗi thuộc tính thẻ <img src="data:image/..."> bị rò rỉ thành văn bản thuần
+ */
+const cleanLeakedImageText = (raw = '') => {
+  if (!raw) return '';
+  return String(raw)
+    .replace(/<?\s*img\b[^>]*?src\s*=\s*(?:"data:image\/[^"]*"|'data:image\/[^']*')[^>]*?\/?>?/gi, '')
+    .replace(/\bimg\s+(?:alt\s*=\s*"[^"]*"\s*)?src\s*=\s*"data:image\/[\s\S]*?"\s*\/?>?/gi, '')
+    .replace(/\bsrc\s*=\s*"data:image\/[\s\S]*?"\s*\/?>?/gi, '')
+    .replace(/data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=\s]+/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
+/**
  * DocxViewer - Trải nghiệm xem trước tài liệu Microsoft Word (.docx) chuyên nghiệp
  * Hỗ trợ 2 chế độ:
  * 1. "preview" - Tái tạo định dạng Word chuẩn (trang A4, bảng biểu, phông chữ) qua docx-preview
@@ -33,11 +47,14 @@ const DocxViewer = ({
   const [zoom, setZoom] = useState(1);
   const [copied, setCopied] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   const containerRef = useRef(null);
   const styleContainerRef = useRef(null);
 
-  const extractedText = file?.extractedText || '';
+  const extractedText = React.useMemo(
+    () => cleanLeakedImageText(file?.extractedText || ''),
+    [file?.extractedText]
+  );
   const hasExtractedText = Boolean(extractedText && extractedText.trim().length > 0);
 
   // Render file Word bằng docx-preview khi có blob
@@ -78,6 +95,32 @@ const DocxViewer = ({
           }
         );
 
+        // Hậu xử lý DOM: nếu tệp cũ từng bị lưu nhầm chuỗi img src="data:image/..." thành text trong <p>,
+        // tự động chuyển lại thành thẻ <img> hiển thị ảnh thật hoặc ẩn chuỗi base64 rác
+        if (containerRef.current && !isCancelled) {
+          const paragraphs = containerRef.current.querySelectorAll('p, span');
+          paragraphs.forEach((el) => {
+            const txt = el.textContent || '';
+            if (txt.includes('data:image/') && txt.includes('base64,')) {
+              const srcMatch = /src\s*=\s*["'](data:image\/[^"']+)["']/i.exec(txt);
+              const altMatch = /alt\s*=\s*["']([^"']*)["']/i.exec(txt);
+              if (srcMatch && srcMatch[1]) {
+                const img = document.createElement('img');
+                img.src = srcMatch[1].replace(/\s+/g, '');
+                img.alt = altMatch ? altMatch[1] : 'Hình ảnh tài liệu';
+                img.style.maxWidth = '100%';
+                img.style.height = 'auto';
+                img.style.display = 'block';
+                img.style.margin = '8px auto';
+                el.innerHTML = '';
+                el.appendChild(img);
+              } else {
+                el.textContent = cleanLeakedImageText(txt);
+              }
+            }
+          });
+        }
+
         if (!isCancelled) {
           setRenderLoading(false);
         }
@@ -88,7 +131,6 @@ const DocxViewer = ({
             'Không thể dựng đầy đủ định dạng đồ họa của tệp Word này. Bạn có thể chuyển sang tab "Văn bản trích xuất AI" để đọc toàn bộ nội dung.'
           );
           setRenderLoading(false);
-          // Tự động chuyển sang tab text nếu có trích xuất
           if (hasExtractedText) {
             setActiveTab('text');
           }
@@ -99,7 +141,6 @@ const DocxViewer = ({
     if (blob) {
       renderWordDocument();
     } else if (hasExtractedText) {
-      // Nếu không có blob vật lý nhưng có extractedText, tự động chuyển tab text
       setActiveTab('text');
     }
 
@@ -127,10 +168,10 @@ const DocxViewer = ({
   // Lọc tìm kiếm văn bản trong tab Text
   const filteredTextParagraphs = React.useMemo(() => {
     if (!extractedText) return [];
-    const paragraphs = extractedText.split('\n\n').filter(p => p.trim().length > 0);
+    const paragraphs = extractedText.split('\n\n').filter((p) => p.trim().length > 0);
     if (!searchQuery.trim()) return paragraphs;
     const query = searchQuery.toLowerCase();
-    return paragraphs.filter(p => p.toLowerCase().includes(query));
+    return paragraphs.filter((p) => p.toLowerCase().includes(query));
   }, [extractedText, searchQuery]);
 
   return (
@@ -160,7 +201,7 @@ const DocxViewer = ({
             <Sparkles size={16} />
             <span>Văn bản trích xuất AI</span>
             {hasExtractedText && (
-              <span className="docx-tab-pill">{wordCount.toLocaleString()} từ</span>
+              <span className="docx-tab-pill tabular-nums">{wordCount.toLocaleString()} từ</span>
             )}
           </button>
         </div>
@@ -177,7 +218,7 @@ const DocxViewer = ({
               >
                 <ZoomOut size={16} />
               </button>
-              <span className="docx-zoom-indicator">{Math.round(zoom * 100)}%</span>
+              <span className="docx-zoom-indicator tabular-nums">{Math.round(zoom * 100)}%</span>
               <button
                 type="button"
                 className="btn-icon"
@@ -230,7 +271,7 @@ const DocxViewer = ({
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                 >
                   {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                  <span>{copied ? 'Đã sao chép' : 'Sao chép văn bản'}</span>
+                  <span>{copied ? 'Đã sao chép' : 'Sao chép'}</span>
                 </button>
               )}
             </div>
@@ -256,8 +297,8 @@ const DocxViewer = ({
         <div className="docx-ephemeral-banner">
           <Info size={16} style={{ flexShrink: 0, marginTop: '2px' }} />
           <div>
-            <strong>Thông báo lưu trữ:</strong> Tệp tin này được tải lên trước khi hệ thống kích hoạt kho lưu trữ đám mây AWS S3. 
-            DocuFlow đang hiển thị toàn bộ <strong>{charCount.toLocaleString()} ký tự</strong> nội dung văn bản đã được AI trích xuất và phân tích đầy đủ.
+            <strong>Thông báo lưu trữ:</strong> Tệp tin này được tải lên trước khi hệ thống kích hoạt kho lưu trữ đám mây AWS S3.
+            DocuFlow đang hiển thị toàn bộ <strong className="tabular-nums">{charCount.toLocaleString()} ký tự</strong> nội dung văn bản đã được AI trích xuất và phân tích đầy đủ.
           </div>
         </div>
       )}
@@ -310,7 +351,7 @@ const DocxViewer = ({
       >
         <div className="docx-text-card">
           <div className="docx-text-card-header">
-            <div className="docx-text-meta">
+            <div className="docx-text-meta tabular-nums">
               <BookOpen size={16} className="text-primary-400" />
               <span>Nội dung văn bản trích xuất</span>
               <span className="docx-dot">•</span>
@@ -319,7 +360,7 @@ const DocxViewer = ({
               <span>{charCount.toLocaleString()} ký tự</span>
             </div>
             {searchQuery && (
-              <div className="docx-search-result-count">
+              <div className="docx-search-result-count tabular-nums">
                 Khớp {filteredTextParagraphs.length} đoạn
               </div>
             )}

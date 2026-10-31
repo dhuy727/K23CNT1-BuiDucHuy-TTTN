@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Save,
   CheckCircle2,
   RefreshCw,
-  Users,
   Bold,
   Italic,
   Underline,
@@ -16,19 +15,200 @@ import {
   Heading2,
   Undo2,
   Redo2,
-  Upload,
-  Sparkles,
-  UserCheck,
   Edit3,
-  Clock
+  Clock,
+  Plus,
+  Trash2,
+  Table as TableIcon,
+  Code,
+  Quote,
+  Columns,
+  Eye,
+  FileText,
+  FileSpreadsheet
 } from 'lucide-react';
 import collabService from '../../services/collabService';
 import { useToast } from '../../contexts/ToastContext';
 
 /**
+ * Khôi phục các thẻ img bị rò rỉ mất dấu '<' thành thẻ <img> chuẩn trên giao diện
+ */
+const sanitizeDocxHtml = (html = '') => {
+  if (!html) return '';
+  return String(html).replace(
+    /(^|>|\s)img\s+(?:alt\s*=\s*(?:"([^"]*)"|'([^']*)'|&quot;([^&]*)&quot;)\s+)?src\s*=\s*(?:"(data:image\/[^"]+)"|'(data:image\/[^']+)'|&quot;(data:image\/[^&]+)&quot;)\s*\/?(?:>|&gt;)?/gi,
+    (full, prefix, a1, a2, a3, s1, s2, s3) => {
+      const alt = a1 || a2 || a3 || 'Hình ảnh';
+      const src = (s1 || s2 || s3 || '').replace(/\s+/g, '');
+      if (!src) return prefix;
+      return `${prefix}<img alt="${alt}" src="${src}" />`;
+    }
+  );
+};
+
+/**
+ * Chuyển chỉ số cột (0 -> A, 25 -> Z, 26 -> AA)
+ */
+const colIndexToLetter = (colIdx) => {
+  let n = colIdx + 1;
+  let str = '';
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    str = String.fromCharCode(65 + rem) + str;
+    n = Math.floor((n - 1) / 26);
+  }
+  return str;
+};
+
+/**
+ * Tạo bảng tính mặc định 12 dòng x 8 cột
+ */
+const createEmptyGrid = (rows = 12, cols = 8) =>
+  Array.from({ length: rows }, () => Array.from({ length: cols }, () => ''));
+
+/**
+ * Parse chuỗi JSON Workbook từ backend thành mảng sheets an toàn
+ */
+const parseWorkbookJson = (rawContent) => {
+  try {
+    const parsed = typeof rawContent === 'string' ? JSON.parse(rawContent) : rawContent;
+    if (parsed && Array.isArray(parsed.sheets) && parsed.sheets.length > 0) {
+      return parsed.sheets.map((s, idx) => ({
+        name: s.name || `Sheet${idx + 1}`,
+        data:
+          Array.isArray(s.data) && s.data.length > 0
+            ? s.data.map((r) => (Array.isArray(r) ? r.map((c) => String(c ?? '')) : ['']))
+            : createEmptyGrid()
+      }));
+    }
+  } catch (e) {
+    // Fallback bên dưới
+  }
+  return [{ name: 'Sheet1', data: createEmptyGrid() }];
+};
+
+/**
+ * Chuyển đổi văn bản Markdown sang HTML an toàn để xem trước trực tiếp (hỗ trợ tiêu đề, bảng, code, danh sách)
+ */
+const renderMarkdownToHtml = (md = '') => {
+  if (!md) return '<p style="color:#94a3b8;font-style:italic;">Chưa có nội dung Markdown...</p>';
+  const escapeHtml = (s) =>
+    String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+  const formatInline = (text) =>
+    escapeHtml(text)
+      .replace(/`([^`]+)`/g, '<code class="md-inline-code">$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      .replace(/~~([^~]+)~~/g, '<del>$1</del>')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+  const lines = String(md).replace(/\r\n/g, '\n').split('\n');
+  const htmlParts = [];
+  let inCodeBlock = false;
+  let codeBuffer = [];
+  let inList = false;
+  let tableRows = [];
+
+  const flushList = () => {
+    if (inList) {
+      htmlParts.push('</ul>');
+      inList = false;
+    }
+  };
+
+  const flushTable = () => {
+    if (tableRows.length === 0) return;
+    const headerCells = tableRows[0];
+    const bodyRows = tableRows.slice(1).filter((r) => !r.every((c) => /^[-:\s]+$/.test(c)));
+    const thHtml = headerCells.map((c) => `<th>${formatInline(c.trim())}</th>`).join('');
+    const tbHtml = bodyRows
+      .map((r) => `<tr>${r.map((c) => `<td>${formatInline(c.trim())}</td>`).join('')}</tr>`)
+      .join('');
+    htmlParts.push(
+      `<div class="md-table-wrap"><table class="md-preview-table"><thead><tr>${thHtml}</tr></thead><tbody>${tbHtml}</tbody></table></div>`
+    );
+    tableRows = [];
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (line.trim().startsWith('```')) {
+      flushList();
+      flushTable();
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        codeBuffer = [];
+      } else {
+        inCodeBlock = false;
+        htmlParts.push(`<pre class="md-code-block"><code>${escapeHtml(codeBuffer.join('\n'))}</code></pre>`);
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeBuffer.push(line);
+      continue;
+    }
+
+    // Dòng bảng Markdown | col1 | col2 |
+    if (/^\s*\|(.+)\|\s*$/.test(line)) {
+      flushList();
+      const cells = line
+        .trim()
+        .replace(/^\||\|$/g, '')
+        .split('|');
+      tableRows.push(cells);
+      continue;
+    } else {
+      flushTable();
+    }
+
+    if (/^#{1,4}\s+/.test(line)) {
+      flushList();
+      const level = line.match(/^(#{1,4})\s+/)[1].length;
+      const text = line.replace(/^#{1,4}\s+/, '');
+      htmlParts.push(`<h${level}>${formatInline(text)}</h${level}>`);
+    } else if (/^\s*[-*+]\s+/.test(line)) {
+      if (!inList) {
+        htmlParts.push('<ul>');
+        inList = true;
+      }
+      htmlParts.push(`<li>${formatInline(line.replace(/^\s*[-*+]\s+/, ''))}</li>`);
+    } else if (/^\s*>\s?/.test(line)) {
+      flushList();
+      htmlParts.push(`<blockquote>${formatInline(line.replace(/^\s*>\s?/, ''))}</blockquote>`);
+    } else if (/^\s*---\s*$/.test(line)) {
+      flushList();
+      htmlParts.push('<hr />');
+    } else if (line.trim() === '') {
+      flushList();
+    } else {
+      flushList();
+      htmlParts.push(`<p>${formatInline(line)}</p>`);
+    }
+  }
+
+  flushList();
+  flushTable();
+  if (inCodeBlock && codeBuffer.length > 0) {
+    htmlParts.push(`<pre class="md-code-block"><code>${escapeHtml(codeBuffer.join('\n'))}</code></pre>`);
+  }
+
+  return htmlParts.join('\n');
+};
+
+/**
  * RealtimeCollaborativeEditor
- * Trình chỉnh sửa tài liệu theo thời gian thực cho cả Word (.docx), Văn bản/Code (.txt, .md, .json, .js...)
- * và cập nhật phiên bản trực tiếp cho tệp nhị phân (PDF, hình ảnh...)
+ * Trình chỉnh sửa tài liệu theo thời gian thực tối ưu chuyên biệt cho 4 định dạng phổ biến:
+ * 1. Word (.docx, .doc)
+ * 2. Văn bản thuần (.txt)
+ * 3. Markdown (.md) - hỗ trợ soạn thảo & xem trước song song
+ * 4. Excel (.xlsx, .xls, .csv) - bảng tính nhiều Sheet, thanh công thức & ô tương tác trực tiếp
  */
 const RealtimeCollaborativeEditor = ({
   file,
@@ -36,10 +216,11 @@ const RealtimeCollaborativeEditor = ({
   password = null,
   currentUser = null,
   onSaved = null,
-  onFileReplaced = null
+  readOnly = false
 }) => {
   const toast = useToast();
   const fileId = file?._id;
+  const isCsvFile = (file?.extension || '').toLowerCase().replace(/^\./, '') === 'csv';
 
   const [sessionId] = useState(() => collabService.getSessionId());
   const [displayName, setDisplayName] = useState(() =>
@@ -49,7 +230,7 @@ const RealtimeCollaborativeEditor = ({
   const [nameDraft, setNameDraft] = useState(displayName);
 
   const [loading, setLoading] = useState(true);
-  const [mode, setMode] = useState('text'); // 'docx' | 'text' | 'binary'
+  const [mode, setMode] = useState('txt'); // 'docx' | 'txt' | 'md' | 'excel'
   const [canEdit, setCanEdit] = useState(false);
   const [content, setContent] = useState('');
   const [revision, setRevision] = useState(1);
@@ -57,16 +238,27 @@ const RealtimeCollaborativeEditor = ({
   const [syncStatus, setSyncStatus] = useState('saved'); // 'saved' | 'typing' | 'syncing' | 'saving' | 'error'
   const [lastSavedAt, setLastSavedAt] = useState(null);
   const [lastEditor, setLastEditor] = useState(null);
-  const [uploadingReplacement, setUploadingReplacement] = useState(false);
+
+  // Tùy chọn hiển thị cho Markdown ('split' | 'edit' | 'preview') và cỡ chữ cho .txt
+  const [mdLayout, setMdLayout] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth <= 768 ? 'edit' : 'split'
+  );
+  const [txtFontSize, setTxtFontSize] = useState(15);
+
+  // Trạng thái riêng cho Bảng tính Excel
+  const [sheets, setSheets] = useState(() => [{ name: 'Sheet1', data: createEmptyGrid() }]);
+  const [activeSheetIdx, setActiveSheetIdx] = useState(0);
+  const [activeCell, setActiveCell] = useState({ r: 0, c: 0 });
+  const [renamingSheetIdx, setRenamingSheetIdx] = useState(null);
+  const [sheetNameDraft, setSheetNameDraft] = useState('');
 
   const docxEditorRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const mdTextareaRef = useRef(null);
   const isLocalTypingRef = useRef(false);
   const syncTimeoutRef = useRef(null);
   const autoSaveTimeoutRef = useRef(null);
   const latestContentRef = useRef('');
 
-  // Đồng bộ tên khi currentUser thay đổi
   useEffect(() => {
     if (currentUser?.name) {
       setDisplayName(currentUser.name);
@@ -92,18 +284,28 @@ const RealtimeCollaborativeEditor = ({
         const data = res?.data || res;
         if (!isMounted || !data) return;
 
-        setMode(data.mode || 'text');
-        setCanEdit(Boolean(data.canEdit));
-        setContent(data.content || '');
-        latestContentRef.current = data.content || '';
+        const nextMode = data.mode || 'txt';
+        const cleanedContent =
+          nextMode === 'docx'
+            ? sanitizeDocxHtml(data.content || '')
+            : data.content || '';
+
+        setMode(nextMode);
+        setCanEdit(Boolean(data.canEdit && !readOnly));
+        setContent(cleanedContent);
+        latestContentRef.current = cleanedContent;
         setRevision(data.revision || 1);
         setParticipants(data.participants || []);
         setLastSavedAt(data.lastSavedAt || null);
         setLastEditor(data.lastUpdatedBy || null);
         setSyncStatus(data.dirty ? 'typing' : 'saved');
 
-        if (data.mode === 'docx' && docxEditorRef.current) {
-          docxEditorRef.current.innerHTML = data.content || '<p></p>';
+        if (nextMode === 'docx' && docxEditorRef.current) {
+          docxEditorRef.current.innerHTML = cleanedContent || '<p></p>';
+        } else if (nextMode === 'excel') {
+          const parsedSheets = parseWorkbookJson(cleanedContent);
+          setSheets(parsedSheets);
+          setActiveSheetIdx(0);
         }
       } catch (err) {
         console.error('[RealtimeEditor] Lỗi khởi tạo phiên cộng tác:', err);
@@ -144,17 +346,27 @@ const RealtimeCollaborativeEditor = ({
             if (payload.updatedBy) {
               setLastEditor(payload.updatedBy);
             }
-            // Chỉ cập nhật khung soạn thảo nếu bản cập nhật đến từ người dùng khác
             if (payload.senderSessionId !== sessionId && typeof payload.content === 'string') {
               isLocalTypingRef.current = false;
-              latestContentRef.current = payload.content;
-              setContent(payload.content);
+              const incoming = sanitizeDocxHtml(payload.content);
+              latestContentRef.current = incoming;
+              setContent(incoming);
               setRevision(payload.revision || 1);
-              if (docxEditorRef.current && document.activeElement !== docxEditorRef.current) {
-                docxEditorRef.current.innerHTML = payload.content;
-              } else if (docxEditorRef.current) {
-                docxEditorRef.current.innerHTML = payload.content;
+
+              if (docxEditorRef.current) {
+                docxEditorRef.current.innerHTML = incoming;
               }
+              setSheets((prevSheets) => {
+                try {
+                  const parsed = JSON.parse(payload.content);
+                  if (parsed && Array.isArray(parsed.sheets)) {
+                    return parseWorkbookJson(payload.content);
+                  }
+                } catch (e) {
+                  // Không phải JSON Excel
+                }
+                return prevSheets;
+              });
             }
           },
           onDocumentSaved: (payload) => {
@@ -170,30 +382,23 @@ const RealtimeCollaborativeEditor = ({
               setParticipants(payload.participants);
             }
             if (payload.senderSessionId !== sessionId && typeof payload.content === 'string') {
-              latestContentRef.current = payload.content;
-              setContent(payload.content);
+              const incoming = sanitizeDocxHtml(payload.content);
+              latestContentRef.current = incoming;
+              setContent(incoming);
               if (docxEditorRef.current) {
-                docxEditorRef.current.innerHTML = payload.content;
+                docxEditorRef.current.innerHTML = incoming;
+              }
+              try {
+                const parsed = JSON.parse(payload.content);
+                if (parsed && Array.isArray(parsed.sheets)) {
+                  setSheets(parseWorkbookJson(payload.content));
+                }
+              } catch (e) {
+                // Bỏ qua nếu không phải JSON Excel
               }
             }
             if (onSaved) {
               onSaved(payload);
-            }
-          },
-          onFileReplaced: (payload) => {
-            if (!isMounted) return;
-            toast.info(
-              `Tệp tin vừa được cập nhật phiên bản mới bởi ${payload.replacedBy?.displayName || 'Cộng tác viên'}`
-            );
-            if (typeof payload.content === 'string') {
-              latestContentRef.current = payload.content;
-              setContent(payload.content);
-              if (docxEditorRef.current) {
-                docxEditorRef.current.innerHTML = payload.content;
-              }
-            }
-            if (onFileReplaced) {
-              onFileReplaced(payload);
             }
           }
         }
@@ -222,7 +427,7 @@ const RealtimeCollaborativeEditor = ({
   // Hàm lưu tài liệu xuống đĩa / S3
   const handleSaveNow = useCallback(
     async (explicitContent = null, showToast = false) => {
-      if (!canEdit || mode === 'binary') return;
+      if (!canEdit) return;
       const contentToSave =
         explicitContent !== null ? explicitContent : latestContentRef.current;
 
@@ -257,7 +462,7 @@ const RealtimeCollaborativeEditor = ({
         }
       }
     },
-    [canEdit, mode, fileId, sessionId, displayName, shareToken, password, onSaved, toast]
+    [canEdit, fileId, sessionId, displayName, shareToken, password, onSaved, toast]
   );
 
   // Phím tắt Ctrl+S / Cmd+S để lưu ngay
@@ -279,7 +484,6 @@ const RealtimeCollaborativeEditor = ({
     setSyncStatus('typing');
     isLocalTypingRef.current = true;
 
-    // 1. Phát tín hiệu Live Sync sau 180ms để đồng bộ tức thì sang màn hình khác
     if (syncTimeoutRef.current) {
       clearTimeout(syncTimeoutRef.current);
     }
@@ -299,7 +503,6 @@ const RealtimeCollaborativeEditor = ({
       }
     }, 180);
 
-    // 2. Tự động lưu (Auto-save) xuống tệp vật lý sau 1.5 giây ngừng gõ
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
     }
@@ -308,13 +511,141 @@ const RealtimeCollaborativeEditor = ({
     }, 1500);
   };
 
-  // Lệnh định dạng Rich Text cho tài liệu Word (.docx)
+  // ── Các hàm điều khiển Word (.docx) ──
   const execDocxCommand = (command, value = null) => {
     if (!canEdit || !docxEditorRef.current) return;
     docxEditorRef.current.focus();
     document.execCommand(command, false, value);
     const updatedHtml = docxEditorRef.current.innerHTML;
     triggerRealtimeSyncAndAutoSave(updatedHtml);
+  };
+
+  // ── Các hàm điều khiển Markdown (.md) ──
+  const insertMarkdownSyntax = (prefix, suffix = '', placeholder = 'văn bản') => {
+    if (!canEdit) return;
+    const el = mdTextareaRef.current;
+    if (!el) {
+      const next = `${content}\n${prefix}${placeholder}${suffix}`;
+      triggerRealtimeSyncAndAutoSave(next);
+      return;
+    }
+    const start = el.selectionStart || 0;
+    const end = el.selectionEnd || 0;
+    const selected = content.slice(start, end) || placeholder;
+    const nextVal = content.slice(0, start) + prefix + selected + suffix + content.slice(end);
+    triggerRealtimeSyncAndAutoSave(nextVal);
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + prefix.length, start + prefix.length + selected.length);
+    }, 0);
+  };
+
+  // ── Các hàm điều khiển Bảng tính Excel (.xlsx, .xls, .csv) ──
+  const currentSheet = sheets[activeSheetIdx] || sheets[0] || { name: 'Sheet1', data: createEmptyGrid() };
+  const currentGrid = currentSheet.data || createEmptyGrid();
+  const rowCount = currentGrid.length;
+  const colCount = currentGrid[0]?.length || 8;
+  const activeCellValue = currentGrid[activeCell.r]?.[activeCell.c] ?? '';
+  const activeCellLabel = `${colIndexToLetter(activeCell.c)}${activeCell.r + 1}`;
+
+  const commitSheetsUpdate = (nextSheets) => {
+    setSheets(nextSheets);
+    const serialized = JSON.stringify({ sheets: nextSheets });
+    triggerRealtimeSyncAndAutoSave(serialized);
+  };
+
+  const handleCellChange = (rIdx, cIdx, val) => {
+    if (!canEdit) return;
+    const nextSheets = sheets.map((s, idx) => {
+      if (idx !== activeSheetIdx) return s;
+      const nextData = s.data.map((row, r) =>
+        r === rIdx ? row.map((cell, c) => (c === cIdx ? val : cell)) : row
+      );
+      return { ...s, data: nextData };
+    });
+    commitSheetsUpdate(nextSheets);
+  };
+
+  const handleAddRow = () => {
+    if (!canEdit) return;
+    const nextSheets = sheets.map((s, idx) => {
+      if (idx !== activeSheetIdx) return s;
+      const cols = s.data[0]?.length || 8;
+      return {
+        ...s,
+        data: [...s.data, Array.from({ length: cols }, () => '')]
+      };
+    });
+    commitSheetsUpdate(nextSheets);
+  };
+
+  const handleAddColumn = () => {
+    if (!canEdit) return;
+    const nextSheets = sheets.map((s, idx) => {
+      if (idx !== activeSheetIdx) return s;
+      return {
+        ...s,
+        data: s.data.map((row) => [...row, ''])
+      };
+    });
+    commitSheetsUpdate(nextSheets);
+  };
+
+  const handleDeleteActiveRow = () => {
+    if (!canEdit || currentGrid.length <= 1) return;
+    const targetRow = activeCell.r;
+    const nextSheets = sheets.map((s, idx) => {
+      if (idx !== activeSheetIdx) return s;
+      const filtered = s.data.filter((_, r) => r !== targetRow);
+      return {
+        ...s,
+        data: filtered.length > 0 ? filtered : createEmptyGrid(1, colCount)
+      };
+    });
+    setActiveCell((prev) => ({ ...prev, r: Math.max(0, prev.r - 1) }));
+    commitSheetsUpdate(nextSheets);
+  };
+
+  const handleDeleteActiveColumn = () => {
+    if (!canEdit || colCount <= 1) return;
+    const targetCol = activeCell.c;
+    const nextSheets = sheets.map((s, idx) => {
+      if (idx !== activeSheetIdx) return s;
+      return {
+        ...s,
+        data: s.data.map((row) => row.filter((_, c) => c !== targetCol))
+      };
+    });
+    setActiveCell((prev) => ({ ...prev, c: Math.max(0, prev.c - 1) }));
+    commitSheetsUpdate(nextSheets);
+  };
+
+  const handleAddSheet = () => {
+    if (!canEdit || isCsvFile) return;
+    const newIndex = sheets.length + 1;
+    const nextSheets = [
+      ...sheets,
+      { name: `Sheet${newIndex}`, data: createEmptyGrid(12, 8) }
+    ];
+    setActiveSheetIdx(nextSheets.length - 1);
+    setActiveCell({ r: 0, c: 0 });
+    commitSheetsUpdate(nextSheets);
+  };
+
+  const handleDeleteSheet = (idxToDelete, e) => {
+    if (e) e.stopPropagation();
+    if (!canEdit || sheets.length <= 1) return;
+    const nextSheets = sheets.filter((_, idx) => idx !== idxToDelete);
+    setActiveSheetIdx((prev) => Math.max(0, Math.min(prev, nextSheets.length - 1)));
+    commitSheetsUpdate(nextSheets);
+  };
+
+  const handleCommitSheetRename = (idx) => {
+    const trimmed = sheetNameDraft.trim().slice(0, 31);
+    setRenamingSheetIdx(null);
+    if (!trimmed) return;
+    const nextSheets = sheets.map((s, i) => (i === idx ? { ...s, name: trimmed } : s));
+    commitSheetsUpdate(nextSheets);
   };
 
   // Lưu tên hiển thị mới cho khách
@@ -337,41 +668,45 @@ const RealtimeCollaborativeEditor = ({
     }
   };
 
-  // Tải phiên bản tệp mới thay thế (dành cho PDF, hình ảnh hoặc file bất kỳ)
-  const handleReplaceFileChange = async (e) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-
-    setUploadingReplacement(true);
-    try {
-      const res = await collabService.replaceBinaryFile(fileId, selectedFile, {
-        sessionId,
-        displayName,
-        shareToken,
-        password
-      });
-      toast.success('Đã cập nhật phiên bản tệp mới thành công');
-      if (onFileReplaced) {
-        onFileReplaced(res?.data || res);
+  // Thống kê cho từng định dạng
+  const statsInfo = useMemo(() => {
+    if (mode === 'excel') {
+      let filledCells = 0;
+      for (const row of currentGrid) {
+        for (const cell of row) {
+          if (String(cell ?? '').trim() !== '') filledCells++;
+        }
       }
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Cập nhật tệp tin thất bại');
-    } finally {
-      setUploadingReplacement(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      return {
+        label: 'Bảng tính Excel',
+        summary: `${sheets.length} Sheet • ${rowCount} dòng × ${colCount} cột • ${filledCells} ô có dữ liệu`
+      };
     }
-  };
 
-  // Thống kê dòng / từ / ký tự cho trình soạn thảo
-  const plainTextForStats =
-    mode === 'docx'
-      ? content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-      : content;
-  const wordCount = plainTextForStats ? plainTextForStats.trim().split(/\s+/).filter(Boolean).length : 0;
-  const charCount = plainTextForStats ? plainTextForStats.length : 0;
-  const lineCount = mode === 'text' ? (content ? content.split('\n').length : 1) : 0;
+    const plain =
+      mode === 'docx'
+        ? content
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=\s]+/gi, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+        : content;
+    const words = plain ? plain.trim().split(/\s+/).filter(Boolean).length : 0;
+    const chars = plain ? plain.length : 0;
+    const lines = mode !== 'docx' ? (content ? content.split('\n').length : 1) : 0;
+
+    return {
+      label:
+        mode === 'docx'
+          ? 'Tài liệu Word (.docx)'
+          : mode === 'md'
+          ? 'Tài liệu Markdown (.md)'
+          : 'Văn bản thuần (.txt)',
+      summary: `${words.toLocaleString()} từ • ${chars.toLocaleString()} ký tự${
+        mode !== 'docx' ? ` • ${lines.toLocaleString()} dòng` : ''
+      }`
+    };
+  }, [mode, content, sheets.length, rowCount, colCount, currentGrid]);
 
   const activeTypers = participants.filter((p) => p.isTyping && p.sessionId !== sessionId);
 
@@ -395,44 +730,11 @@ const RealtimeCollaborativeEditor = ({
   }
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        width: '100%',
-        height: '100%',
-        minHeight: '540px',
-        background: 'var(--bg-surface)',
-        border: '1px solid var(--border-main)',
-        borderRadius: 'var(--radius-lg)',
-        overflow: 'hidden',
-        boxShadow: 'var(--shadow-md)'
-      }}
-    >
-      {/* Ẩn input chọn file thay thế */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        style={{ display: 'none' }}
-        onChange={handleReplaceFileChange}
-      />
-
+    <div className="realtime-editor-root">
       {/* ── Thanh Trạng thái Cộng tác Thời gian thực (Live Collaboration Bar) ── */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '12px',
-          padding: '10px 16px',
-          background: 'var(--bg-surface-hover)',
-          borderBottom: '1px solid var(--border-main)'
-        }}
-      >
-        {/* Nhóm trái: Trạng thái Live & Người đang cùng mở */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-          <span className="badge badge-emerald" style={{ gap: '6px', padding: '4px 10px' }}>
+      <div className="realtime-collab-bar">
+        <div className="realtime-collab-left">
+          <span className="badge badge-emerald tabular-nums" style={{ gap: '6px', padding: '4px 10px' }}>
             <span
               style={{
                 width: 7,
@@ -445,44 +747,25 @@ const RealtimeCollaborativeEditor = ({
             <span>Trực tuyến ({participants.length})</span>
           </span>
 
-          {/* Danh sách Avatar những người đang tham gia */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          <div className="realtime-participants-list">
             {participants.map((p) => {
               const isMe = p.sessionId === sessionId;
               return (
                 <div
                   key={p.sessionId}
                   title={`${p.displayName}${isMe ? ' (Bạn)' : ''}${p.isTyping ? ' - Đang gõ...' : ''}`}
+                  className="realtime-participant-pill"
                   style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '3px 8px 3px 4px',
-                    borderRadius: '999px',
-                    background: 'var(--bg-surface)',
-                    border: `1px solid ${p.isTyping ? p.color : 'var(--border-main)'}`,
-                    fontSize: '0.75rem',
-                    fontWeight: 600,
-                    color: 'var(--text-primary)'
+                    border: `1px solid ${p.isTyping ? p.color : 'var(--border-main)'}`
                   }}
                 >
                   <span
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderRadius: '50%',
-                      backgroundColor: p.color || '#8b5cf6',
-                      color: '#ffffff',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.68rem',
-                      fontWeight: 700
-                    }}
+                    className="realtime-participant-avatar"
+                    style={{ backgroundColor: p.color || '#8b5cf6' }}
                   >
                     {(p.displayName || 'U')[0].toUpperCase()}
                   </span>
-                  <span>
+                  <span className="realtime-participant-name">
                     {p.displayName}
                     {isMe ? ' (Bạn)' : ''}
                   </span>
@@ -491,7 +774,6 @@ const RealtimeCollaborativeEditor = ({
             })}
           </div>
 
-          {/* Đổi tên hiển thị nhanh nếu là khách truy cập link công khai */}
           {!currentUser && (
             editingName ? (
               <form onSubmit={handleSaveDisplayName} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -526,8 +808,7 @@ const RealtimeCollaborativeEditor = ({
           )}
         </div>
 
-        {/* Nhóm phải: Trạng thái lưu tự động & Nút Lưu ngay */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <div className="realtime-collab-right">
           {activeTypers.length > 0 && (
             <span style={{ fontSize: '0.75rem', color: 'var(--primary-500)', fontWeight: 600 }}>
               {activeTypers.map((t) => t.displayName).join(', ')} đang soạn thảo...
@@ -553,7 +834,7 @@ const RealtimeCollaborativeEditor = ({
             {syncStatus === 'saving' || syncStatus === 'syncing' ? (
               <>
                 <RefreshCw size={13} className="spin-animation" />
-                <span>{syncStatus === 'saving' ? 'Đang lưu vào tệp...' : 'Đang đồng bộ trực tiếp...'}</span>
+                <span>{syncStatus === 'saving' ? 'Đang lưu vào tệp...' : 'Đang đồng bộ...'}</span>
               </>
             ) : syncStatus === 'typing' ? (
               <>
@@ -566,7 +847,7 @@ const RealtimeCollaborativeEditor = ({
               <>
                 <CheckCircle2 size={13} />
                 <span>
-                  Đã lưu tự động
+                  Đã lưu
                   {lastSavedAt
                     ? ` lúc ${new Date(lastSavedAt).toLocaleTimeString('vi-VN', {
                         hour: '2-digit',
@@ -580,200 +861,454 @@ const RealtimeCollaborativeEditor = ({
           </div>
 
           {canEdit && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingReplacement}
-                title="Tải tệp tin mới lên để cập nhật phiên bản"
-                style={{ padding: '5px 10px', fontSize: '0.78rem' }}
-              >
-                <Upload size={13} />
-                <span>{uploadingReplacement ? 'Đang tải...' : 'Tải bản mới'}</span>
-              </button>
-
-              {mode !== 'binary' && (
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={() => handleSaveNow(null, true)}
-                  disabled={syncStatus === 'saving'}
-                  title="Lưu ngay lập tức (Ctrl + S)"
-                  style={{ padding: '5px 12px', fontSize: '0.78rem' }}
-                >
-                  <Save size={13} />
-                  <span>Lưu ngay</span>
-                </button>
-              )}
-            </div>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => handleSaveNow(null, true)}
+              disabled={syncStatus === 'saving'}
+              title="Lưu ngay lập tức (Ctrl + S)"
+              style={{ padding: '5px 12px', fontSize: '0.78rem' }}
+            >
+              <Save size={13} />
+              <span>Lưu ngay</span>
+            </button>
           )}
         </div>
       </div>
 
-      {/* ── Thanh công cụ Định dạng cho Tài liệu Word (.docx) ── */}
+      {/* ── 1. Thanh công cụ cho Word (.docx) ── */}
       {mode === 'docx' && canEdit && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            flexWrap: 'wrap',
-            padding: '8px 16px',
-            background: 'var(--bg-surface)',
-            borderBottom: '1px solid var(--border-subtle)'
-          }}
-        >
-          <button
-            type="button"
-            className="btn-icon"
-            title="Hoàn tác (Ctrl+Z)"
-            onClick={() => execDocxCommand('undo')}
-          >
+        <div className="realtime-format-toolbar">
+          <button type="button" className="btn-icon" title="Hoàn tác (Ctrl+Z)" onClick={() => execDocxCommand('undo')}>
             <Undo2 size={15} />
           </button>
-          <button
-            type="button"
-            className="btn-icon"
-            title="Làm lại (Ctrl+Y)"
-            onClick={() => execDocxCommand('redo')}
-          >
+          <button type="button" className="btn-icon" title="Làm lại (Ctrl+Y)" onClick={() => execDocxCommand('redo')}>
             <Redo2 size={15} />
           </button>
-
-          <span style={{ width: 1, height: 18, background: 'var(--border-main)', margin: '0 4px' }} />
-
-          <button
-            type="button"
-            className="btn-icon"
-            title="Tiêu đề lớn (Heading 1)"
-            onClick={() => execDocxCommand('formatBlock', 'H1')}
-          >
+          <span className="realtime-toolbar-divider" />
+          <button type="button" className="btn-icon" title="Tiêu đề 1" onClick={() => execDocxCommand('formatBlock', 'H1')}>
             <Heading1 size={15} />
           </button>
-          <button
-            type="button"
-            className="btn-icon"
-            title="Tiêu đề vừa (Heading 2)"
-            onClick={() => execDocxCommand('formatBlock', 'H2')}
-          >
+          <button type="button" className="btn-icon" title="Tiêu đề 2" onClick={() => execDocxCommand('formatBlock', 'H2')}>
             <Heading2 size={15} />
           </button>
-
-          <span style={{ width: 1, height: 18, background: 'var(--border-main)', margin: '0 4px' }} />
-
-          <button
-            type="button"
-            className="btn-icon"
-            title="In đậm (Ctrl+B)"
-            onClick={() => execDocxCommand('bold')}
-          >
+          <span className="realtime-toolbar-divider" />
+          <button type="button" className="btn-icon" title="In đậm (Ctrl+B)" onClick={() => execDocxCommand('bold')}>
             <Bold size={15} />
           </button>
-          <button
-            type="button"
-            className="btn-icon"
-            title="In nghiêng (Ctrl+I)"
-            onClick={() => execDocxCommand('italic')}
-          >
+          <button type="button" className="btn-icon" title="In nghiêng (Ctrl+I)" onClick={() => execDocxCommand('italic')}>
             <Italic size={15} />
           </button>
-          <button
-            type="button"
-            className="btn-icon"
-            title="Gạch chân (Ctrl+U)"
-            onClick={() => execDocxCommand('underline')}
-          >
+          <button type="button" className="btn-icon" title="Gạch chân (Ctrl+U)" onClick={() => execDocxCommand('underline')}>
             <Underline size={15} />
           </button>
-
-          <span style={{ width: 1, height: 18, background: 'var(--border-main)', margin: '0 4px' }} />
-
-          <button
-            type="button"
-            className="btn-icon"
-            title="Danh sách dấu chấm"
-            onClick={() => execDocxCommand('insertUnorderedList')}
-          >
+          <span className="realtime-toolbar-divider" />
+          <button type="button" className="btn-icon" title="Danh sách dấu chấm" onClick={() => execDocxCommand('insertUnorderedList')}>
             <List size={15} />
           </button>
-          <button
-            type="button"
-            className="btn-icon"
-            title="Danh sách đánh số"
-            onClick={() => execDocxCommand('insertOrderedList')}
-          >
+          <button type="button" className="btn-icon" title="Danh sách đánh số" onClick={() => execDocxCommand('insertOrderedList')}>
             <ListOrdered size={15} />
           </button>
-
-          <span style={{ width: 1, height: 18, background: 'var(--border-main)', margin: '0 4px' }} />
-
-          <button
-            type="button"
-            className="btn-icon"
-            title="Căn trái"
-            onClick={() => execDocxCommand('justifyLeft')}
-          >
+          <span className="realtime-toolbar-divider" />
+          <button type="button" className="btn-icon" title="Căn trái" onClick={() => execDocxCommand('justifyLeft')}>
             <AlignLeft size={15} />
           </button>
-          <button
-            type="button"
-            className="btn-icon"
-            title="Căn giữa"
-            onClick={() => execDocxCommand('justifyCenter')}
-          >
+          <button type="button" className="btn-icon" title="Căn giữa" onClick={() => execDocxCommand('justifyCenter')}>
             <AlignCenter size={15} />
           </button>
-          <button
-            type="button"
-            className="btn-icon"
-            title="Căn phải"
-            onClick={() => execDocxCommand('justifyRight')}
-          >
+          <button type="button" className="btn-icon" title="Căn phải" onClick={() => execDocxCommand('justifyRight')}>
             <AlignRight size={15} />
           </button>
         </div>
       )}
 
+      {/* ── 2. Thanh công cụ cho Markdown (.md) ── */}
+      {mode === 'md' && (
+        <div className="realtime-format-toolbar" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {canEdit && (
+              <>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  title="Tiêu đề H1"
+                  onClick={() => insertMarkdownSyntax('# ', '', 'Tiêu đề lớn')}
+                >
+                  <Heading1 size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  title="Tiêu đề H2"
+                  onClick={() => insertMarkdownSyntax('## ', '', 'Tiêu đề mục')}
+                >
+                  <Heading2 size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  title="In đậm (**text**)"
+                  onClick={() => insertMarkdownSyntax('**', '**', 'chữ đậm')}
+                >
+                  <Bold size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  title="In nghiêng (*text*)"
+                  onClick={() => insertMarkdownSyntax('*', '*', 'chữ nghiêng')}
+                >
+                  <Italic size={15} />
+                </button>
+                <span className="realtime-toolbar-divider" />
+                <button
+                  type="button"
+                  className="btn-icon"
+                  title="Danh sách gạch đầu dòng"
+                  onClick={() => insertMarkdownSyntax('- ', '', 'Mục danh sách')}
+                >
+                  <List size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  title="Trích dẫn (>)"
+                  onClick={() => insertMarkdownSyntax('> ', '', 'Nội dung trích dẫn')}
+                >
+                  <Quote size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  title="Khối mã (```)"
+                  onClick={() => insertMarkdownSyntax('\n```\n', '\n```\n', 'code')}
+                >
+                  <Code size={15} />
+                </button>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  title="Chèn bảng Markdown"
+                  onClick={() =>
+                    insertMarkdownSyntax(
+                      '\n| Cột 1 | Cột 2 | Cột 3 |\n| --- | --- | --- |\n| ',
+                      ' | Dữ liệu 2 | Dữ liệu 3 |\n',
+                      'Dữ liệu 1'
+                    )
+                  }
+                >
+                  <TableIcon size={15} />
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="preview-mode-switcher">
+            <button
+              type="button"
+              className={`btn btn-sm ${mdLayout === 'edit' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setMdLayout('edit')}
+              style={{ padding: '4px 9px', fontSize: '0.74rem' }}
+            >
+              <Edit3 size={13} />
+              <span>Mã Markdown</span>
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${mdLayout === 'split' ? 'btn-primary' : 'btn-ghost'} hidden-mobile`}
+              onClick={() => setMdLayout('split')}
+              style={{ padding: '4px 9px', fontSize: '0.74rem' }}
+            >
+              <Columns size={13} />
+              <span>Song song</span>
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${mdLayout === 'preview' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setMdLayout('preview')}
+              style={{ padding: '4px 9px', fontSize: '0.74rem' }}
+            >
+              <Eye size={13} />
+              <span>Xem kết quả</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── 3. Thanh công cụ cho Văn bản thuần (.txt) ── */}
+      {mode === 'txt' && (
+        <div className="realtime-format-toolbar" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+            <FileText size={14} style={{ color: 'var(--primary-500)' }} />
+            <span>Trình soạn thảo văn bản thuần UTF-8 (.txt)</span>
+          </div>
+          <div className=" tabular-nums" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Cỡ chữ:</span>
+            {[13, 15, 17].map((sz) => (
+              <button
+                key={sz}
+                type="button"
+                className={`btn btn-sm ${txtFontSize === sz ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setTxtFontSize(sz)}
+                style={{ padding: '2px 8px', fontSize: '0.72rem' }}
+              >
+                {sz}px
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── 4. Thanh công cụ & Thanh công thức cho Bảng tính Excel (.xlsx, .xls, .csv) ── */}
+      {mode === 'excel' && (
+        <div className="realtime-excel-toolbar-wrap">
+          <div className="realtime-format-toolbar" style={{ justifyContent: 'space-between', borderBottom: 'none', paddingBottom: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+              <span className="badge badge-emerald" style={{ gap: '5px', fontSize: '0.72rem' }}>
+                <FileSpreadsheet size={13} />
+                <span>{isCsvFile ? 'Bảng dữ liệu CSV' : 'Bảng tính Excel (.xlsx)'}</span>
+              </span>
+
+              {canEdit && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleAddRow}
+                    style={{ padding: '4px 9px', fontSize: '0.74rem' }}
+                  >
+                    <Plus size={13} />
+                    <span>Thêm dòng</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleAddColumn}
+                    style={{ padding: '4px 9px', fontSize: '0.74rem' }}
+                  >
+                    <Plus size={13} />
+                    <span>Thêm cột</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleDeleteActiveRow}
+                    disabled={rowCount <= 1}
+                    title={`Xóa dòng số ${activeCell.r + 1}`}
+                    style={{ padding: '4px 9px', fontSize: '0.74rem', color: 'var(--accent-rose)' }}
+                  >
+                    <Trash2 size={13} />
+                    <span>Xóa dòng {activeCell.r + 1}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleDeleteActiveColumn}
+                    disabled={colCount <= 1}
+                    title={`Xóa cột ${colIndexToLetter(activeCell.c)}`}
+                    style={{ padding: '4px 9px', fontSize: '0.74rem', color: 'var(--accent-rose)' }}
+                  >
+                    <Trash2 size={13} />
+                    <span>Xóa cột {colIndexToLetter(activeCell.c)}</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Thanh ô đang chọn (Active Cell Formula Bar) */}
+          <div className="realtime-excel-formula-bar">
+            <span className="realtime-excel-cell-badge tabular-nums">{activeCellLabel}</span>
+            <input
+              type="text"
+              className="realtime-excel-formula-input"
+              value={activeCellValue}
+              readOnly={!canEdit}
+              onChange={(e) => handleCellChange(activeCell.r, activeCell.c, e.target.value)}
+              placeholder={`Nhập giá trị cho ô ${activeCellLabel}...`}
+            />
+          </div>
+        </div>
+      )}
+
       {/* ── Vùng Soạn thảo Chính ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', minHeight: '420px' }}>
+      <div className="realtime-editor-body">
         {mode === 'docx' ? (
-          <div
-            style={{
-              flex: 1,
-              background: '#0f172a',
-              padding: '28px 20px',
-              display: 'flex',
-              justifyContent: 'center',
-              overflowY: 'auto'
-            }}
-          >
+          <div className="realtime-docx-scroll">
             <div
               ref={docxEditorRef}
+              className="realtime-docx-sheet"
               contentEditable={canEdit}
               suppressContentEditableWarning
               onInput={(e) => {
                 const newHtml = e.currentTarget.innerHTML;
                 triggerRealtimeSyncAndAutoSave(newHtml);
               }}
-              style={{
-                width: '100%',
-                maxWidth: '816px',
-                minHeight: '680px',
-                background: '#ffffff',
-                color: '#0f172a',
-                padding: '48px 56px',
-                borderRadius: '8px',
-                boxShadow: '0 12px 32px rgba(0, 0, 0, 0.35)',
-                outline: 'none',
-                fontSize: '1rem',
-                lineHeight: 1.65,
-                fontFamily: 'var(--font-sans)',
-                wordBreak: 'break-word'
-              }}
             />
           </div>
-        ) : mode === 'text' ? (
+        ) : mode === 'md' ? (
+          <div className={`realtime-md-split-container layout-${mdLayout}`}>
+            {(mdLayout === 'edit' || mdLayout === 'split') && (
+              <textarea
+                ref={mdTextareaRef}
+                value={content}
+                readOnly={!canEdit}
+                onChange={(e) => triggerRealtimeSyncAndAutoSave(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Tab' && canEdit) {
+                    e.preventDefault();
+                    const start = e.target.selectionStart;
+                    const end = e.target.selectionEnd;
+                    const nextVal = content.substring(0, start) + '  ' + content.substring(end);
+                    triggerRealtimeSyncAndAutoSave(nextVal);
+                    setTimeout(() => {
+                      e.target.selectionStart = e.target.selectionEnd = start + 2;
+                    }, 0);
+                  }
+                }}
+                placeholder="# Nhập nội dung Markdown tại đây..."
+                className="realtime-text-area realtime-md-editor-pane"
+              />
+            )}
+            {(mdLayout === 'preview' || mdLayout === 'split') && (
+              <div
+                className="realtime-md-preview-pane"
+                dangerouslySetInnerHTML={{ __html: renderMarkdownToHtml(content) }}
+              />
+            )}
+          </div>
+        ) : mode === 'excel' ? (
+          <div className="realtime-excel-workspace">
+            <div className="realtime-excel-grid-scroll">
+              <table className="realtime-excel-table">
+                <thead>
+                  <tr>
+                    <th className="excel-corner-cell">#</th>
+                    {Array.from({ length: colCount }).map((_, cIdx) => (
+                      <th
+                        key={cIdx}
+                        className={`excel-col-header ${activeCell.c === cIdx ? 'active-header' : ''}`}
+                      >
+                        {colIndexToLetter(cIdx)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentGrid.map((row, rIdx) => (
+                    <tr key={rIdx} className={rIdx === 0 ? 'excel-first-row' : ''}>
+                      <td
+                        className={`excel-row-header tabular-nums ${
+                          activeCell.r === rIdx ? 'active-header' : ''
+                        }`}
+                      >
+                        {rIdx + 1}
+                      </td>
+                      {row.map((cellVal, cIdx) => {
+                        const isSelected = activeCell.r === rIdx && activeCell.c === cIdx;
+                        return (
+                          <td
+                            key={cIdx}
+                            className={`excel-data-cell ${isSelected ? 'is-selected' : ''}`}
+                            onClick={() => setActiveCell({ r: rIdx, c: cIdx })}
+                          >
+                            <input
+                              type="text"
+                              value={cellVal}
+                              readOnly={!canEdit}
+                              onFocus={() => setActiveCell({ r: rIdx, c: cIdx })}
+                              onChange={(e) => handleCellChange(rIdx, cIdx, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  const nextR = Math.min(rowCount - 1, rIdx + 1);
+                                  setActiveCell({ r: nextR, c: cIdx });
+                                } else if (e.key === 'Tab') {
+                                  e.preventDefault();
+                                  const nextC = (cIdx + 1) % colCount;
+                                  const nextR = cIdx + 1 >= colCount ? Math.min(rowCount - 1, rIdx + 1) : rIdx;
+                                  setActiveCell({ r: nextR, c: nextC });
+                                }
+                              }}
+                              className="excel-cell-input"
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Thanh chọn Sheet ở đáy bảng tính */}
+            <div className="realtime-excel-sheet-bar">
+              <div className="realtime-excel-sheets-list">
+                {sheets.map((sheet, idx) => {
+                  const isActive = idx === activeSheetIdx;
+                  return (
+                    <div
+                      key={idx}
+                      className={`excel-sheet-tab ${isActive ? 'active' : ''}`}
+                      onClick={() => {
+                        setActiveSheetIdx(idx);
+                        setActiveCell({ r: 0, c: 0 });
+                      }}
+                      onDoubleClick={() => {
+                        if (!canEdit || isCsvFile) return;
+                        setRenamingSheetIdx(idx);
+                        setSheetNameDraft(sheet.name);
+                      }}
+                      title={canEdit && !isCsvFile ? 'Nháy đúp để đổi tên Sheet' : sheet.name}
+                    >
+                      {renamingSheetIdx === idx ? (
+                        <input
+                          type="text"
+                          value={sheetNameDraft}
+                          onChange={(e) => setSheetNameDraft(e.target.value)}
+                          onBlur={() => handleCommitSheetRename(idx)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleCommitSheetRename(idx);
+                            if (e.key === 'Escape') setRenamingSheetIdx(null);
+                          }}
+                          autoFocus
+                          className="excel-sheet-rename-input"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span>{sheet.name}</span>
+                      )}
+
+                      {canEdit && !isCsvFile && sheets.length > 1 && (
+                        <button
+                          type="button"
+                          className="excel-sheet-delete-btn"
+                          onClick={(e) => handleDeleteSheet(idx, e)}
+                          title={`Xóa ${sheet.name}`}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {canEdit && !isCsvFile && (
+                  <button
+                    type="button"
+                    className="excel-add-sheet-btn"
+                    onClick={handleAddSheet}
+                    title="Thêm Sheet mới"
+                  >
+                    <Plus size={14} />
+                    <span>Thêm Sheet</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Chế độ Văn bản thuần (.txt) */
           <textarea
             value={content}
             readOnly={!canEdit}
@@ -790,92 +1325,21 @@ const RealtimeCollaborativeEditor = ({
                 }, 0);
               }
             }}
-            placeholder="Nhập nội dung tài liệu tại đây..."
-            style={{
-              flex: 1,
-              width: '100%',
-              minHeight: '460px',
-              padding: '20px 24px',
-              background: '#0f172a',
-              color: '#f8fafc',
-              border: 'none',
-              outline: 'none',
-              resize: 'none',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '0.875rem',
-              lineHeight: 1.65
-            }}
+            placeholder="Nhập nội dung văn bản (.txt) tại đây..."
+            className="realtime-text-area"
+            style={{ fontSize: `${txtFontSize}px` }}
           />
-        ) : (
-          <div
-            style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '48px 24px',
-              textAlign: 'center',
-              gap: '12px'
-            }}
-          >
-            <Upload size={42} style={{ color: 'var(--primary-500)' }} />
-            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Cập nhật phiên bản mới cho "{file?.name}"
-            </div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '460px' }}>
-              Định dạng tệp này không chỉnh sửa văn bản trực tiếp. Với quyền Chỉnh sửa, bạn có thể tải tệp mới lên để cập nhật ngay lập tức cho tất cả mọi người đang xem liên kết này.
-            </div>
-            {canEdit && (
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploadingReplacement}
-                style={{ marginTop: '8px' }}
-              >
-                <Upload size={16} />
-                <span>{uploadingReplacement ? 'Đang tải lên...' : 'Chọn tệp mới thay thế'}</span>
-              </button>
-            )}
-          </div>
         )}
       </div>
 
       {/* ── Chân trang Thống kê & Trạng thái Cộng tác ── */}
-      <div
-        className="tabular-nums"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '10px',
-          padding: '8px 16px',
-          background: 'var(--bg-surface-hover)',
-          borderTop: '1px solid var(--border-main)',
-          fontSize: '0.75rem',
-          color: 'var(--text-secondary)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div className="realtime-editor-footer tabular-nums">
+        <div className="realtime-footer-stats">
           <span>
-            Chế độ: <strong>{mode === 'docx' ? 'Tài liệu Word (.docx)' : mode === 'text' ? 'Văn bản / Mã nguồn' : 'Tệp nhị phân'}</strong>
+            Định dạng: <strong>{statsInfo.label}</strong>
           </span>
-          {mode !== 'binary' && (
-            <>
-              <span>•</span>
-              <span>{wordCount.toLocaleString()} từ</span>
-              <span>•</span>
-              <span>{charCount.toLocaleString()} ký tự</span>
-              {mode === 'text' && (
-                <>
-                  <span>•</span>
-                  <span>{lineCount.toLocaleString()} dòng</span>
-                </>
-              )}
-            </>
-          )}
+          <span>•</span>
+          <span>{statsInfo.summary}</span>
         </div>
 
         <div>
@@ -893,4 +1357,3 @@ const RealtimeCollaborativeEditor = ({
 };
 
 export default RealtimeCollaborativeEditor;
-

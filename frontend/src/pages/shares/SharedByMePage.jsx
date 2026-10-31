@@ -217,12 +217,12 @@ const SharedByMePage = () => {
 
         {/* Bộ lọc nhanh theo loại chia sẻ */}
         {shares.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <div className="share-filter-group tabular-nums">
             <button
               type="button"
               className={`btn btn-sm ${filterType === 'all' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setFilterType('all')}
-              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+              style={{ padding: '6px 12px', fontSize: '0.8rem', flexShrink: 0 }}
             >
               <span>Tất cả ({shares.length})</span>
             </button>
@@ -230,7 +230,7 @@ const SharedByMePage = () => {
               type="button"
               className={`btn btn-sm ${filterType === 'public' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setFilterType('public')}
-              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+              style={{ padding: '6px 12px', fontSize: '0.8rem', flexShrink: 0 }}
             >
               <Globe size={13} />
               <span>Liên kết công khai ({shares.filter((s) => s.shareType === 'public').length})</span>
@@ -239,7 +239,7 @@ const SharedByMePage = () => {
               type="button"
               className={`btn btn-sm ${filterType === 'user' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setFilterType('user')}
-              style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+              style={{ padding: '6px 12px', fontSize: '0.8rem', flexShrink: 0 }}
             >
               <Users size={13} />
               <span>Qua Email ({shares.filter((s) => s.shareType === 'user').length})</span>
@@ -260,8 +260,8 @@ const SharedByMePage = () => {
           description="Khi bạn tạo liên kết chia sẻ hoặc mời cộng tác viên cho tệp và thư mục, chúng sẽ hiển thị tại đây để bạn mở liên kết, chỉnh sửa quyền hoặc thu hồi."
         />
       ) : (
-        <div className="file-table-container">
-          <table className="file-table">
+        <div className="file-table-container share-table-scroll">
+          <table className="file-table share-management-table">
             <thead>
               <tr>
                 <th style={{ width: '28%' }}>Tên tài liệu</th>
@@ -326,7 +326,7 @@ const SharedByMePage = () => {
                               style={{ color: 'var(--primary-500)', flexShrink: 0, opacity: 0.85 }}
                             />
                           </div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                          <div className="tabular-nums" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                             {isFile ? item.formattedSize || 'Tệp tài liệu' : 'Thư mục chia sẻ'}
                           </div>
                         </div>
@@ -395,7 +395,7 @@ const SharedByMePage = () => {
                               border: '1px solid var(--border-main)',
                               padding: '3px 8px',
                               borderRadius: 'var(--radius-sm)',
-                              maxWidth: '260px',
+                              maxWidth: '240px',
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap'
@@ -411,7 +411,7 @@ const SharedByMePage = () => {
                           <button
                             type="button"
                             className="btn-icon"
-                            style={{ padding: '4px' }}
+                            style={{ padding: '4px', flexShrink: 0 }}
                             title="Sao chép liên kết chia sẻ"
                             onClick={(e) => handleCopyShareLink(share, e)}
                           >

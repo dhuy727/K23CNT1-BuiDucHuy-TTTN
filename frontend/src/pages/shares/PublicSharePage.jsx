@@ -26,6 +26,7 @@ import QRCode from 'qrcode';
 import FileIcon from '../../components/drive/FileIcon';
 import DocxViewer from '../../components/drive/DocxViewer';
 import RealtimeCollaborativeEditor from '../../components/drive/RealtimeCollaborativeEditor';
+import { isRealtimeEditableFile, getRealtimeEditorType } from '../../services/collabService';
 import shareService from '../../services/shareService';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -82,7 +83,7 @@ const PublicSharePage = () => {
           res.data?.share?.role === 'editor' || res.data?.role === 'editor';
 
         if (res.data?.item && res.data?.itemType === 'file') {
-          if (isEditorRole) {
+          if (isEditorRole && isRealtimeEditableFile(res.data.item)) {
             setViewMode('edit');
           } else {
             setViewMode('preview');
@@ -187,7 +188,9 @@ const PublicSharePage = () => {
   // Xem trước hoặc chỉnh sửa một file bên trong thư mục
   const handleOpenFilePreview = async (file, initialMode = 'preview') => {
     setPreviewModalFile(file);
-    setModalViewMode(initialMode);
+    const isEditorRole = data?.share?.role === 'editor' || data?.role === 'editor';
+    const fileEditable = Boolean(isEditorRole && isRealtimeEditableFile(file));
+    setModalViewMode(fileEditable && initialMode === 'edit' ? 'edit' : 'preview');
     setModalLoadingPreview(true);
     setModalBlobUrl(null);
     setModalDocxBlob(null);
@@ -375,6 +378,8 @@ const PublicSharePage = () => {
   const canEdit = data?.share?.role === 'editor' || data?.role === 'editor';
   const isFile = data?.itemType === 'file';
   const isFolder = data?.itemType === 'folder';
+  const canRealtimeEdit = Boolean(canEdit && isFile && isRealtimeEditableFile(item));
+  const isExcel = isFile && getRealtimeEditorType(item) === 'excel';
 
   const mime = (item?.mimeType || '').toLowerCase();
   const ext = (item?.extension || '').toLowerCase();
@@ -395,19 +400,19 @@ const PublicSharePage = () => {
             <Layers size={18} />
           </div>
           <span className="public-brand-title">DocuFlow</span>
-          <span className="badge badge-blue">
+          <span className="badge badge-blue hidden-mobile">
             <Globe size={12} style={{ marginRight: '4px' }} />
             Chia sẻ công khai
           </span>
           {canEdit && (
-            <span className="badge badge-emerald">
+            <span className="badge badge-emerald hidden-mobile">
               <Edit3 size={12} style={{ marginRight: '4px' }} />
               Cho phép chỉnh sửa trực tiếp
             </span>
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="public-navbar-actions">
           <button
             type="button"
             className="btn btn-secondary btn-sm"
@@ -431,7 +436,9 @@ const PublicSharePage = () => {
           {allowDownload && isFile && (
             <button type="button" className="btn btn-primary btn-sm" onClick={handleDownloadMain}>
               <Download size={15} />
-              <span>Tải về ({formatSize(item?.size)})</span>
+              <span>
+                Tải về <span className="hidden-mobile tabular-nums">({formatSize(item?.size)})</span>
+              </span>
             </button>
           )}
         </div>
@@ -475,22 +482,13 @@ const PublicSharePage = () => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              {isFile && canEdit && (
-                <div
-                  style={{
-                    display: 'inline-flex',
-                    background: 'var(--bg-surface)',
-                    padding: '3px',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-main)'
-                  }}
-                >
+            <div className="public-hero-actions">
+              {canRealtimeEdit && (
+                <div className="public-mode-switcher">
                   <button
                     type="button"
                     className={`btn btn-sm ${viewMode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}
                     onClick={() => setViewMode('edit')}
-                    style={{ padding: '6px 12px', fontSize: '0.8rem' }}
                   >
                     <Edit3 size={14} />
                     <span>Soạn thảo trực tiếp</span>
@@ -502,7 +500,6 @@ const PublicSharePage = () => {
                       setViewMode('preview');
                       loadMainFilePreview(password || null, item);
                     }}
-                    style={{ padding: '6px 12px', fontSize: '0.8rem' }}
                   >
                     <Eye size={14} />
                     <span>Xem trước</span>
@@ -513,9 +510,8 @@ const PublicSharePage = () => {
               {allowDownload && isFile && (
                 <button
                   type="button"
-                  className="btn btn-primary"
+                  className="btn btn-primary public-hero-download-btn"
                   onClick={handleDownloadMain}
-                  style={{ padding: '8px 18px', gap: '8px' }}
                 >
                   <Download size={16} />
                   <span>Tải tệp xuống</span>
@@ -556,7 +552,7 @@ const PublicSharePage = () => {
 
         {/* ── SECTION 1: Single File Realtime Editor or Preview ── */}
         {isFile && (
-          canEdit && viewMode === 'edit' ? (
+          canRealtimeEdit && viewMode === 'edit' ? (
             <section>
               <RealtimeCollaborativeEditor
                 file={item}
@@ -578,22 +574,29 @@ const PublicSharePage = () => {
                     );
                   }
                 }}
-                onFileReplaced={() => {
-                  fetchPublicItem(password || null, currentFolderId);
-                }}
+              />
+            </section>
+          ) : isExcel ? (
+            <section>
+              <RealtimeCollaborativeEditor
+                file={item}
+                shareToken={shareToken}
+                password={password || null}
+                currentUser={currentUser}
+                readOnly={true}
               />
             </section>
           ) : (
             <section className="public-preview-box">
               {loadingPreview ? (
-                <div style={{ color: '#ffffff', textAlign: 'center', padding: '60px' }}>
+                <div style={{ color: '#ffffff', textAlign: 'center', padding: '60px 20px' }}>
                   <span className="spinner" style={{ width: 36, height: 36, margin: '0 auto' }} />
                   <div style={{ marginTop: '14px', fontSize: '0.9rem', fontWeight: 600 }}>
                     Đang khởi tạo bản xem trước tài liệu...
                   </div>
                 </div>
               ) : isDocx ? (
-                <div style={{ width: '100%', height: '700px' }}>
+                <div className="public-docx-viewer-wrap">
                   <DocxViewer
                     blob={docxBlob}
                     file={item}
@@ -604,7 +607,7 @@ const PublicSharePage = () => {
               ) : blobUrl ? (
                 <>
                   {isImage && (
-                    <div style={{ padding: '20px', display: 'flex', justifyContent: 'center' }}>
+                    <div style={{ padding: '16px', display: 'flex', justifyContent: 'center', width: '100%' }}>
                       <img
                         src={blobUrl}
                         alt={item?.name}
@@ -624,7 +627,7 @@ const PublicSharePage = () => {
                       src={blobUrl}
                       controls
                       style={{
-                        maxWidth: '92%',
+                        maxWidth: '94%',
                         maxHeight: '540px',
                         borderRadius: '10px',
                         boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
@@ -633,8 +636,8 @@ const PublicSharePage = () => {
                   )}
 
                   {isAudio && (
-                    <div style={{ padding: '60px 40px', textAlign: 'center' }}>
-                      <audio src={blobUrl} controls style={{ width: 360 }} />
+                    <div style={{ padding: '40px 20px', textAlign: 'center', width: '100%', maxWidth: '380px' }}>
+                      <audio src={blobUrl} controls style={{ width: '100%' }} />
                     </div>
                   )}
 
@@ -756,63 +759,66 @@ const PublicSharePage = () => {
                   <span>Tệp tin ({data.files.length})</span>
                 </h3>
                 <div className="public-files-grid">
-                  {data.files.map((file) => (
-                    <div key={file._id} className="public-file-card">
-                      <div
-                        className="public-file-card-top"
-                        onClick={() => handleOpenFilePreview(file, canEdit ? 'edit' : 'preview')}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <FileIcon mimeType={file.mimeType} extension={file.extension} size={36} />
-                      </div>
-                      <div className="public-file-card-info">
+                  {data.files.map((file) => {
+                    const fileEditable = Boolean(canEdit && isRealtimeEditableFile(file));
+                    return (
+                      <div key={file._id} className="public-file-card">
                         <div
-                          className="public-file-card-title"
-                          onClick={() => handleOpenFilePreview(file, canEdit ? 'edit' : 'preview')}
+                          className="public-file-card-top"
+                          onClick={() => handleOpenFilePreview(file, fileEditable ? 'edit' : 'preview')}
                           style={{ cursor: 'pointer' }}
-                          title={file.name}
                         >
-                          {file.name}
+                          <FileIcon mimeType={file.mimeType} extension={file.extension} size={36} />
                         </div>
-                        <div className="public-file-card-meta">
-                          <span>{file.formattedSize || formatSize(file.size)}</span>
-                          <span className="badge badge-purple" style={{ textTransform: 'uppercase', fontSize: '0.65rem' }}>
-                            {file.extension || 'file'}
-                          </span>
-                        </div>
-                        <div className="public-file-card-actions">
-                          {canEdit && (
-                            <button
-                              type="button"
-                              className="btn btn-primary btn-sm"
-                              onClick={() => handleOpenFilePreview(file, 'edit')}
-                            >
-                              <Edit3 size={13} />
-                              <span>Sửa</span>
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => handleOpenFilePreview(file, 'preview')}
+                        <div className="public-file-card-info">
+                          <div
+                            className="public-file-card-title"
+                            onClick={() => handleOpenFilePreview(file, fileEditable ? 'edit' : 'preview')}
+                            style={{ cursor: 'pointer' }}
+                            title={file.name}
                           >
-                            <Eye size={13} />
-                            <span>Xem</span>
-                          </button>
-                          {allowDownload && (
+                            {file.name}
+                          </div>
+                          <div className="public-file-card-meta">
+                            <span className="tabular-nums">{file.formattedSize || formatSize(file.size)}</span>
+                            <span className="badge badge-purple" style={{ textTransform: 'uppercase', fontSize: '0.65rem' }}>
+                              {file.extension || 'file'}
+                            </span>
+                          </div>
+                          <div className="public-file-card-actions">
+                            {fileEditable && (
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={() => handleOpenFilePreview(file, 'edit')}
+                              >
+                                <Edit3 size={13} />
+                                <span>Sửa</span>
+                              </button>
+                            )}
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm"
-                              onClick={() => handleDownloadFolderFile(file)}
+                              onClick={() => handleOpenFilePreview(file, 'preview')}
                             >
-                              <Download size={13} />
-                              <span>Tải</span>
+                              <Eye size={13} />
+                              <span>Xem</span>
                             </button>
-                          )}
+                            {allowDownload && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => handleDownloadFolderFile(file)}
+                              >
+                                <Download size={13} />
+                                <span>Tải</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -836,28 +842,22 @@ const PublicSharePage = () => {
       {previewModalFile && (
         <div className="modal-overlay" onClick={handleCloseFilePreview}>
           <div
-            className="modal-card animate-scale-up"
-            style={{ maxWidth: '1040px', width: '94vw', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}
+            className="modal-card modal-full animate-scale-up"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            <div className="preview-toolbar">
+              <div className="preview-toolbar-title-wrap">
                 <FileIcon mimeType={previewModalFile.mimeType} extension={previewModalFile.extension} size={22} />
-                <h3 className="modal-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <h3
+                  className="modal-title"
+                  style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.95rem' }}
+                >
                   {previewModalFile.name}
                 </h3>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {canEdit && (
-                  <div
-                    style={{
-                      display: 'inline-flex',
-                      background: 'var(--bg-surface-hover)',
-                      padding: '2px',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border-main)'
-                    }}
-                  >
+              <div className="preview-toolbar-actions">
+                {canEdit && isRealtimeEditableFile(previewModalFile) && (
+                  <div className="preview-mode-switcher">
                     <button
                       type="button"
                       className={`btn btn-sm ${modalViewMode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}
@@ -885,7 +885,7 @@ const PublicSharePage = () => {
                     onClick={() => handleDownloadFolderFile(previewModalFile)}
                   >
                     <Download size={14} />
-                    <span>Tải về</span>
+                    <span className="hidden-mobile">Tải về</span>
                   </button>
                 )}
                 <button type="button" className="btn-icon" onClick={handleCloseFilePreview}>
@@ -899,21 +899,31 @@ const PublicSharePage = () => {
               style={{
                 flex: 1,
                 padding: 0,
-                minHeight: '500px',
+                minHeight: 0,
                 background: '#0b0f19',
                 display: 'flex',
                 alignItems: 'stretch',
                 justifyContent: 'center',
-                overflow: 'auto'
+                overflow: 'hidden'
               }}
             >
-              {canEdit && modalViewMode === 'edit' ? (
-                <div style={{ width: '100%' }}>
+              {canEdit && isRealtimeEditableFile(previewModalFile) && modalViewMode === 'edit' ? (
+                <div style={{ width: '100%', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                   <RealtimeCollaborativeEditor
                     file={previewModalFile}
                     shareToken={shareToken}
                     password={password || null}
                     currentUser={currentUser}
+                  />
+                </div>
+              ) : getRealtimeEditorType(previewModalFile) === 'excel' ? (
+                <div style={{ width: '100%', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                  <RealtimeCollaborativeEditor
+                    file={previewModalFile}
+                    shareToken={shareToken}
+                    password={password || null}
+                    currentUser={currentUser}
+                    readOnly={true}
                   />
                 </div>
               ) : modalLoadingPreview ? (
@@ -922,7 +932,7 @@ const PublicSharePage = () => {
                   <div style={{ marginTop: '12px', fontSize: '0.875rem' }}>Đang tải xem trước...</div>
                 </div>
               ) : modalDocxBlob ? (
-                <div style={{ width: '100%', height: '600px' }}>
+                <div style={{ width: '100%', height: '100%' }}>
                   <DocxViewer
                     blob={modalDocxBlob}
                     file={previewModalFile}
@@ -953,8 +963,8 @@ const PublicSharePage = () => {
                   }
                   if (mIsAud) {
                     return (
-                      <div style={{ padding: '50px', margin: 'auto' }}>
-                        <audio src={modalBlobUrl} controls style={{ width: 340 }} />
+                      <div style={{ padding: '30px 20px', margin: 'auto', width: '100%', maxWidth: '360px' }}>
+                        <audio src={modalBlobUrl} controls style={{ width: '100%' }} />
                       </div>
                     );
                   }
@@ -963,13 +973,13 @@ const PublicSharePage = () => {
                       <iframe
                         src={`${modalBlobUrl}#toolbar=1`}
                         title={previewModalFile.name}
-                        style={{ width: '100%', height: '600px', border: 'none' }}
+                        style={{ width: '100%', height: '100%', border: 'none' }}
                       />
                     );
                   }
                   if (modalTextContent) {
                     return (
-                      <pre className="preview-text-box" style={{ width: '100%', height: '550px', margin: 0 }}>
+                      <pre className="preview-text-box" style={{ width: '100%', height: '100%', margin: 0 }}>
                         <code>{modalTextContent}</code>
                       </pre>
                     );

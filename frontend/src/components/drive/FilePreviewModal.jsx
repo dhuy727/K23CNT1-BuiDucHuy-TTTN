@@ -27,6 +27,7 @@ import aiService from '../../services/aiService';
 import FileIcon from './FileIcon';
 import DocxViewer from './DocxViewer';
 import RealtimeCollaborativeEditor from './RealtimeCollaborativeEditor';
+import { isRealtimeEditableFile, getRealtimeEditorType } from '../../services/collabService';
 import DocChatTab from '../rag/DocChatTab';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -51,7 +52,10 @@ const FilePreviewModal = ({
   const [error, setError] = useState(null);
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
-  const [showAiPanel, setShowAiPanel] = useState(true);
+  // Trên màn hình điện thoại (< 768px), mặc định ẩn thanh bên AI để tài liệu hiển thị toàn màn hình
+  const [showAiPanel, setShowAiPanel] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth > 768 : true
+  );
   const [aiSubTab, setAiSubTab] = useState('info'); // 'info' | 'chat'
   const [actionLoading, setActionLoading] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -59,8 +63,9 @@ const FilePreviewModal = ({
   // Sync state when file prop changes
   useEffect(() => {
     setCurrentFile(file);
-    setViewMode(initialMode || 'preview');
-  }, [file, initialMode]);
+    const editable = Boolean(canEdit && isRealtimeEditableFile(file));
+    setViewMode(editable && initialMode === 'edit' ? 'edit' : 'preview');
+  }, [file, initialMode, canEdit]);
 
   // Lấy thêm extractedText nếu chưa có sẵn trong currentFile
   useEffect(() => {
@@ -198,6 +203,8 @@ const FilePreviewModal = ({
     mime.includes('wordprocessingml') ||
     mime.includes('msword') ||
     ext === 'doc';
+  const isExcel = getRealtimeEditorType(currentFile) === 'excel';
+  const canRealtimeEdit = Boolean(canEdit && isRealtimeEditableFile(currentFile));
   const isText = Boolean(textContent);
 
   // AI Actions
@@ -332,9 +339,9 @@ const FilePreviewModal = ({
       <div className="modal-card modal-full" role="dialog" aria-modal="true">
         {/* Thanh công cụ Preview & Edit */}
         <div className="preview-toolbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
+          <div className="preview-toolbar-title-wrap">
             <FileIcon mimeType={currentFile.mimeType} extension={currentFile.extension} size={24} />
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div
                 style={{
                   fontWeight: 700,
@@ -353,18 +360,10 @@ const FilePreviewModal = ({
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            {/* Chuyển đổi giữa Xem trước và Chỉnh sửa thời gian thực */}
-            {canEdit && (
-              <div
-                style={{
-                  display: 'inline-flex',
-                  background: 'var(--bg-surface-hover)',
-                  padding: '2px',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-main)'
-                }}
-              >
+          <div className="preview-toolbar-actions">
+            {/* Chuyển đổi giữa Xem trước và Chỉnh sửa thời gian thực (chỉ hiện cho .docx, .txt, .md, .excel) */}
+            {canRealtimeEdit && (
+              <div className="preview-mode-switcher">
                 <button
                   type="button"
                   className={`btn btn-sm ${viewMode === 'preview' ? 'btn-primary' : 'btn-ghost'}`}
@@ -420,9 +419,9 @@ const FilePreviewModal = ({
                 href={blobUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn btn-secondary"
+                className="btn btn-secondary btn-sm"
                 style={{
-                  padding: '6px 12px',
+                  padding: '6px 10px',
                   textDecoration: 'none',
                   display: 'inline-flex',
                   alignItems: 'center',
@@ -431,26 +430,27 @@ const FilePreviewModal = ({
                 title="Mở tài liệu PDF trong tab mới"
               >
                 <ExternalLink size={15} />
-                <span>Mở tab mới</span>
+                <span className="hidden-mobile">Mở tab mới</span>
               </a>
             )}
 
             {onDownload && (
               <button
-                className="btn btn-secondary"
+                className="btn btn-secondary btn-sm"
                 onClick={() => onDownload(currentFile)}
-                style={{ padding: '6px 12px' }}
+                style={{ padding: '6px 10px' }}
+                title="Tải xuống"
               >
                 <Download size={16} />
-                <span>Tải xuống</span>
+                <span className="hidden-mobile">Tải xuống</span>
               </button>
             )}
 
             <button
-              className={`btn ${showAiPanel ? 'btn-primary' : 'btn-secondary'}`}
+              className={`btn btn-sm ${showAiPanel ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setShowAiPanel(!showAiPanel)}
               title={showAiPanel ? 'Ẩn bảng phân tích AI' : 'Hiện bảng phân tích AI'}
-              style={{ padding: '6px 12px' }}
+              style={{ padding: '6px 10px' }}
             >
               <Sparkles size={16} />
               <span>Trợ lý AI</span>
@@ -465,9 +465,12 @@ const FilePreviewModal = ({
         {/* Khung nội dung chia cột Media & AI */}
         <div className="preview-split-body">
           {/* Cột trái: Media Viewer hoặc Realtime Editor */}
-          <div className="preview-media-viewer" style={{ alignItems: viewMode === 'edit' ? 'stretch' : 'center' }}>
-            {viewMode === 'edit' && canEdit ? (
-              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <div
+            className="preview-media-viewer"
+            style={{ alignItems: (viewMode === 'edit' && canRealtimeEdit) || isExcel ? 'stretch' : 'center' }}
+          >
+            {viewMode === 'edit' && canRealtimeEdit ? (
+              <div style={{ width: '100%', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                 <RealtimeCollaborativeEditor
                   file={currentFile}
                   currentUser={currentUser}
@@ -480,9 +483,14 @@ const FilePreviewModal = ({
                       }));
                     }
                   }}
-                  onFileReplaced={() => {
-                    setRetryCount((c) => c + 1);
-                  }}
+                />
+              </div>
+            ) : isExcel ? (
+              <div style={{ width: '100%', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <RealtimeCollaborativeEditor
+                  file={currentFile}
+                  currentUser={currentUser}
+                  readOnly={true}
                 />
               </div>
             ) : (
@@ -585,12 +593,15 @@ const FilePreviewModal = ({
                     {isAudio && (
                       <div
                         style={{
-                          padding: '40px',
+                          padding: '28px 20px',
                           background: 'rgba(255, 255, 255, 0.05)',
-                          borderRadius: '16px'
+                          borderRadius: '16px',
+                          width: '90%',
+                          maxWidth: '380px',
+                          textAlign: 'center'
                         }}
                       >
-                        <audio src={blobUrl} controls autoPlay style={{ width: 360 }}>
+                        <audio src={blobUrl} controls autoPlay style={{ width: '100%' }}>
                           Trình duyệt không hỗ trợ phát âm thanh trực tiếp.
                         </audio>
                       </div>
@@ -648,7 +659,17 @@ const FilePreviewModal = ({
                     <Brain size={18} className="text-primary" />
                     <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Trợ lý AI DocuFlow</span>
                   </div>
-                  {renderStatusBadge()}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {renderStatusBadge()}
+                    <button
+                      type="button"
+                      className="btn-icon mobile-only-close-ai"
+                      onClick={() => setShowAiPanel(false)}
+                      title="Đóng bảng AI"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Segmented Switcher giữa Thông tin AI và Hỏi đáp RAG */}
@@ -746,7 +767,7 @@ const FilePreviewModal = ({
                     >
                       <span className="ai-category-tag">{currentFile.aiCategory || 'Chưa phân loại'}</span>
                       {typeof currentFile.aiConfidence === 'number' && (
-                        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-primary)' }}>
+                        <span className="tabular-nums" style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-primary)' }}>
                           Độ tin cậy: {Math.round(currentFile.aiConfidence * 100)}%
                         </span>
                       )}

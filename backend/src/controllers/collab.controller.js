@@ -53,7 +53,7 @@ const extractAuthContext = async (req) => {
 
 /**
  * GET /api/collab/:fileId/session
- * Lấy trạng thái phiên cộng tác thời gian thực
+ * Lấy trạng thái phiên cộng tác thời gian thực (.docx, .txt, .md, .xlsx/.xls/.csv)
  */
 const getSession = async (req, res, next) => {
   try {
@@ -130,7 +130,7 @@ const syncContent = async (req, res, next) => {
 
 /**
  * POST /api/collab/:fileId/save
- * Lưu nội dung đã chỉnh sửa vào tệp vật lý (.docx / văn bản)
+ * Lưu nội dung đã chỉnh sửa vào tệp vật lý (.docx, .txt, .md, .xlsx/.csv)
  */
 const saveDocument = async (req, res, next) => {
   try {
@@ -146,34 +146,9 @@ const saveDocument = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/collab/:fileId/replace-file
- * Thay thế tệp vật lý bằng phiên bản tệp mới (dành cho PDF, ảnh hoặc tệp bất kỳ có quyền chỉnh sửa)
- */
-const replaceFile = async (req, res, next) => {
-  try {
-    const authContext = await extractAuthContext(req);
-    const result = await collabService.replaceCollabBinaryFile(
-      req.params.fileId,
-      authContext,
-      req.file,
-      req.body
-    );
-
-    return sendSuccess(res, {
-      message: 'Đã cập nhật phiên bản tệp tin mới thành công',
-      data: result
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 module.exports = {
   getSession,
   streamSession,
   syncContent,
-  saveDocument,
-  replaceFile
+  saveDocument
 };
-

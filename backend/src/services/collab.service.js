@@ -2,15 +2,21 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const File = require('../models/file.model');
 const Share = require('../models/share.model');
-const Version = require('../models/version.model');
 const ApiError = require('../utils/apiError');
 const storageService = require('./storage.service');
 const { formatFileSize } = require('./file.service');
 const {
   buildDocxBufferFromHtml,
   extractHtmlFromDocxBuffer,
-  htmlToPlainText
+  htmlToPlainText,
+  repairLeakedHtmlContent,
+  stripLeakedBase64Text
 } = require('../utils/docxBuilder');
+const {
+  extractSpreadsheetFromBuffer,
+  buildSpreadsheetBufferFromContent,
+  spreadsheetToPlainText
+} = require('../utils/xlsxBuilder');
 
 // Bảng màu đại diện cho các cộng tác viên trực tuyến
 const COLLAB_COLORS = [
@@ -36,54 +42,58 @@ const pickColorForSession = (sessionId = '') => {
 };
 
 /**
- * Xác định chế độ chỉnh sửa theo định dạng tệp
+ * Xác định chế độ chỉnh sửa theo thời gian thực.
+ * Chỉ hỗ trợ 4 nhóm định dạng văn bản phổ biến:
+ * - 'docx': Word (.docx, .doc)
+ * - 'txt' : Văn bản thuần (.txt)
+ * - 'md'  : Markdown (.md, .markdown)
+ * - 'excel': Bảng tính Excel (.xlsx, .xls, .csv)
+ * Các định dạng khác trả về null (chỉ xem trước / tải xuống).
  */
 const getEditorMode = (file) => {
-  const ext = (file?.extension || '').toLowerCase().replace(/^\./, '');
+  const ext = (file?.extension || '')
+    .toLowerCase()
+    .replace(/^\./, '');
+  const nameExt = (file?.name || '')
+    .split('.')
+    .pop()
+    .toLowerCase();
+  const effectiveExt = ext || nameExt;
   const mime = (file?.mimeType || '').toLowerCase();
 
   if (
-    ext === 'docx' ||
-    ext === 'doc' ||
+    effectiveExt === 'docx' ||
+    effectiveExt === 'doc' ||
     mime.includes('wordprocessingml') ||
     mime.includes('msword')
   ) {
     return 'docx';
   }
 
-  const textExts = [
-    'txt',
-    'md',
-    'json',
-    'js',
-    'jsx',
-    'ts',
-    'tsx',
-    'html',
-    'css',
-    'py',
-    'java',
-    'sql',
-    'xml',
-    'csv',
-    'yml',
-    'yaml',
-    'sh',
-    'c',
-    'cpp'
-  ];
-
   if (
-    mime.startsWith('text/') ||
-    mime.includes('json') ||
-    mime.includes('javascript') ||
-    mime.includes('xml') ||
-    textExts.includes(ext)
+    effectiveExt === 'xlsx' ||
+    effectiveExt === 'xls' ||
+    effectiveExt === 'csv' ||
+    mime.includes('spreadsheetml') ||
+    mime.includes('ms-excel') ||
+    mime === 'text/csv'
   ) {
-    return 'text';
+    return 'excel';
   }
 
-  return 'binary';
+  if (
+    effectiveExt === 'md' ||
+    effectiveExt === 'markdown' ||
+    mime === 'text/markdown'
+  ) {
+    return 'md';
+  }
+
+  if (effectiveExt === 'txt' || mime === 'text/plain') {
+    return 'txt';
+  }
+
+  return null;
 };
 
 /**
@@ -205,34 +215,49 @@ const resolveCollabAccess = async (fileId, { user = null, shareToken = null, sha
  * Khởi tạo hoặc lấy phòng cộng tác trong bộ nhớ cho một fileId
  */
 const getOrInitRoom = async (file) => {
+  const mode = getEditorMode(file);
+  if (!mode) {
+    throw new ApiError(
+      400,
+      'Định dạng tệp này không hỗ trợ chỉnh sửa trực tiếp. Chỉ hỗ trợ: Word (.docx), Văn bản (.txt), Markdown (.md) và Excel (.xlsx, .xls, .csv).'
+    );
+  }
+
   const key = file._id.toString();
   let room = collabRooms.get(key);
-  if (room) {
+  if (room && room.mode === mode) {
+    if (room.mode === 'docx' && room.content) {
+      room.content = repairLeakedHtmlContent(room.content);
+      room.plainText = htmlToPlainText(room.content);
+    }
     return room;
   }
 
-  const mode = getEditorMode(file);
   let initialContent = '';
-  let initialPlainText = file.extractedText || '';
+  let initialPlainText = stripLeakedBase64Text(file.extractedText || '');
+
+  let buffer = null;
+  try {
+    buffer = await storageService.getFileBuffer(file);
+  } catch (e) {
+    buffer = null;
+  }
 
   if (mode === 'docx') {
-    let buffer = null;
-    try {
-      buffer = await storageService.getFileBuffer(file);
-    } catch (e) {
-      buffer = null;
-    }
-    const extracted = await extractHtmlFromDocxBuffer(buffer, file.extractedText || '');
+    const extracted = await extractHtmlFromDocxBuffer(buffer, initialPlainText);
     initialContent = extracted.html;
     initialPlainText = extracted.plainText;
-  } else if (mode === 'text') {
-    try {
-      const buffer = await storageService.getFileBuffer(file);
+  } else if (mode === 'excel') {
+    const ext = (file.extension || '').toLowerCase().replace(/^\./, '') || 'xlsx';
+    const extracted = extractSpreadsheetFromBuffer(buffer, ext, initialPlainText);
+    initialContent = extracted.content;
+    initialPlainText = extracted.plainText;
+  } else if (mode === 'txt' || mode === 'md') {
+    if (buffer && buffer.length > 0) {
       initialContent = buffer.toString('utf8');
       initialPlainText = initialContent;
-    } catch (e) {
-      initialContent = file.extractedText || '';
-      initialPlainText = initialContent;
+    } else {
+      initialContent = initialPlainText;
     }
   }
 
@@ -271,7 +296,6 @@ const serializeParticipants = (room) => {
   const now = Date.now();
   const list = [];
   for (const [sid, p] of room.participants.entries()) {
-    // Loại bỏ những phiên không hoạt động quá 2 phút mà không còn giữ kết nối SSE
     const hasActiveStream = Array.from(room.clients).some((c) => c.sessionId === sid);
     if (!hasActiveStream && now - p.lastSeenAt > 120000) {
       room.participants.delete(sid);
@@ -375,7 +399,6 @@ const subscribeCollabStream = async (fileId, authContext, participantMeta, res) 
   const clientEntry = { sessionId, res };
   room.clients.add(clientEntry);
 
-  // Gửi sự kiện khởi tạo ngay khi kết nối mở
   res.write(
     `event: connected\ndata: ${JSON.stringify({
       sessionId,
@@ -386,12 +409,10 @@ const subscribeCollabStream = async (fileId, authContext, participantMeta, res) 
     })}\n\n`
   );
 
-  // Thông báo cho các thành viên khác trong phòng
   broadcastToRoom(room, 'presence_updated', {
     participants: serializeParticipants(room)
   });
 
-  // Giữ kết nối sống mỗi 20 giây
   const heartbeat = setInterval(() => {
     try {
       res.write(': heartbeat\n\n');
@@ -438,26 +459,40 @@ const syncLiveContent = async (fileId, authContext, body = {}) => {
     isTyping: Boolean(body.isTyping !== false)
   });
 
-  if (typeof body.content === 'string' && body.content !== room.content) {
-    room.content = body.content;
-    room.plainText =
-      room.mode === 'docx' ? htmlToPlainText(body.content) : body.content;
-    room.revision += 1;
-    room.dirty = true;
-    room.lastUpdatedBy = {
-      sessionId,
-      displayName: participant.displayName,
-      color: participant.color,
-      updatedAt: new Date().toISOString()
-    };
+  if (typeof body.content === 'string') {
+    const normalizedContent =
+      room.mode === 'docx' ? repairLeakedHtmlContent(body.content) : body.content;
 
-    broadcastToRoom(room, 'content_updated', {
-      content: room.content,
-      revision: room.revision,
-      senderSessionId: sessionId,
-      updatedBy: room.lastUpdatedBy,
-      participants: serializeParticipants(room)
-    });
+    if (normalizedContent !== room.content) {
+      room.content = normalizedContent;
+      if (room.mode === 'docx') {
+        room.plainText = htmlToPlainText(normalizedContent);
+      } else if (room.mode === 'excel') {
+        room.plainText = spreadsheetToPlainText(normalizedContent);
+      } else {
+        room.plainText = normalizedContent;
+      }
+      room.revision += 1;
+      room.dirty = true;
+      room.lastUpdatedBy = {
+        sessionId,
+        displayName: participant.displayName,
+        color: participant.color,
+        updatedAt: new Date().toISOString()
+      };
+
+      broadcastToRoom(room, 'content_updated', {
+        content: room.content,
+        revision: room.revision,
+        senderSessionId: sessionId,
+        updatedBy: room.lastUpdatedBy,
+        participants: serializeParticipants(room)
+      });
+    } else {
+      broadcastToRoom(room, 'presence_updated', {
+        participants: serializeParticipants(room)
+      });
+    }
   } else {
     broadcastToRoom(room, 'presence_updated', {
       participants: serializeParticipants(room)
@@ -473,7 +508,7 @@ const syncLiveContent = async (fileId, authContext, body = {}) => {
 };
 
 /**
- * 4. Lưu nội dung đang soạn thảo xuống tệp vật lý (.docx hoặc văn bản UTF-8)
+ * 4. Lưu nội dung đang soạn thảo xuống tệp vật lý (.docx, .xlsx/.csv, .txt, .md)
  */
 const saveCollabDocument = async (fileId, authContext, body = {}) => {
   const { file, canEdit, accessRole } = await resolveCollabAccess(fileId, authContext);
@@ -497,23 +532,40 @@ const saveCollabDocument = async (fileId, authContext, body = {}) => {
   });
 
   if (typeof body.content === 'string') {
-    room.content = body.content;
-    room.plainText =
-      room.mode === 'docx' ? htmlToPlainText(body.content) : body.content;
+    const normalizedContent =
+      room.mode === 'docx' ? repairLeakedHtmlContent(body.content) : body.content;
+    room.content = normalizedContent;
+    if (room.mode === 'docx') {
+      room.plainText = htmlToPlainText(normalizedContent);
+    } else if (room.mode === 'excel') {
+      room.plainText = spreadsheetToPlainText(normalizedContent);
+    } else {
+      room.plainText = normalizedContent;
+    }
     room.revision += 1;
   }
 
   let bufferToSave;
   let targetMime = file.mimeType;
+  const ext = (file.extension || '').toLowerCase().replace(/^\./, '');
 
   if (room.mode === 'docx') {
     bufferToSave = buildDocxBufferFromHtml(room.content);
     targetMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-  } else if (room.mode === 'text') {
+  } else if (room.mode === 'excel') {
+    bufferToSave = buildSpreadsheetBufferFromContent(room.content, ext || 'xlsx');
+    targetMime =
+      ext === 'csv'
+        ? 'text/csv; charset=utf-8'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  } else if (room.mode === 'md') {
     bufferToSave = Buffer.from(String(room.content || ''), 'utf8');
-    targetMime = file.mimeType || 'text/plain; charset=utf-8';
+    targetMime = 'text/markdown; charset=utf-8';
+  } else if (room.mode === 'txt') {
+    bufferToSave = Buffer.from(String(room.content || ''), 'utf8');
+    targetMime = 'text/plain; charset=utf-8';
   } else {
-    throw new ApiError(400, 'Định dạng tệp này không hỗ trợ lưu văn bản trực tiếp. Vui lòng dùng tính năng tải tệp thay thế.');
+    throw new ApiError(400, 'Định dạng tệp này không hỗ trợ lưu trực tiếp.');
   }
 
   const savedStorage = await storageService.saveBufferToFile(file, bufferToSave, targetMime);
@@ -551,113 +603,11 @@ const saveCollabDocument = async (fileId, authContext, body = {}) => {
   return savedEventPayload;
 };
 
-/**
- * 5. Thay thế tệp vật lý bằng phiên bản tệp mới (hỗ trợ PDF, hình ảnh, hoặc tải lên bản mới của tài liệu)
- */
-const replaceCollabBinaryFile = async (fileId, authContext, multerFile, body = {}) => {
-  const { file, canEdit, accessRole } = await resolveCollabAccess(fileId, authContext);
-  if (!canEdit) {
-    throw new ApiError(403, 'Bạn không có quyền cập nhật tệp tin này');
-  }
-  if (!multerFile) {
-    throw new ApiError(400, 'Vui lòng chọn tệp tin mới để cập nhật');
-  }
-
-  // Lưu snapshot phiên bản cũ trước khi ghi đè
-  try {
-    const copyStorage = await storageService.copyFile(file, `ver-${file.originalName}`);
-    const latestVer = await Version.findOne({ file: file._id }).sort({ versionNumber: -1 }).lean();
-    const nextVerNum = latestVer ? latestVer.versionNumber + 1 : 1;
-    await Version.create({
-      file: file._id,
-      user: file.user?._id || file.user,
-      versionNumber: nextVerNum,
-      name: file.name,
-      originalName: file.originalName,
-      size: file.size,
-      mimeType: file.mimeType,
-      extension: file.extension,
-      storagePath: copyStorage.storagePath,
-      storageType: copyStorage.storageType,
-      storageKey: copyStorage.storageKey,
-      note: `Tự động lưu trước khi cập nhật bởi ${body.displayName || authContext.user?.name || 'Cộng tác viên'}`,
-      changeType: 'update'
-    });
-  } catch (verErr) {
-    console.warn('[CollabService] Không thể tạo snapshot trước khi thay thế file:', verErr.message);
-  }
-
-  const uploaded = await storageService.uploadFile(multerFile);
-  file.size = multerFile.size;
-  file.mimeType = multerFile.mimetype || file.mimeType;
-  file.storageType = uploaded.storageType;
-  file.storageKey = uploaded.storageKey;
-  file.storagePath = uploaded.storagePath;
-  await file.save();
-
-  // Kích hoạt phân tích lại AI cho tệp mới
-  try {
-    require('./ai.service').enqueueProcess(file._id);
-  } catch (e) {
-    // Bỏ qua nếu hàng đợi bận
-  }
-
-  // Làm mới phòng cộng tác
-  const key = file._id.toString();
-  const existingRoom = collabRooms.get(key);
-  if (existingRoom) {
-    const mode = getEditorMode(file);
-    existingRoom.mode = mode;
-    existingRoom.revision += 1;
-    existingRoom.dirty = false;
-    existingRoom.lastSavedAt = new Date().toISOString();
-
-    if (mode === 'docx') {
-      const buf = await storageService.getFileBuffer(file).catch(() => null);
-      const extracted = await extractHtmlFromDocxBuffer(buf, '');
-      existingRoom.content = extracted.html;
-      existingRoom.plainText = extracted.plainText;
-    } else if (mode === 'text') {
-      const buf = await storageService.getFileBuffer(file).catch(() => Buffer.from(''));
-      existingRoom.content = buf.toString('utf8');
-      existingRoom.plainText = existingRoom.content;
-    }
-
-    const sessionId = body.sessionId || 'anonymous';
-    const participant = registerOrUpdateParticipant(existingRoom, {
-      sessionId,
-      displayName: body.displayName || authContext.user?.name || 'Cộng tác viên',
-      email: authContext.user?.email || '',
-      role: accessRole,
-      isAnonymous: !authContext.user
-    });
-
-    broadcastToRoom(existingRoom, 'file_replaced', {
-      revision: existingRoom.revision,
-      content: existingRoom.content,
-      lastSavedAt: existingRoom.lastSavedAt,
-      replacedBy: participant,
-      size: file.size,
-      formattedSize: formatFileSize(file.size)
-    });
-  }
-
-  return {
-    fileId: file._id,
-    name: file.name,
-    size: file.size,
-    formattedSize: formatFileSize(file.size),
-    updatedAt: file.updatedAt
-  };
-};
-
 module.exports = {
   getEditorMode,
   resolveCollabAccess,
   getCollabSession,
   subscribeCollabStream,
   syncLiveContent,
-  saveCollabDocument,
-  replaceCollabBinaryFile
+  saveCollabDocument
 };
-

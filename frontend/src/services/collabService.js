@@ -43,10 +43,71 @@ const buildHeaders = ({ shareToken, password } = {}) => {
   return headers;
 };
 
+/**
+ * Xác định loại trình chỉnh sửa thời gian thực cho tệp tin.
+ * Chỉ hỗ trợ 4 nhóm định dạng văn bản phổ biến:
+ * - 'docx': Word (.docx, .doc)
+ * - 'txt' : Văn bản thuần (.txt)
+ * - 'md'  : Markdown (.md, .markdown)
+ * - 'excel': Bảng tính Excel (.xlsx, .xls, .csv)
+ * Trả về null với tất cả định dạng khác.
+ */
+export const getRealtimeEditorType = (file) => {
+  if (!file) return null;
+  const ext = (file.extension || '')
+    .toLowerCase()
+    .replace(/^\./, '');
+  const nameParts = String(file.name || '').split('.');
+  const nameExt = nameParts.length > 1 ? nameParts.pop().toLowerCase() : '';
+  const effectiveExt = ext || nameExt;
+  const mime = (file.mimeType || '').toLowerCase();
+
+  if (
+    effectiveExt === 'docx' ||
+    effectiveExt === 'doc' ||
+    mime.includes('wordprocessingml') ||
+    mime.includes('msword')
+  ) {
+    return 'docx';
+  }
+
+  if (
+    effectiveExt === 'xlsx' ||
+    effectiveExt === 'xls' ||
+    effectiveExt === 'csv' ||
+    mime.includes('spreadsheetml') ||
+    mime.includes('ms-excel') ||
+    mime === 'text/csv'
+  ) {
+    return 'excel';
+  }
+
+  if (
+    effectiveExt === 'md' ||
+    effectiveExt === 'markdown' ||
+    mime === 'text/markdown'
+  ) {
+    return 'md';
+  }
+
+  if (effectiveExt === 'txt' || mime === 'text/plain') {
+    return 'txt';
+  }
+
+  return null;
+};
+
+/**
+ * Kiểm tra xem tệp tin có thuộc 4 định dạng hỗ trợ chỉnh sửa trực tiếp hay không
+ */
+export const isRealtimeEditableFile = (file) => Boolean(getRealtimeEditorType(file));
+
 const collabService = {
   getSessionId,
   getGuestDisplayName,
   setGuestDisplayName,
+  getRealtimeEditorType,
+  isRealtimeEditableFile,
 
   /**
    * Lấy thông tin phiên cộng tác thời gian thực
@@ -123,16 +184,6 @@ const collabService = {
       });
     }
 
-    if (handlers.onFileReplaced) {
-      eventSource.addEventListener('file_replaced', (e) => {
-        try {
-          handlers.onFileReplaced(JSON.parse(e.data));
-        } catch (err) {
-          console.error('[Collab SSE] Lỗi parse file_replaced:', err);
-        }
-      });
-    }
-
     if (handlers.onError) {
       eventSource.onerror = (err) => {
         handlers.onError(err);
@@ -168,7 +219,7 @@ const collabService = {
   },
 
   /**
-   * Lưu nội dung xuống tệp vật lý (.docx / văn bản)
+   * Lưu nội dung xuống tệp vật lý (.docx, .txt, .md, .xlsx/.csv)
    */
   saveDocument: async (
     fileId,
@@ -187,31 +238,7 @@ const collabService = {
       },
       { headers }
     );
-  },
-
-  /**
-   * Tải tệp mới thay thế cho tệp hiện tại (PDF, hình ảnh, hoặc bản cập nhật mới)
-   */
-  replaceBinaryFile: async (
-    fileId,
-    newFile,
-    { sessionId = null, displayName = null, shareToken = null, password = null } = {}
-  ) => {
-    const sid = sessionId || getSessionId();
-    const headers = {
-      ...buildHeaders({ shareToken, password }),
-      'Content-Type': 'multipart/form-data'
-    };
-    const formData = new FormData();
-    formData.append('file', newFile);
-    formData.append('sessionId', sid);
-    if (displayName) formData.append('displayName', displayName);
-    if (shareToken) formData.append('shareToken', shareToken);
-    if (password) formData.append('password', password);
-
-    return await axiosClient.post(`/collab/${fileId}/replace-file`, formData, { headers });
   }
 };
 
 export default collabService;
-

@@ -2,6 +2,7 @@ const mammoth = require('mammoth');
 const path = require('path');
 const storageService = require('./storage.service');
 const ocrService = require('./ocr.service');
+const { extractSpreadsheetFromBuffer } = require('../utils/xlsxBuilder');
 
 const MAX_EXTRACT_CHARS = 15000;
 const UNSUPPORTED_MESSAGE = 'Không trích xuất được nội dung';
@@ -16,6 +17,7 @@ class UnsupportedExtractError extends Error {
 
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown']);
 const DOCX_EXTENSIONS = new Set(['docx']);
+const EXCEL_EXTENSIONS = new Set(['xlsx', 'xls', 'csv']);
 const PDF_EXTENSIONS = new Set(['pdf']);
 
 const normalizeExtension = (file) => {
@@ -30,6 +32,7 @@ const isSupportedExtractType = (file) => {
   return (
     PDF_EXTENSIONS.has(ext) ||
     DOCX_EXTENSIONS.has(ext) ||
+    EXCEL_EXTENSIONS.has(ext) ||
     TEXT_EXTENSIONS.has(ext) ||
     ocrService.isImageFile(ext)
   );
@@ -64,7 +67,6 @@ const readPlainText = (buffer) => {
   return buffer.toString('utf8');
 };
 
-
 const extractText = async (file) => {
   if (!file) {
     throw new UnsupportedExtractError(UNSUPPORTED_MESSAGE);
@@ -87,6 +89,9 @@ const extractText = async (file) => {
     raw = await readPdfText(buffer);
   } else if (DOCX_EXTENSIONS.has(ext)) {
     raw = await readDocxText(buffer);
+  } else if (EXCEL_EXTENSIONS.has(ext)) {
+    const parsed = extractSpreadsheetFromBuffer(buffer, ext, '');
+    raw = parsed.plainText || '';
   } else if (TEXT_EXTENSIONS.has(ext)) {
     raw = readPlainText(buffer);
   } else if (ocrService.isImageFile(ext)) {
@@ -98,7 +103,7 @@ const extractText = async (file) => {
   return clipText(raw);
 };
 
-const MAX_RAG_EXTRACT_CHARS = 1000000; // Giới hạn an toàn 1 triệu ký tự cho RAG
+const MAX_RAG_EXTRACT_CHARS = 1000000;
 
 const sanitizeText = (text) => {
   return String(text || '')
@@ -136,8 +141,7 @@ const extractDocumentForRag = async (file) => {
     const pdfParse = require('pdf-parse');
     const result = await pdfParse(buffer);
     const rawPdf = result?.text || '';
-    
-    // pdf-parse chèn ký tự form-feed '\f' giữa các trang
+
     const rawPages = rawPdf.split('\f');
     rawPages.forEach((pText, idx) => {
       const clean = sanitizeText(pText);
@@ -153,6 +157,12 @@ const extractDocumentForRag = async (file) => {
   } else if (DOCX_EXTENSIONS.has(ext)) {
     const raw = await readDocxText(buffer);
     fullText = sanitizeText(raw);
+    if (fullText) {
+      pages.push({ pageNumber: 1, text: fullText });
+    }
+  } else if (EXCEL_EXTENSIONS.has(ext)) {
+    const parsed = extractSpreadsheetFromBuffer(buffer, ext, '');
+    fullText = sanitizeText(parsed.plainText || '');
     if (fullText) {
       pages.push({ pageNumber: 1, text: fullText });
     }
@@ -193,4 +203,3 @@ module.exports = {
   extractText,
   extractDocumentForRag
 };
-

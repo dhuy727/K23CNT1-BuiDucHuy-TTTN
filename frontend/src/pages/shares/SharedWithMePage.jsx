@@ -3,6 +3,7 @@ import { Users, Eye, Download, Folder as FolderIcon, Edit3 } from 'lucide-react'
 import FileIcon from '../../components/drive/FileIcon';
 import EmptyState from '../../components/common/EmptyState';
 import FilePreviewModal from '../../components/drive/FilePreviewModal';
+import { isRealtimeEditableFile } from '../../services/collabService';
 import shareService from '../../services/shareService';
 import fileService from '../../services/fileService';
 import { useToast } from '../../contexts/ToastContext';
@@ -68,14 +69,14 @@ const SharedWithMePage = () => {
           description="Các tệp và thư mục do người khác chia sẻ với email của bạn sẽ xuất hiện ở đây."
         />
       ) : (
-        <div className="file-table-container">
-          <table className="file-table">
+        <div className="file-table-container share-table-scroll">
+          <table className="file-table share-management-table">
             <thead>
               <tr>
                 <th style={{ width: '35%' }}>Tên tài liệu</th>
                 <th style={{ width: '20%' }}>Người chia sẻ</th>
-                <th style={{ width: '15%' }}>Quyền hạn</th>
-                <th style={{ width: '15%' }}>Ngày chia sẻ</th>
+                <th style={{ width: '16%' }}>Quyền hạn</th>
+                <th style={{ width: '14%' }}>Ngày chia sẻ</th>
                 <th style={{ width: '15%', textAlign: 'right' }}>Thao tác</th>
               </tr>
             </thead>
@@ -86,6 +87,7 @@ const SharedWithMePage = () => {
                 const owner = share.sharedBy || share.owner || {};
                 const shareId = share._id || share.shareId;
                 const canEdit = share.role === 'editor';
+                const canRealtimeEdit = Boolean(canEdit && isFile && isRealtimeEditableFile(item));
 
                 return (
                   <tr
@@ -94,8 +96,8 @@ const SharedWithMePage = () => {
                       isFile &&
                       setActiveShareModal({
                         file: item,
-                        canEdit,
-                        initialMode: canEdit ? 'edit' : 'preview'
+                        canEdit: canRealtimeEdit,
+                        initialMode: canRealtimeEdit ? 'edit' : 'preview'
                       })
                     }
                   >
@@ -142,7 +144,7 @@ const SharedWithMePage = () => {
                       <div className="table-action-btns" style={{ display: 'flex', justifyContent: 'flex-end', gap: '4px' }}>
                         {isFile ? (
                           <>
-                            {canEdit && (
+                            {canRealtimeEdit && (
                               <button
                                 type="button"
                                 className="btn-icon"
@@ -165,7 +167,7 @@ const SharedWithMePage = () => {
                               onClick={() =>
                                 setActiveShareModal({
                                   file: item,
-                                  canEdit,
+                                  canEdit: canRealtimeEdit,
                                   initialMode: 'preview'
                                 })
                               }
