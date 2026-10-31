@@ -202,6 +202,79 @@ const storageService = {
   },
 
   /**
+   * Ghi đè nội dung Buffer vào tệp tin vật lý (dùng cho chỉnh sửa trực tuyến thời gian thực)
+   */
+  saveBufferToFile: async (fileDoc, buffer, mimeType = null) => {
+    if (!fileDoc || !Buffer.isBuffer(buffer)) {
+      throw new ApiError(400, 'Dữ liệu lưu tệp không hợp lệ');
+    }
+
+    const contentHash = crypto.createHash('sha256').update(buffer).digest('hex');
+    const size = buffer.length;
+    const ext = fileDoc.extension ? `.${fileDoc.extension.replace(/^\./, '')}` : path.extname(fileDoc.name || '') || '.txt';
+    const client = getS3Client();
+
+    // 1. Nếu file đang lưu trên AWS S3
+    if ((fileDoc.storageType === 's3' || fileDoc.storageType === 'minio') && client) {
+      const storageKey =
+        fileDoc.storageKey ||
+        `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+
+      const parallelUpload = new Upload({
+        client,
+        params: {
+          Bucket: BUCKET_NAME,
+          Key: storageKey,
+          Body: buffer,
+          ContentType: mimeType || fileDoc.mimeType || 'application/octet-stream'
+        }
+      });
+
+      await parallelUpload.done();
+
+      // Đồng bộ thêm bản local nếu tồn tại trên đĩa
+      const existingLocal = resolveLocalPath(fileDoc.storagePath, fileDoc);
+      if (existingLocal) {
+        try {
+          await fs.promises.writeFile(existingLocal, buffer);
+        } catch (e) {
+          // Bỏ qua nếu không ghi được bản đệm local
+        }
+      }
+
+      return {
+        storageType: 's3',
+        storageKey,
+        storagePath: `s3://${BUCKET_NAME}/${storageKey}`,
+        size,
+        contentHash
+      };
+    }
+
+    // 2. Lưu trên Local Disk
+    if (!fs.existsSync(UPLOAD_DIR)) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    }
+
+    const existingLocal = resolveLocalPath(fileDoc.storagePath, fileDoc);
+    const storageKey =
+      existingLocal
+        ? path.basename(existingLocal)
+        : fileDoc.storageKey || `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+    const targetPath = existingLocal || path.join(UPLOAD_DIR, storageKey);
+
+    await fs.promises.writeFile(targetPath, buffer);
+
+    return {
+      storageType: 'local',
+      storageKey,
+      storagePath: targetPath,
+      size,
+      contentHash
+    };
+  },
+
+  /**
    * Lấy Readable Stream của tệp tin để xem trước (Preview) hoặc tải về (Download)
    * Tự động tương thích cả AWS S3, Local, và các file cũ
    */

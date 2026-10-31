@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Download,
@@ -9,7 +9,6 @@ import {
   RotateCw,
   Sparkles,
   Check,
-  ChevronRight,
   RefreshCw,
   Tag,
   Folder,
@@ -19,18 +18,32 @@ import {
   XCircle,
   Brain,
   ExternalLink,
-  MessageSquare
+  MessageSquare,
+  Edit3,
+  Eye
 } from 'lucide-react';
 import fileService from '../../services/fileService';
 import aiService from '../../services/aiService';
 import FileIcon from './FileIcon';
 import DocxViewer from './DocxViewer';
+import RealtimeCollaborativeEditor from './RealtimeCollaborativeEditor';
 import DocChatTab from '../rag/DocChatTab';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 
-const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) => {
+const FilePreviewModal = ({
+  file,
+  isOpen,
+  onClose,
+  onDownload,
+  onFileUpdated,
+  canEdit = true,
+  initialMode = 'preview'
+}) => {
   const toast = useToast();
+  const { user: currentUser } = useAuth();
   const [currentFile, setCurrentFile] = useState(file);
+  const [viewMode, setViewMode] = useState(initialMode); // 'preview' | 'edit'
   const [blobUrl, setBlobUrl] = useState(null);
   const [rawBlobData, setRawBlobData] = useState(null);
   const [textContent, setTextContent] = useState('');
@@ -46,17 +59,19 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
   // Sync state when file prop changes
   useEffect(() => {
     setCurrentFile(file);
-  }, [file]);
+    setViewMode(initialMode || 'preview');
+  }, [file, initialMode]);
 
   // Lấy thêm extractedText nếu chưa có sẵn trong currentFile
   useEffect(() => {
     if (!isOpen || !currentFile?._id) return;
     if (!currentFile.extractedText) {
-      fileService.getFileById(currentFile._id, { includeText: true })
+      fileService
+        .getFileById(currentFile._id, { includeText: true })
         .then((res) => {
           const data = res?.data || res;
           if (data && data.extractedText) {
-            setCurrentFile(prev => ({
+            setCurrentFile((prev) => ({
               ...prev,
               extractedText: data.extractedText
             }));
@@ -140,7 +155,11 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
         console.error('Lỗi khi tải bản xem trước:', err);
         const ext = (currentFile.extension || '').toLowerCase();
         const mime = (currentFile.mimeType || '').toLowerCase();
-        const isDocx = ['docx'].includes(ext) || mime.includes('wordprocessingml') || mime.includes('msword') || ext === 'doc';
+        const isDocx =
+          ['docx'].includes(ext) ||
+          mime.includes('wordprocessingml') ||
+          mime.includes('msword') ||
+          ext === 'doc';
 
         // Nếu là tệp Word hoặc đã có sẵn extractedText, không khóa màn hình bằng AlertCircle mà để DocxViewer xử lý
         if (isDocx || currentFile?.extractedText) {
@@ -174,7 +193,11 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
   const isVideo = mime.startsWith('video/') || ['mp4', 'webm', 'mov'].includes(ext);
   const isAudio = mime.startsWith('audio/') || ['mp3', 'wav', 'ogg'].includes(ext);
   const isPdf = mime.includes('pdf') || ext === 'pdf';
-  const isDocx = ['docx'].includes(ext) || mime.includes('wordprocessingml') || mime.includes('msword') || ext === 'doc';
+  const isDocx =
+    ['docx'].includes(ext) ||
+    mime.includes('wordprocessingml') ||
+    mime.includes('msword') ||
+    ext === 'doc';
   const isText = Boolean(textContent);
 
   // AI Actions
@@ -307,7 +330,7 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
       }}
     >
       <div className="modal-card modal-full" role="dialog" aria-modal="true">
-        {/* Thanh công cụ Preview */}
+        {/* Thanh công cụ Preview & Edit */}
         <div className="preview-toolbar">
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
             <FileIcon mimeType={currentFile.mimeType} extension={currentFile.extension} size={24} />
@@ -324,14 +347,49 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
               >
                 {currentFile.name}
               </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <div className="tabular-nums" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                 {currentFile.formattedSize || `${currentFile.size} Bytes`}
               </div>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {isImage && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {/* Chuyển đổi giữa Xem trước và Chỉnh sửa thời gian thực */}
+            {canEdit && (
+              <div
+                style={{
+                  display: 'inline-flex',
+                  background: 'var(--bg-surface-hover)',
+                  padding: '2px',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border-main)'
+                }}
+              >
+                <button
+                  type="button"
+                  className={`btn btn-sm ${viewMode === 'preview' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => {
+                    setViewMode('preview');
+                    setRetryCount((c) => c + 1);
+                  }}
+                  style={{ padding: '5px 10px', fontSize: '0.78rem' }}
+                >
+                  <Eye size={14} />
+                  <span>Xem trước</span>
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${viewMode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}
+                  onClick={() => setViewMode('edit')}
+                  style={{ padding: '5px 10px', fontSize: '0.78rem' }}
+                >
+                  <Edit3 size={14} />
+                  <span>Chỉnh sửa trực tiếp</span>
+                </button>
+              </div>
+            )}
+
+            {viewMode === 'preview' && isImage && (
               <>
                 <button
                   className="btn-icon"
@@ -357,13 +415,19 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
               </>
             )}
 
-            {isPdf && blobUrl && (
+            {viewMode === 'preview' && isPdf && blobUrl && (
               <a
                 href={blobUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn btn-secondary"
-                style={{ padding: '6px 12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                style={{
+                  padding: '6px 12px',
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
                 title="Mở tài liệu PDF trong tab mới"
               >
                 <ExternalLink size={15} />
@@ -400,150 +464,176 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
 
         {/* Khung nội dung chia cột Media & AI */}
         <div className="preview-split-body">
-          {/* Cột trái: Media Viewer */}
-          <div className="preview-media-viewer">
-            {loading && (
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '12px',
-                  color: '#ffffff'
-                }}
-              >
-                <span className="spinner" style={{ width: 32, height: 32 }} />
-                <span style={{ fontSize: '0.875rem' }}>Đang tải nội dung tệp...</span>
+          {/* Cột trái: Media Viewer hoặc Realtime Editor */}
+          <div className="preview-media-viewer" style={{ alignItems: viewMode === 'edit' ? 'stretch' : 'center' }}>
+            {viewMode === 'edit' && canEdit ? (
+              <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <RealtimeCollaborativeEditor
+                  file={currentFile}
+                  currentUser={currentUser}
+                  onSaved={(savedData) => {
+                    if (savedData?.formattedSize) {
+                      setCurrentFile((prev) => ({
+                        ...prev,
+                        size: savedData.size,
+                        formattedSize: savedData.formattedSize
+                      }));
+                    }
+                  }}
+                  onFileReplaced={() => {
+                    setRetryCount((c) => c + 1);
+                  }}
+                />
               </div>
-            )}
-
-            {error && (
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '14px',
-                  color: '#f87171',
-                  padding: '32px 24px',
-                  textAlign: 'center',
-                  maxWidth: '460px'
-                }}
-              >
-                <div style={{
-                  width: '60px',
-                  height: '60px',
-                  borderRadius: '50%',
-                  background: 'rgba(239, 68, 68, 0.12)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: 'var(--accent-rose, #f43f5e)'
-                }}>
-                  <AlertCircle size={34} />
-                </div>
-                <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#ffffff', lineHeight: 1.5 }}>
-                  {error}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                  <button className="btn btn-primary" onClick={() => setRetryCount((c) => c + 1)}>
-                    <RefreshCw size={15} />
-                    <span>Thử tải lại</span>
-                  </button>
-                  {onDownload && (
-                    <button className="btn btn-secondary" onClick={() => onDownload(currentFile)}>
-                      <Download size={15} />
-                      <span>Tải tệp về máy để xem</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Nếu là file Word (.docx) */}
-            {isDocx && !loading && (
-              <DocxViewer
-                blob={rawBlobData}
-                file={currentFile}
-                onDownload={onDownload}
-              />
-            )}
-
-            {/* Các định dạng khác */}
-            {!isDocx && !loading && !error && blobUrl && (
+            ) : (
               <>
-                {isImage && (
-                  <img
-                    src={blobUrl}
-                    alt={currentFile.name}
-                    className="preview-image"
-                    style={{
-                      transform: `scale(${zoom}) rotate(${rotation}deg)`,
-                      transition: 'transform 0.15s ease-out'
-                    }}
-                  />
-                )}
-
-                {isVideo && (
-                  <video src={blobUrl} controls autoPlay className="preview-media-element">
-                    Trình duyệt không hỗ trợ xem video trực tiếp.
-                  </video>
-                )}
-
-                {isAudio && (
+                {loading && (
                   <div
                     style={{
-                      padding: '40px',
-                      background: 'rgba(255, 255, 255, 0.05)',
-                      borderRadius: '16px'
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '12px',
+                      color: '#ffffff'
                     }}
                   >
-                    <audio src={blobUrl} controls autoPlay style={{ width: 360 }}>
-                      Trình duyệt không hỗ trợ phát âm thanh trực tiếp.
-                    </audio>
+                    <span className="spinner" style={{ width: 32, height: 32 }} />
+                    <span style={{ fontSize: '0.875rem' }}>Đang tải nội dung tệp...</span>
                   </div>
                 )}
 
-                {isPdf && (
-                  <iframe
-                    src={`${blobUrl}#toolbar=1`}
-                    title={currentFile.name}
-                    className="preview-iframe"
-                  />
-                )}
-
-                {isText && (
-                  <pre className="preview-text-box">
-                    <code>{textContent}</code>
-                  </pre>
-                )}
-
-                {!isImage && !isVideo && !isAudio && !isPdf && !isText && (
-                  <div style={{ textAlign: 'center', color: '#cbd5e1', padding: '30px' }}>
-                    <FileIcon
-                      mimeType={currentFile.mimeType}
-                      extension={currentFile.extension}
-                      size={64}
-                    />
-                    <div style={{ marginTop: '16px', fontSize: '1rem', fontWeight: 600 }}>
-                      Không có bản xem trước trực tuyến khả dụng
+                {error && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '14px',
+                      color: '#f87171',
+                      padding: '32px 24px',
+                      textAlign: 'center',
+                      maxWidth: '460px'
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: '60px',
+                        height: '60px',
+                        borderRadius: '50%',
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--accent-rose, #f43f5e)'
+                      }}
+                    >
+                      <AlertCircle size={34} />
                     </div>
-                    <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginTop: '6px' }}>
-                      Định dạng .{ext} không thể hiển thị trực tiếp trong trình duyệt.
+                    <div style={{ fontSize: '0.9375rem', fontWeight: 600, color: '#ffffff', lineHeight: 1.5 }}>
+                      {error}
                     </div>
-                    {onDownload && (
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => onDownload(currentFile)}
-                        style={{ marginTop: '18px' }}
-                      >
-                        <Download size={16} />
-                        <span>
-                          Tải về máy ({currentFile.formattedSize || `${currentFile.size} Bytes`})
-                        </span>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        marginTop: '6px',
+                        flexWrap: 'wrap',
+                        justifyContent: 'center'
+                      }}
+                    >
+                      <button className="btn btn-primary" onClick={() => setRetryCount((c) => c + 1)}>
+                        <RefreshCw size={15} />
+                        <span>Thử tải lại</span>
                       </button>
-                    )}
+                      {onDownload && (
+                        <button className="btn btn-secondary" onClick={() => onDownload(currentFile)}>
+                          <Download size={15} />
+                          <span>Tải tệp về máy để xem</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
+                )}
+
+                {/* Nếu là file Word (.docx) */}
+                {isDocx && !loading && (
+                  <DocxViewer blob={rawBlobData} file={currentFile} onDownload={onDownload} />
+                )}
+
+                {/* Các định dạng khác */}
+                {!isDocx && !loading && !error && blobUrl && (
+                  <>
+                    {isImage && (
+                      <img
+                        src={blobUrl}
+                        alt={currentFile.name}
+                        className="preview-image"
+                        style={{
+                          transform: `scale(${zoom}) rotate(${rotation}deg)`,
+                          transition: 'transform 0.15s ease-out'
+                        }}
+                      />
+                    )}
+
+                    {isVideo && (
+                      <video src={blobUrl} controls autoPlay className="preview-media-element">
+                        Trình duyệt không hỗ trợ xem video trực tiếp.
+                      </video>
+                    )}
+
+                    {isAudio && (
+                      <div
+                        style={{
+                          padding: '40px',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          borderRadius: '16px'
+                        }}
+                      >
+                        <audio src={blobUrl} controls autoPlay style={{ width: 360 }}>
+                          Trình duyệt không hỗ trợ phát âm thanh trực tiếp.
+                        </audio>
+                      </div>
+                    )}
+
+                    {isPdf && (
+                      <iframe src={`${blobUrl}#toolbar=1`} title={currentFile.name} className="preview-iframe" />
+                    )}
+
+                    {isText && (
+                      <pre className="preview-text-box">
+                        <code>{textContent}</code>
+                      </pre>
+                    )}
+
+                    {!isImage && !isVideo && !isAudio && !isPdf && !isText && (
+                      <div style={{ textAlign: 'center', color: '#cbd5e1', padding: '30px' }}>
+                        <FileIcon
+                          mimeType={currentFile.mimeType}
+                          extension={currentFile.extension}
+                          size={64}
+                        />
+                        <div style={{ marginTop: '16px', fontSize: '1rem', fontWeight: 600 }}>
+                          Không có bản xem trước trực tuyến khả dụng
+                        </div>
+                        <div style={{ fontSize: '0.875rem', color: '#94a3b8', marginTop: '6px' }}>
+                          Định dạng .{ext} không thể hiển thị trực tiếp trong trình duyệt.
+                        </div>
+                        {onDownload && (
+                          <button
+                            className="btn btn-primary"
+                            onClick={() => onDownload(currentFile)}
+                            style={{ marginTop: '18px' }}
+                          >
+                            <Download size={16} />
+                            <span>
+                              Tải về máy ({currentFile.formattedSize || `${currentFile.size} Bytes`})
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
@@ -556,9 +646,7 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <Brain size={18} className="text-primary" />
-                    <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>
-                      Trợ lý AI DocuFlow
-                    </span>
+                    <span style={{ fontWeight: 700, fontSize: '0.9375rem' }}>Trợ lý AI DocuFlow</span>
                   </div>
                   {renderStatusBadge()}
                 </div>
@@ -615,159 +703,176 @@ const FilePreviewModal = ({ file, isOpen, onClose, onDownload, onFileUpdated }) 
               </div>
 
               {aiSubTab === 'chat' ? (
-                <div style={{ padding: '0 16px 16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    padding: '0 16px 16px',
+                    flex: 1,
+                    minHeight: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    overflow: 'hidden'
+                  }}
+                >
                   <DocChatTab file={currentFile} />
                 </div>
               ) : (
                 <div className="preview-ai-content">
-                {/* Trạng thái đang xử lý */}
-                {(currentFile.aiStatus === 'processing' || currentFile.aiStatus === 'pending') && (
-                  <div className="ai-processing-state">
-                    <div className="ai-pulse-dot" />
-                    <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                      AI đang đọc & phân loại nội dung...
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                      Tự động trích xuất nội dung văn bản và tạo tóm tắt thông minh.
-                    </div>
-                  </div>
-                )}
-
-                {/* Phân loại danh mục & Độ tin cậy */}
-                <div className="ai-section-card">
-                  <div className="ai-section-title">
-                    <FileText size={14} />
-                    <span>Danh mục tài liệu</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' }}>
-                    <span className="ai-category-tag">
-                      {currentFile.aiCategory || 'Chưa phân loại'}
-                    </span>
-                    {typeof currentFile.aiConfidence === 'number' && (
-                      <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-primary)' }}>
-                        Độ tin cậy: {Math.round(currentFile.aiConfidence * 100)}%
-                      </span>
-                    )}
-                  </div>
-                  {typeof currentFile.aiConfidence === 'number' && (
-                    <div className="ai-confidence-bar-bg">
-                      <div
-                        className="ai-confidence-bar-fill"
-                        style={{ width: `${Math.round(currentFile.aiConfidence * 100)}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Tóm tắt văn bản tệp tin */}
-                {currentFile.aiSummary && (
-                  <div className="ai-section-card">
-                    <div className="ai-section-title">
-                      <Sparkles size={14} />
-                      <span>Tóm tắt nội dung AI</span>
-                    </div>
-                    <p className="ai-summary-text">{currentFile.aiSummary}</p>
-                  </div>
-                )}
-
-                {/* Thẻ từ khóa (Tags) */}
-                {Array.isArray(currentFile.aiTags) && currentFile.aiTags.length > 0 && (
-                  <div className="ai-section-card">
-                    <div className="ai-section-title">
-                      <Tag size={14} />
-                      <span>Thẻ từ khóa gợi ý</span>
-                    </div>
-                    <div className="ai-tags-list">
-                      {currentFile.aiTags.map((tag, idx) => (
-                        <span key={idx} className="ai-tag-chip">
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Đề xuất đổi tên */}
-                {currentFile.aiSuggestedName && currentFile.aiSuggestedName !== currentFile.name && (
-                  <div className="ai-suggestion-box">
-                    <div className="ai-suggestion-badge">Đề xuất tên mới</div>
-                    <div className="ai-suggestion-value" title={currentFile.aiSuggestedName}>
-                      {currentFile.aiSuggestedName}
-                    </div>
-                    <div className="ai-suggestion-actions">
-                      <button
-                        className="btn btn-primary btn-sm"
-                        onClick={handleAcceptName}
-                        disabled={actionLoading}
-                      >
-                        <Check size={14} />
-                        <span>Chấp nhận tên</span>
-                      </button>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={handleDismissSuggestions}
-                        disabled={actionLoading}
-                      >
-                        <span>Bỏ qua</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Đề xuất thư mục */}
-                {currentFile.aiSuggestedFolder && (
-                  <div className="ai-suggestion-box">
-                    <div className="ai-suggestion-badge">Đề xuất thư mục đích</div>
-                    <div className="ai-suggestion-value" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Folder size={14} />
-                      <span>{currentFile.aiSuggestedFolder?.name || 'Thư mục tương ứng'}</span>
-                    </div>
-                    <div className="ai-suggestion-actions">
-                      <button
-                        className="btn btn-primary btn-sm"
-                        onClick={handleAcceptFolder}
-                        disabled={actionLoading}
-                      >
-                        <Check size={14} />
-                        <span>Chuyển vào thư mục</span>
-                      </button>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={handleDismissSuggestions}
-                        disabled={actionLoading}
-                      >
-                        <span>Bỏ qua</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Báo lỗi nếu AI failed */}
-                {currentFile.aiStatus === 'failed' && (
-                  <div className="ai-error-box">
-                    <AlertCircle size={16} />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600 }}>Không thể hoàn tất phân tích</div>
-                      <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>
-                        {currentFile.aiError || 'Không thể kết nối đến mô hình AI hoặc thiếu API Key.'}
+                  {/* Trạng thái đang xử lý */}
+                  {(currentFile.aiStatus === 'processing' || currentFile.aiStatus === 'pending') && (
+                    <div className="ai-processing-state">
+                      <div className="ai-pulse-dot" />
+                      <div style={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                        AI đang đọc & phân loại nội dung...
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Tự động trích xuất nội dung văn bản và tạo tóm tắt thông minh.
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Nút hành động phân tích lại */}
-                <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
-                  <button
-                    className="btn btn-secondary w-full"
-                    onClick={handleRetryAi}
-                    disabled={actionLoading || currentFile.aiStatus === 'processing'}
-                    style={{ width: '100%', justifyContent: 'center' }}
-                  >
-                    <RefreshCw size={14} className={actionLoading ? 'spin-animation' : ''} />
-                    <span>Phân tích lại bằng AI</span>
-                  </button>
+                  {/* Phân loại danh mục & Độ tin cậy */}
+                  <div className="ai-section-card">
+                    <div className="ai-section-title">
+                      <FileText size={14} />
+                      <span>Danh mục tài liệu</span>
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        marginTop: '8px'
+                      }}
+                    >
+                      <span className="ai-category-tag">{currentFile.aiCategory || 'Chưa phân loại'}</span>
+                      {typeof currentFile.aiConfidence === 'number' && (
+                        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-primary)' }}>
+                          Độ tin cậy: {Math.round(currentFile.aiConfidence * 100)}%
+                        </span>
+                      )}
+                    </div>
+                    {typeof currentFile.aiConfidence === 'number' && (
+                      <div className="ai-confidence-bar-bg">
+                        <div
+                          className="ai-confidence-bar-fill"
+                          style={{ width: `${Math.round(currentFile.aiConfidence * 100)}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Tóm tắt văn bản tệp tin */}
+                  {currentFile.aiSummary && (
+                    <div className="ai-section-card">
+                      <div className="ai-section-title">
+                        <Sparkles size={14} />
+                        <span>Tóm tắt nội dung AI</span>
+                      </div>
+                      <p className="ai-summary-text">{currentFile.aiSummary}</p>
+                    </div>
+                  )}
+
+                  {/* Thẻ từ khóa (Tags) */}
+                  {Array.isArray(currentFile.aiTags) && currentFile.aiTags.length > 0 && (
+                    <div className="ai-section-card">
+                      <div className="ai-section-title">
+                        <Tag size={14} />
+                        <span>Thẻ từ khóa gợi ý</span>
+                      </div>
+                      <div className="ai-tags-list">
+                        {currentFile.aiTags.map((tag, idx) => (
+                          <span key={idx} className="ai-tag-chip">
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Đề xuất đổi tên */}
+                  {currentFile.aiSuggestedName && currentFile.aiSuggestedName !== currentFile.name && (
+                    <div className="ai-suggestion-box">
+                      <div className="ai-suggestion-badge">Đề xuất tên mới</div>
+                      <div className="ai-suggestion-value" title={currentFile.aiSuggestedName}>
+                        {currentFile.aiSuggestedName}
+                      </div>
+                      <div className="ai-suggestion-actions">
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={handleAcceptName}
+                          disabled={actionLoading}
+                        >
+                          <Check size={14} />
+                          <span>Chấp nhận tên</span>
+                        </button>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={handleDismissSuggestions}
+                          disabled={actionLoading}
+                        >
+                          <span>Bỏ qua</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Đề xuất thư mục */}
+                  {currentFile.aiSuggestedFolder && (
+                    <div className="ai-suggestion-box">
+                      <div className="ai-suggestion-badge">Đề xuất thư mục đích</div>
+                      <div
+                        className="ai-suggestion-value"
+                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <Folder size={14} />
+                        <span>{currentFile.aiSuggestedFolder?.name || 'Thư mục tương ứng'}</span>
+                      </div>
+                      <div className="ai-suggestion-actions">
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={handleAcceptFolder}
+                          disabled={actionLoading}
+                        >
+                          <Check size={14} />
+                          <span>Chuyển vào thư mục</span>
+                        </button>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={handleDismissSuggestions}
+                          disabled={actionLoading}
+                        >
+                          <span>Bỏ qua</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Báo lỗi nếu AI failed */}
+                  {currentFile.aiStatus === 'failed' && (
+                    <div className="ai-error-box">
+                      <AlertCircle size={16} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600 }}>Không thể hoàn tất phân tích</div>
+                        <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>
+                          {currentFile.aiError || 'Không thể kết nối đến mô hình AI hoặc thiếu API Key.'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Nút hành động phân tích lại */}
+                  <div style={{ marginTop: 'auto', paddingTop: '16px' }}>
+                    <button
+                      className="btn btn-secondary w-full"
+                      onClick={handleRetryAi}
+                      disabled={actionLoading || currentFile.aiStatus === 'processing'}
+                      style={{ width: '100%', justifyContent: 'center' }}
+                    >
+                      <RefreshCw size={14} className={actionLoading ? 'spin-animation' : ''} />
+                      <span>Phân tích lại bằng AI</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
               )}
             </aside>
           )}

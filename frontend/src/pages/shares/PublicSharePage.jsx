@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Globe,
@@ -19,18 +19,20 @@ import {
   Folder,
   FileText,
   Calendar,
-  ExternalLink,
   ShieldCheck,
-  Share2
+  Edit3
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import FileIcon from '../../components/drive/FileIcon';
 import DocxViewer from '../../components/drive/DocxViewer';
+import RealtimeCollaborativeEditor from '../../components/drive/RealtimeCollaborativeEditor';
 import shareService from '../../services/shareService';
 import { useToast } from '../../contexts/ToastContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 const PublicSharePage = () => {
   const { shareToken } = useParams();
+  const { user: currentUser } = useAuth();
   const [data, setData] = useState(null);
   const [requiresPassword, setRequiresPassword] = useState(false);
   const [password, setPassword] = useState('');
@@ -39,14 +41,18 @@ const PublicSharePage = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [currentFolderId, setCurrentFolderId] = useState(null);
 
+  // Main file view mode: 'edit' | 'preview'
+  const [viewMode, setViewMode] = useState('preview');
+
   // Main file preview state
   const [blobUrl, setBlobUrl] = useState(null);
   const [docxBlob, setDocxBlob] = useState(null);
   const [textContent, setTextContent] = useState('');
   const [loadingPreview, setLoadingPreview] = useState(false);
 
-  // Modal preview state for files inside folder
+  // Modal preview/edit state for files inside folder
   const [previewModalFile, setPreviewModalFile] = useState(null);
+  const [modalViewMode, setModalViewMode] = useState('preview'); // 'preview' | 'edit'
   const [modalBlobUrl, setModalBlobUrl] = useState(null);
   const [modalDocxBlob, setModalDocxBlob] = useState(null);
   const [modalTextContent, setModalTextContent] = useState('');
@@ -65,14 +71,22 @@ const PublicSharePage = () => {
     try {
       const params = folderId ? { folderId } : {};
       const res = await shareService.getPublicItem(shareToken, pwd, params);
-      
+
       if (res.data?.requiresPassword) {
         setRequiresPassword(true);
       } else {
         setRequiresPassword(false);
         setData(res.data);
-        // Tự động tải preview nếu đối tượng là tệp tin đơn lẻ
+
+        const isEditorRole =
+          res.data?.share?.role === 'editor' || res.data?.role === 'editor';
+
         if (res.data?.item && res.data?.itemType === 'file') {
+          if (isEditorRole) {
+            setViewMode('edit');
+          } else {
+            setViewMode('preview');
+          }
           loadMainFilePreview(pwd, res.data.item);
         }
       }
@@ -102,8 +116,8 @@ const PublicSharePage = () => {
       const mime = (item?.mimeType || '').toLowerCase();
       const isDocx = ext === 'docx' || mime.includes('wordprocessingml');
 
-      const blob = await shareService.getPublicFilePreview(shareToken, pwd);
-      
+      const blob = await shareService.getPublicFilePreview(shareToken, pwd || password || null);
+
       if (isDocx) {
         setDocxBlob(blob);
       } else if (
@@ -170,9 +184,10 @@ const PublicSharePage = () => {
     }
   };
 
-  // Xem trước một file bên trong thư mục
-  const handleOpenFilePreview = async (file) => {
+  // Xem trước hoặc chỉnh sửa một file bên trong thư mục
+  const handleOpenFilePreview = async (file, initialMode = 'preview') => {
     setPreviewModalFile(file);
+    setModalViewMode(initialMode);
     setModalLoadingPreview(true);
     setModalBlobUrl(null);
     setModalDocxBlob(null);
@@ -357,6 +372,7 @@ const PublicSharePage = () => {
 
   const item = data?.item;
   const allowDownload = data?.share?.allowDownload !== false;
+  const canEdit = data?.share?.role === 'editor' || data?.role === 'editor';
   const isFile = data?.itemType === 'file';
   const isFolder = data?.itemType === 'folder';
 
@@ -383,6 +399,12 @@ const PublicSharePage = () => {
             <Globe size={12} style={{ marginRight: '4px' }} />
             Chia sẻ công khai
           </span>
+          {canEdit && (
+            <span className="badge badge-emerald">
+              <Edit3 size={12} style={{ marginRight: '4px' }} />
+              Cho phép chỉnh sửa trực tiếp
+            </span>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -432,7 +454,7 @@ const PublicSharePage = () => {
                 <h1 className="public-item-title">{item?.name}</h1>
                 <div className="public-item-meta">
                   {isFile && (
-                    <span className="public-meta-pill">
+                    <span className="public-meta-pill tabular-nums">
                       <strong>{formatSize(item?.size)}</strong>
                     </span>
                   )}
@@ -441,10 +463,10 @@ const PublicSharePage = () => {
                   </span>
                   <span className="public-meta-pill">
                     <ShieldCheck size={13} style={{ color: '#10b981' }} />
-                    {data?.share?.role === 'editor' ? 'Quyền chỉnh sửa' : 'Chỉ xem'}
+                    {canEdit ? 'Quyền chỉnh sửa trực tiếp' : 'Chỉ xem'}
                   </span>
                   {data?.share?.expiresAt && (
-                    <span className="public-meta-pill">
+                    <span className="public-meta-pill tabular-nums">
                       <Calendar size={13} />
                       Hết hạn: {new Date(data.share.expiresAt).toLocaleDateString('vi-VN')}
                     </span>
@@ -453,17 +475,53 @@ const PublicSharePage = () => {
               </div>
             </div>
 
-            {allowDownload && isFile && (
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleDownloadMain}
-                style={{ padding: '8px 18px', gap: '8px' }}
-              >
-                <Download size={16} />
-                <span>Tải tệp xuống</span>
-              </button>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              {isFile && canEdit && (
+                <div
+                  style={{
+                    display: 'inline-flex',
+                    background: 'var(--bg-surface)',
+                    padding: '3px',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px solid var(--border-main)'
+                  }}
+                >
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${viewMode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setViewMode('edit')}
+                    style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                  >
+                    <Edit3 size={14} />
+                    <span>Soạn thảo trực tiếp</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${viewMode === 'preview' ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => {
+                      setViewMode('preview');
+                      loadMainFilePreview(password || null, item);
+                    }}
+                    style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                  >
+                    <Eye size={14} />
+                    <span>Xem trước</span>
+                  </button>
+                </div>
+              )}
+
+              {allowDownload && isFile && (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleDownloadMain}
+                  style={{ padding: '8px 18px', gap: '8px' }}
+                >
+                  <Download size={16} />
+                  <span>Tải tệp xuống</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* DocuFlow AI Intelligence Card (if available) */}
@@ -481,11 +539,7 @@ const PublicSharePage = () => {
                 )}
               </div>
 
-              {item?.aiSummary && (
-                <div className="public-ai-summary-box">
-                  {item.aiSummary}
-                </div>
-              )}
+              {item?.aiSummary && <div className="public-ai-summary-box">{item.aiSummary}</div>}
 
               {item?.aiTags && item.aiTags.length > 0 && (
                 <div className="public-ai-tags-wrap">
@@ -500,115 +554,144 @@ const PublicSharePage = () => {
           )}
         </section>
 
-        {/* ── SECTION 1: Single File Preview ── */}
+        {/* ── SECTION 1: Single File Realtime Editor or Preview ── */}
         {isFile && (
-          <section className="public-preview-box">
-            {loadingPreview ? (
-              <div style={{ color: '#ffffff', textAlign: 'center', padding: '60px' }}>
-                <span className="spinner" style={{ width: 36, height: 36, margin: '0 auto' }} />
-                <div style={{ marginTop: '14px', fontSize: '0.9rem', fontWeight: 600 }}>
-                  Đang khởi tạo bản xem trước tài liệu...
+          canEdit && viewMode === 'edit' ? (
+            <section>
+              <RealtimeCollaborativeEditor
+                file={item}
+                shareToken={shareToken}
+                password={password || null}
+                currentUser={currentUser}
+                onSaved={(savedData) => {
+                  if (savedData?.size !== undefined) {
+                    setData((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            item: {
+                              ...prev.item,
+                              size: savedData.size
+                            }
+                          }
+                        : prev
+                    );
+                  }
+                }}
+                onFileReplaced={() => {
+                  fetchPublicItem(password || null, currentFolderId);
+                }}
+              />
+            </section>
+          ) : (
+            <section className="public-preview-box">
+              {loadingPreview ? (
+                <div style={{ color: '#ffffff', textAlign: 'center', padding: '60px' }}>
+                  <span className="spinner" style={{ width: 36, height: 36, margin: '0 auto' }} />
+                  <div style={{ marginTop: '14px', fontSize: '0.9rem', fontWeight: 600 }}>
+                    Đang khởi tạo bản xem trước tài liệu...
+                  </div>
                 </div>
-              </div>
-            ) : isDocx ? (
-              <div style={{ width: '100%', height: '700px' }}>
-                <DocxViewer
-                  blob={docxBlob}
-                  file={item}
-                  onDownload={allowDownload ? handleDownloadMain : null}
-                  initialTab="preview"
-                />
-              </div>
-            ) : blobUrl ? (
-              <>
-                {isImage && (
-                  <div style={{ padding: '20px', display: 'flex', justifyContent: 'center' }}>
-                    <img
+              ) : isDocx ? (
+                <div style={{ width: '100%', height: '700px' }}>
+                  <DocxViewer
+                    blob={docxBlob}
+                    file={item}
+                    onDownload={allowDownload ? handleDownloadMain : null}
+                    initialTab="preview"
+                  />
+                </div>
+              ) : blobUrl ? (
+                <>
+                  {isImage && (
+                    <div style={{ padding: '20px', display: 'flex', justifyContent: 'center' }}>
+                      <img
+                        src={blobUrl}
+                        alt={item?.name}
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '620px',
+                          objectFit: 'contain',
+                          borderRadius: '8px',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.4)'
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {isVideo && (
+                    <video
                       src={blobUrl}
-                      alt={item?.name}
+                      controls
                       style={{
-                        maxWidth: '100%',
-                        maxHeight: '620px',
-                        objectFit: 'contain',
-                        borderRadius: '8px',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.4)'
+                        maxWidth: '92%',
+                        maxHeight: '540px',
+                        borderRadius: '10px',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
                       }}
                     />
-                  </div>
-                )}
+                  )}
 
-                {isVideo && (
-                  <video
-                    src={blobUrl}
-                    controls
-                    style={{
-                      maxWidth: '92%',
-                      maxHeight: '540px',
-                      borderRadius: '10px',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
-                    }}
-                  />
-                )}
-
-                {isAudio && (
-                  <div style={{ padding: '60px 40px', textAlign: 'center' }}>
-                    <audio src={blobUrl} controls style={{ width: 360 }} />
-                  </div>
-                )}
-
-                {isPdf && (
-                  <iframe
-                    src={`${blobUrl}#toolbar=1`}
-                    title={item?.name}
-                    style={{ width: '100%', height: '700px', border: 'none' }}
-                  />
-                )}
-
-                {isText && (
-                  <pre className="preview-text-box" style={{ height: '540px', width: '100%', margin: 0 }}>
-                    <code>{textContent}</code>
-                  </pre>
-                )}
-
-                {!isImage && !isVideo && !isAudio && !isPdf && !isText && (
-                  <div style={{ textAlign: 'center', color: '#cbd5e1', padding: '50px 24px' }}>
-                    <FileCheck size={52} style={{ margin: '0 auto 16px', color: 'var(--primary-400)' }} />
-                    <div style={{ fontSize: '1.05rem', fontWeight: 700 }}>Tệp tin sẵn sàng</div>
-                    <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '6px' }}>
-                      Định dạng này không hỗ trợ hiển thị trực tuyến. Vui lòng tải về để xem trên thiết bị của bạn.
+                  {isAudio && (
+                    <div style={{ padding: '60px 40px', textAlign: 'center' }}>
+                      <audio src={blobUrl} controls style={{ width: 360 }} />
                     </div>
-                    {allowDownload && (
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        onClick={handleDownloadMain}
-                        style={{ marginTop: '16px' }}
-                      >
-                        <Download size={16} />
-                        <span>Tải tệp về máy</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-              </>
-            ) : (
-              <div style={{ textAlign: 'center', color: '#94a3b8', padding: '50px 20px' }}>
-                <FileCheck size={48} style={{ margin: '0 auto 12px', color: 'var(--primary-400)' }} />
-                <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>Tệp tin sẵn sàng tải xuống</div>
-                {allowDownload && (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={handleDownloadMain}
-                    style={{ marginTop: '14px' }}
-                  >
-                    <Download size={15} />
-                    <span>Tải về ngay</span>
-                  </button>
-                )}
-              </div>
-            )}
-          </section>
+                  )}
+
+                  {isPdf && (
+                    <iframe
+                      src={`${blobUrl}#toolbar=1`}
+                      title={item?.name}
+                      style={{ width: '100%', height: '700px', border: 'none' }}
+                    />
+                  )}
+
+                  {isText && (
+                    <pre className="preview-text-box" style={{ height: '540px', width: '100%', margin: 0 }}>
+                      <code>{textContent}</code>
+                    </pre>
+                  )}
+
+                  {!isImage && !isVideo && !isAudio && !isPdf && !isText && (
+                    <div style={{ textAlign: 'center', color: '#cbd5e1', padding: '50px 24px' }}>
+                      <FileCheck size={52} style={{ margin: '0 auto 16px', color: 'var(--primary-400)' }} />
+                      <div style={{ fontSize: '1.05rem', fontWeight: 700 }}>Tệp tin sẵn sàng</div>
+                      <div style={{ fontSize: '0.85rem', color: '#94a3b8', marginTop: '6px' }}>
+                        Định dạng này không hỗ trợ hiển thị trực tuyến. Vui lòng tải về để xem trên thiết bị của bạn.
+                      </div>
+                      {allowDownload && (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={handleDownloadMain}
+                          style={{ marginTop: '16px' }}
+                        >
+                          <Download size={16} />
+                          <span>Tải tệp về máy</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ textAlign: 'center', color: '#94a3b8', padding: '50px 20px' }}>
+                  <FileCheck size={48} style={{ margin: '0 auto 12px', color: 'var(--primary-400)' }} />
+                  <div style={{ fontSize: '0.95rem', fontWeight: 600 }}>Tệp tin sẵn sàng tải xuống</div>
+                  {allowDownload && (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={handleDownloadMain}
+                      style={{ marginTop: '14px' }}
+                    >
+                      <Download size={15} />
+                      <span>Tải về ngay</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
+          )
         )}
 
         {/* ── SECTION 2: Folder Explorer ── */}
@@ -675,13 +758,17 @@ const PublicSharePage = () => {
                 <div className="public-files-grid">
                   {data.files.map((file) => (
                     <div key={file._id} className="public-file-card">
-                      <div className="public-file-card-top" onClick={() => handleOpenFilePreview(file)} style={{ cursor: 'pointer' }}>
+                      <div
+                        className="public-file-card-top"
+                        onClick={() => handleOpenFilePreview(file, canEdit ? 'edit' : 'preview')}
+                        style={{ cursor: 'pointer' }}
+                      >
                         <FileIcon mimeType={file.mimeType} extension={file.extension} size={36} />
                       </div>
                       <div className="public-file-card-info">
                         <div
                           className="public-file-card-title"
-                          onClick={() => handleOpenFilePreview(file)}
+                          onClick={() => handleOpenFilePreview(file, canEdit ? 'edit' : 'preview')}
                           style={{ cursor: 'pointer' }}
                           title={file.name}
                         >
@@ -694,10 +781,20 @@ const PublicSharePage = () => {
                           </span>
                         </div>
                         <div className="public-file-card-actions">
+                          {canEdit && (
+                            <button
+                              type="button"
+                              className="btn btn-primary btn-sm"
+                              onClick={() => handleOpenFilePreview(file, 'edit')}
+                            >
+                              <Edit3 size={13} />
+                              <span>Sửa</span>
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"
-                            onClick={() => handleOpenFilePreview(file)}
+                            onClick={() => handleOpenFilePreview(file, 'preview')}
                           >
                             <Eye size={13} />
                             <span>Xem</span>
@@ -705,7 +802,7 @@ const PublicSharePage = () => {
                           {allowDownload && (
                             <button
                               type="button"
-                              className="btn btn-primary btn-sm"
+                              className="btn btn-secondary btn-sm"
                               onClick={() => handleDownloadFolderFile(file)}
                             >
                               <Download size={13} />
@@ -735,12 +832,12 @@ const PublicSharePage = () => {
         )}
       </main>
 
-      {/* ── MODAL: Folder File Preview Popup ── */}
+      {/* ── MODAL: Folder File Preview / Edit Popup ── */}
       {previewModalFile && (
         <div className="modal-overlay" onClick={handleCloseFilePreview}>
           <div
             className="modal-card animate-scale-up"
-            style={{ maxWidth: '960px', width: '92vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
+            style={{ maxWidth: '1040px', width: '94vw', maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-header">
@@ -751,6 +848,36 @@ const PublicSharePage = () => {
                 </h3>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {canEdit && (
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      background: 'var(--bg-surface-hover)',
+                      padding: '2px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: '1px solid var(--border-main)'
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${modalViewMode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}
+                      onClick={() => setModalViewMode('edit')}
+                      style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                    >
+                      <Edit3 size={13} />
+                      <span>Soạn thảo</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${modalViewMode === 'preview' ? 'btn-primary' : 'btn-ghost'}`}
+                      onClick={() => handleOpenFilePreview(previewModalFile, 'preview')}
+                      style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                    >
+                      <Eye size={13} />
+                      <span>Xem trước</span>
+                    </button>
+                  </div>
+                )}
                 {allowDownload && (
                   <button
                     type="button"
@@ -767,9 +894,30 @@ const PublicSharePage = () => {
               </div>
             </div>
 
-            <div className="modal-body" style={{ flex: 1, padding: 0, minHeight: '450px', background: '#0b0f19', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-              {modalLoadingPreview ? (
-                <div style={{ color: '#ffffff', textAlign: 'center', padding: '40px' }}>
+            <div
+              className="modal-body"
+              style={{
+                flex: 1,
+                padding: 0,
+                minHeight: '500px',
+                background: '#0b0f19',
+                display: 'flex',
+                alignItems: 'stretch',
+                justifyContent: 'center',
+                overflow: 'auto'
+              }}
+            >
+              {canEdit && modalViewMode === 'edit' ? (
+                <div style={{ width: '100%' }}>
+                  <RealtimeCollaborativeEditor
+                    file={previewModalFile}
+                    shareToken={shareToken}
+                    password={password || null}
+                    currentUser={currentUser}
+                  />
+                </div>
+              ) : modalLoadingPreview ? (
+                <div style={{ color: '#ffffff', textAlign: 'center', padding: '40px', margin: 'auto' }}>
                   <span className="spinner" style={{ width: 32, height: 32, margin: '0 auto' }} />
                   <div style={{ marginTop: '12px', fontSize: '0.875rem' }}>Đang tải xem trước...</div>
                 </div>
@@ -796,16 +944,16 @@ const PublicSharePage = () => {
                       <img
                         src={modalBlobUrl}
                         alt={previewModalFile.name}
-                        style={{ maxWidth: '95%', maxHeight: '550px', objectFit: 'contain' }}
+                        style={{ maxWidth: '95%', maxHeight: '550px', objectFit: 'contain', margin: 'auto' }}
                       />
                     );
                   }
                   if (mIsVid) {
-                    return <video src={modalBlobUrl} controls style={{ maxWidth: '95%', maxHeight: '500px' }} />;
+                    return <video src={modalBlobUrl} controls style={{ maxWidth: '95%', maxHeight: '500px', margin: 'auto' }} />;
                   }
                   if (mIsAud) {
                     return (
-                      <div style={{ padding: '50px' }}>
+                      <div style={{ padding: '50px', margin: 'auto' }}>
                         <audio src={modalBlobUrl} controls style={{ width: 340 }} />
                       </div>
                     );
@@ -827,7 +975,7 @@ const PublicSharePage = () => {
                     );
                   }
                   return (
-                    <div style={{ textAlign: 'center', color: '#cbd5e1', padding: '40px' }}>
+                    <div style={{ textAlign: 'center', color: '#cbd5e1', padding: '40px', margin: 'auto' }}>
                       <FileCheck size={48} style={{ margin: '0 auto 12px', color: 'var(--primary-400)' }} />
                       <div style={{ fontWeight: 600 }}>Tệp không hỗ trợ xem trực tuyến</div>
                       {allowDownload && (
@@ -845,7 +993,7 @@ const PublicSharePage = () => {
                   );
                 })()
               ) : (
-                <div style={{ color: '#94a3b8', fontSize: '0.875rem' }}>
+                <div style={{ color: '#94a3b8', fontSize: '0.875rem', margin: 'auto' }}>
                   Không thể hiển thị xem trước trực tiếp.
                 </div>
               )}

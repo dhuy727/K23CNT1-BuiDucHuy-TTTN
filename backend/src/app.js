@@ -10,8 +10,8 @@ const app = express();
 
 // Middlewares xử lý request
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // Logger ghi nhận request trong môi trường development
 if (process.env.NODE_ENV !== 'test') {

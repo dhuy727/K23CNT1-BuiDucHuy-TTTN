@@ -6,6 +6,7 @@ const folderRoutes = require('./folder.routes');
 const fileRoutes = require('./file.routes');
 const searchRoutes = require('./search.routes');
 const shareRoutes = require('./share.routes');
+const collabRoutes = require('./collab.routes');
 const automationRoutes = require('./automation.routes');
 const notificationRoutes = require('./notification.routes');
 const duplicateRoutes = require('./duplicate.routes');
@@ -30,6 +31,7 @@ router.use('/folders', folderRoutes);
 router.use('/files', fileRoutes);
 router.use('/search', searchRoutes);
 router.use('/shares', shareRoutes);
+router.use('/collab', collabRoutes);
 router.use('/automations', automationRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/duplicates', duplicateRoutes);
@@ -39,4 +41,3 @@ router.use('/categories', categoryRoutes);
 router.use('/rag', ragRoutes);
 
 module.exports = router;
-
