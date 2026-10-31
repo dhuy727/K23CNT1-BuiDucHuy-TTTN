@@ -225,7 +225,7 @@ const getOrInitRoom = async (file) => {
 
   const key = file._id.toString();
   let room = collabRooms.get(key);
-  if (room && room.mode === mode) {
+  if (room && room.mode === mode && (room.dirty || room.contentHash === (file.contentHash || ''))) {
     if (room.mode === 'docx' && room.content) {
       room.content = repairLeakedHtmlContent(room.content);
       room.plainText = htmlToPlainText(room.content);
@@ -264,14 +264,15 @@ const getOrInitRoom = async (file) => {
   room = {
     fileId: key,
     mode,
+    contentHash: file.contentHash || '',
     content: initialContent,
     plainText: initialPlainText,
-    revision: 1,
+    revision: room ? room.revision + 1 : 1,
     dirty: false,
     lastSavedAt: file.updatedAt ? new Date(file.updatedAt).toISOString() : new Date().toISOString(),
     lastUpdatedBy: null,
-    participants: new Map(),
-    clients: new Set()
+    participants: room ? room.participants : new Map(),
+    clients: room ? room.clients : new Set()
   };
 
   collabRooms.set(key, room);
@@ -578,6 +579,7 @@ const saveCollabDocument = async (fileId, authContext, body = {}) => {
   file.extractedText = (room.plainText || '').slice(0, 15000);
   await file.save();
 
+  room.contentHash = savedStorage.contentHash || '';
   room.dirty = false;
   room.lastSavedAt = new Date().toISOString();
   room.lastUpdatedBy = {

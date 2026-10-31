@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 
 /**
- * Loại bỏ các chuỗi thuộc tính thẻ <img src="data:image/..."> bị rò rỉ thành văn bản thuần
+ * Loại bỏ các chuỗi thuộc tính thẻ <img src="data:image/..."> hoặc mảnh thẻ <a href="#_Toc..."> bị rò rỉ thành văn bản thuần
  */
 const cleanLeakedImageText = (raw = '') => {
   if (!raw) return '';
@@ -25,6 +25,10 @@ const cleanLeakedImageText = (raw = '') => {
     .replace(/\bimg\s+(?:alt\s*=\s*"[^"]*"\s*)?src\s*=\s*"data:image\/[\s\S]*?"\s*\/?>?/gi, '')
     .replace(/\bsrc\s*=\s*"data:image\/[\s\S]*?"\s*\/?>?/gi, '')
     .replace(/data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=\s]+/gi, '')
+    .replace(/<?a\s+id\s*=\s*(?:"[^"]*"|'[^']*')\s*>\s*(?:\/a>)?/gi, '')
+    .replace(/<?a\s+href\s*=\s*(?:"[^"]*"|'[^']*')\s*>/gi, '')
+    .replace(/\/a>/gi, '')
+    .replace(/(^|\s|•)\/?(?:ol|ul|li)>/gi, '$1')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 };
@@ -117,6 +121,11 @@ const DocxViewer = ({
               } else {
                 el.textContent = cleanLeakedImageText(txt);
               }
+            } else if (
+              /a\s+(?:id|href)\s*=\s*["']|\/a>|(?:^|\s|•)\/?(?:ol|ul|li)>/i.test(txt) &&
+              el.children.length === 0
+            ) {
+              el.textContent = cleanLeakedImageText(txt);
             }
           });
         }

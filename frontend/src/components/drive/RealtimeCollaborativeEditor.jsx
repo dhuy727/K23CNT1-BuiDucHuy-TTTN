@@ -31,19 +31,67 @@ import collabService from '../../services/collabService';
 import { useToast } from '../../contexts/ToastContext';
 
 /**
- * Khôi phục các thẻ img bị rò rỉ mất dấu '<' thành thẻ <img> chuẩn trên giao diện
+ * Làm sạch HTML cho trình soạn thảo Word:
+ * - Gỡ bỏ ảnh Windows Metafile (data:image/x-emf, wmf) gây biểu tượng ảnh lỗi
+ * - Khôi phục thẻ <img> bị rò rỉ mất dấu '<'
+ * - Gỡ bỏ hoàn toàn mảnh vỡ thẻ neo a id="_Toc...">/a>, a href="#_Toc...">.../a>, ol>, li>
+ * - Định dạng các dòng Mục lục (TOC) có ký tự tab (\t) trước số trang
  */
 const sanitizeDocxHtml = (html = '') => {
   if (!html) return '';
-  return String(html).replace(
-    /(^|>|\s)img\s+(?:alt\s*=\s*(?:"([^"]*)"|'([^']*)'|&quot;([^&]*)&quot;)\s+)?src\s*=\s*(?:"(data:image\/[^"]+)"|'(data:image\/[^']+)'|&quot;(data:image\/[^&]+)&quot;)\s*\/?(?:>|&gt;)?/gi,
-    (full, prefix, a1, a2, a3, s1, s2, s3) => {
-      const alt = a1 || a2 || a3 || 'Hình ảnh';
-      const src = (s1 || s2 || s3 || '').replace(/\s+/g, '');
-      if (!src) return prefix;
-      return `${prefix}<img alt="${alt}" src="${src}" />`;
+  let cleaned = String(html)
+    .replace(
+      /<\s*img\b[^>]*?\bsrc\s*=\s*(?:"data:image\/(?:x-)?(?:emf|wmf)[^"]*"|'data:image\/(?:x-)?(?:emf|wmf)[^']*')[^>]*?>/gi,
+      ''
+    )
+    .replace(
+      /(^|>|\s)img\s+(?:alt\s*=\s*(?:"[^"]*"|'[^']*'|&quot;[^&]*&quot;)\s+)?src\s*=\s*(?:"data:image\/(?:x-)?(?:emf|wmf)[^"]+"|'data:image\/(?:x-)?(?:emf|wmf)[^']+'|&quot;data:image\/(?:x-)?(?:emf|wmf)[^&]+&quot;)\s*\/?(?:>|&gt;)?/gi,
+      '$1'
+    )
+    .replace(
+      /(^|>|\s)img\s+(?:alt\s*=\s*(?:"([^"]*)"|'([^']*)'|&quot;([^&]*)&quot;)\s+)?src\s*=\s*(?:"(data:image\/(?:png|jpe?g|gif|webp)[^"]+)"|'(data:image\/(?:png|jpe?g|gif|webp)[^']+)'|&quot;(data:image\/(?:png|jpe?g|gif|webp)[^&]+)&quot;)\s*\/?(?:>|&gt;)?/gi,
+      (full, prefix, a1, a2, a3, s1, s2, s3) => {
+        const alt = a1 || a2 || a3 || 'Hình ảnh';
+        const src = (s1 || s2 || s3 || '').replace(/\s+/g, '');
+        if (!src) return prefix;
+        return `${prefix}<img alt="${alt}" src="${src}" />`;
+      }
+    )
+    .replace(/<a\b[^>]*?\bid\s*=\s*(?:"[^"]*"|'[^']*')[^>]*?>\s*<\/a>/gi, '')
+    .replace(
+      /<?a\s+id\s*=\s*(?:"[^"]*"|'[^']*'|&quot;[^&]*&quot;)\s*(?:>|&gt;)\s*(?:<\/a>|\/a(?:>|&gt;))?/gi,
+      ''
+    )
+    .replace(/<a\b[^>]*?\bhref\s*=\s*(?:"#[_a-zA-Z0-9-]+"|'#[_a-zA-Z0-9-]+')[^>]*?>([\s\S]*?)<\/a>/gi, '$1')
+    .replace(/<?a\s+href\s*=\s*(?:"[^"]*"|'[^']*'|&quot;[^&]*&quot;)\s*(?:>|&gt;)/gi, '')
+    .replace(/<\/a>|\/a(?:>|&gt;)/gi, '')
+    .replace(/(^|>|\s|•)\s*\/?(?:ol|ul|li)(?:>|&gt;)/gi, '$1')
+    .replace(/<(p|h[1-6])\s+class="docx-align-(center|right|justify)"([^>]*)>/gi, '<$1 style="text-align: $2;"$3>');
+
+  cleaned = cleaned.replace(
+    /<p([^>]*)>([\s\S]*?)<\/p>/gi,
+    (full, attrs, inner) => {
+      if (attrs.includes('docx-toc-item') || inner.includes('docx-toc-dots')) {
+        return full;
+      }
+      if (!/<(img|table|div|ul|ol)\b/i.test(inner) && inner.includes('\t')) {
+        const plainInner = inner.replace(/<\/?(?:strong|b|em|i|u|span)[^>]*>/gi, '').trim();
+        const tocMatch = /^([^\t]+(?:\t[^\t]+)*?)\t+([0-9]+|[ivxlcdmIVXLCDM]+)$/.exec(plainInner);
+        if (tocMatch) {
+          const rawTitle = tocMatch[1].replace(/\t+/g, ' ').trim();
+          const pageNum = tocMatch[2].trim();
+          const isBold =
+            /^<(strong|b)\b/i.test(inner.trim()) ||
+            /^(CHƯƠNG\s+\d+|MỞ\s+ĐẦU|KẾT\s+LUẬN|PHỤ\s+LỤC|TÀI\s+LIỆU|LỜI\s+CẢM\s+ƠN|DANH\s+MỤC)/i.test(rawTitle);
+          const labelHtml = isBold ? `<strong>${rawTitle}</strong>` : rawTitle;
+          return `<p class="docx-toc-item"${attrs}><span class="docx-toc-label">${labelHtml}</span><span class="docx-toc-dots">\t</span><span class="docx-toc-page">${pageNum}</span></p>`;
+        }
+      }
+      return full;
     }
   );
+
+  return cleaned;
 };
 
 /**

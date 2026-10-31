@@ -3049,3 +3049,77 @@
     min-width: 105px;
   }
 }
+
+
+/* =========================================================================
+   CHUẨN HÓA ĐỊNH DẠNG MỤC LỤC (TOC), BẢNG BIỂU & CĂN LỀ TRONG TRÌNH SOẠN THẢO WORD
+   ========================================================================= */
+
+.realtime-docx-sheet .docx-align-center {
+  text-align: center;
+}
+
+.realtime-docx-sheet .docx-align-right {
+  text-align: right;
+}
+
+.realtime-docx-sheet .docx-align-justify {
+  text-align: justify;
+}
+
+.realtime-docx-sheet h1 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin: 22px 0 12px 0;
+  line-height: 1.35;
+}
+
+.realtime-docx-sheet h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 18px 0 10px 0;
+  line-height: 1.4;
+}
+
+.realtime-docx-sheet h3 {
+  font-size: 1.08rem;
+  font-weight: 700;
+  margin: 14px 0 8px 0;
+  line-height: 1.45;
+}
+
+.realtime-docx-sheet p {
+  margin: 0 0 8px 0;
+}
+
+/* Dòng Mục lục (Table of Contents) có đường chấm nối và số trang căn phải */
+.realtime-docx-sheet p.docx-toc-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin: 4px 0;
+  line-height: 1.55;
+}
+
+.realtime-docx-sheet .docx-toc-label {
+  color: #0f172a;
+}
+
+.realtime-docx-sheet .docx-toc-dots {
+  flex: 1;
+  min-width: 24px;
+  border-bottom: 1px dotted #64748b;
+  margin: 0 6px;
+  height: 1px;
+  color: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+.realtime-docx-sheet .docx-toc-page {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #1e293b;
+  flex-shrink: 0;
+}

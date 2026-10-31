@@ -42,40 +42,40 @@ const createZipBuffer = (entries) => {
 
     // Local file header (30 bytes + filename)
     const localHeader = Buffer.alloc(30);
-    localHeader.writeUInt32LE(0x04034b50, 0); // signature
-    localHeader.writeUInt16LE(20, 4); // version needed to extract (2.0)
-    localHeader.writeUInt16LE(0x0800, 6); // UTF-8 flag
-    localHeader.writeUInt16LE(8, 8); // compression method: deflate (8)
-    localHeader.writeUInt16LE(0, 10); // mod time
-    localHeader.writeUInt16LE(0x21, 12); // mod date
+    localHeader.writeUInt32LE(0x04034b50, 0);
+    localHeader.writeUInt16LE(20, 4);
+    localHeader.writeUInt16LE(0x0800, 6);
+    localHeader.writeUInt16LE(8, 8);
+    localHeader.writeUInt16LE(0, 10);
+    localHeader.writeUInt16LE(0x21, 12);
     localHeader.writeUInt32LE(entryCrc, 14);
     localHeader.writeUInt32LE(compressedBuf.length, 18);
     localHeader.writeUInt32LE(uncompressedBuf.length, 22);
     localHeader.writeUInt16LE(nameBuf.length, 26);
-    localHeader.writeUInt16LE(0, 28); // extra field length
+    localHeader.writeUInt16LE(0, 28);
 
     const localChunk = Buffer.concat([localHeader, nameBuf, compressedBuf]);
     localFileHeaders.push(localChunk);
 
     // Central directory file header (46 bytes + filename)
     const centralHeader = Buffer.alloc(46);
-    centralHeader.writeUInt32LE(0x02014b50, 0); // signature
-    centralHeader.writeUInt16LE(20, 4); // version made by
-    centralHeader.writeUInt16LE(20, 6); // version needed
-    centralHeader.writeUInt16LE(0x0800, 8); // UTF-8 flag
-    centralHeader.writeUInt16LE(8, 10); // compression method: deflate
-    centralHeader.writeUInt16LE(0, 12); // mod time
-    centralHeader.writeUInt16LE(0x21, 14); // mod date
+    centralHeader.writeUInt32LE(0x02014b50, 0);
+    centralHeader.writeUInt16LE(20, 4);
+    centralHeader.writeUInt16LE(20, 6);
+    centralHeader.writeUInt16LE(0x0800, 8);
+    centralHeader.writeUInt16LE(8, 10);
+    centralHeader.writeUInt16LE(0, 12);
+    centralHeader.writeUInt16LE(0x21, 14);
     centralHeader.writeUInt32LE(entryCrc, 16);
     centralHeader.writeUInt32LE(compressedBuf.length, 20);
     centralHeader.writeUInt32LE(uncompressedBuf.length, 24);
     centralHeader.writeUInt16LE(nameBuf.length, 28);
-    centralHeader.writeUInt16LE(0, 30); // extra length
-    centralHeader.writeUInt16LE(0, 32); // comment length
-    centralHeader.writeUInt16LE(0, 34); // disk number
-    centralHeader.writeUInt16LE(0, 36); // internal attrs
-    centralHeader.writeUInt32LE(0, 38); // external attrs
-    centralHeader.writeUInt32LE(offset, 42); // relative offset of local header
+    centralHeader.writeUInt16LE(0, 30);
+    centralHeader.writeUInt16LE(0, 32);
+    centralHeader.writeUInt16LE(0, 34);
+    centralHeader.writeUInt16LE(0, 36);
+    centralHeader.writeUInt32LE(0, 38);
+    centralHeader.writeUInt32LE(offset, 42);
 
     centralDirHeaders.push(Buffer.concat([centralHeader, nameBuf]));
     offset += localChunk.length;
@@ -83,14 +83,14 @@ const createZipBuffer = (entries) => {
 
   const centralDirBuf = Buffer.concat(centralDirHeaders);
   const endOfCentralDir = Buffer.alloc(22);
-  endOfCentralDir.writeUInt32LE(0x06054b50, 0); // EOCD signature
-  endOfCentralDir.writeUInt16LE(0, 4); // disk number
-  endOfCentralDir.writeUInt16LE(0, 6); // disk with central dir
+  endOfCentralDir.writeUInt32LE(0x06054b50, 0);
+  endOfCentralDir.writeUInt16LE(0, 4);
+  endOfCentralDir.writeUInt16LE(0, 6);
   endOfCentralDir.writeUInt16LE(entries.length, 8);
   endOfCentralDir.writeUInt16LE(entries.length, 10);
   endOfCentralDir.writeUInt32LE(centralDirBuf.length, 12);
   endOfCentralDir.writeUInt32LE(offset, 16);
-  endOfCentralDir.writeUInt16LE(0, 20); // comment length
+  endOfCentralDir.writeUInt16LE(0, 20);
 
   return Buffer.concat([...localFileHeaders, centralDirBuf, endOfCentralDir]);
 };
@@ -114,7 +114,7 @@ const decodeHtmlEntities = (str = '') =>
     .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)));
 
 /**
- * Loại bỏ chuỗi base64 hoặc thuộc tính thẻ <img> bị rò rỉ thành văn bản thuần
+ * Loại bỏ chuỗi base64 hoặc các mảnh thẻ HTML bị rò rỉ trong văn bản thuần
  */
 const stripLeakedBase64Text = (text = '') => {
   if (!text) return '';
@@ -122,26 +122,81 @@ const stripLeakedBase64Text = (text = '') => {
     .replace(/<?\s*img\b[^>]*?src\s*=\s*(?:"data:image\/[^"]*"|'data:image\/[^']*'|&quot;data:image\/[^&]*&quot;)[^>]*?(?:\/?>|\/?&gt;)?/gi, '')
     .replace(/\bimg\s+(?:alt\s*=\s*(?:"[^"]*"|'[^']*'|&quot;[^&]*&quot;)\s*)?src\s*=\s*(?:"data:image\/[\s\S]*?"|'data:image\/[\s\S]*?'|&quot;data:image\/[\s\S]*?&quot;)\s*(?:\/?>|\/?&gt;)?/gi, '')
     .replace(/\bsrc\s*=\s*(?:"data:image\/[\s\S]*?"|'data:image\/[\s\S]*?'|&quot;data:image\/[\s\S]*?&quot;)\s*(?:\/?>|\/?&gt;)?/gi, '')
-    .replace(/data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=\s]+/gi, '');
+    .replace(/data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=\s]+/gi, '')
+    .replace(/a\s+id\s*=\s*(?:"[^"]*"|'[^']*'|&quot;[^&]*&quot;)\s*(?:>|&gt;)\s*(?:\/a(?:>|&gt;))?/gi, '')
+    .replace(/a\s+href\s*=\s*(?:"[^"]*"|'[^']*'|&quot;[^&]*&quot;)\s*(?:>|&gt;)/gi, '')
+    .replace(/\/a(?:>|&gt;)/gi, '')
+    .replace(/(^|\s|•)\/?(?:ol|ul|li)(?:>|&gt;)/gi, '$1');
 };
 
 /**
- * Khôi phục các đoạn thẻ <img ...> bị mất dấu '<' (do lỗi parse cũ) về lại thẻ <img> hợp lệ,
- * đồng thời dọn sạch các mảnh thẻ HTML bị rò rỉ thành chữ.
+ * Làm sạch và khôi phục các đoạn HTML từ Mammoth hoặc từ tệp cũ từng bị vỡ thẻ:
+ * - Gỡ bỏ ảnh Windows Metafile (data:image/x-emf, wmf) không hiển thị được trên trình duyệt
+ * - Khôi phục thẻ <img src="data:image/png..."> bị mất '<'
+ * - Gỡ bỏ hoàn toàn mảnh vỡ thẻ <a id="_Toc...">/a>, <a href="#_Toc...">.../a>, ol>, li>
+ * - Định dạng các dòng Mục lục (TOC) có ký tự tab (\t) trước số trang thành cấu trúc mục lục chuẩn
  */
 const repairLeakedHtmlContent = (html = '') => {
   if (!html) return '';
-  return String(html)
-    // Khôi phục img alt="..." src="data:image/..." /> (bị mất '<' ở đầu) thành thẻ <img ... />
+  let cleaned = String(html)
+    // 1. Gỡ bỏ các thẻ <img> chứa ảnh Windows Metafile (x-emf, emf, x-wmf, wmf) vì trình duyệt báo lỗi ảnh vỡ
     .replace(
-      /(^|>|\s)img\s+(?:alt\s*=\s*(?:"([^"]*)"|'([^']*)'|&quot;([^&]*)&quot;)\s+)?src\s*=\s*(?:"(data:image\/[^"]+)"|'(data:image\/[^']+)'|&quot;(data:image\/[^&]+)&quot;)\s*\/?(?:>|&gt;)?/gi,
+      /<img\b[^>]*?\bsrc\s*=\s*(?:"data:image\/(?:x-)?(?:emf|wmf)[^"]*"|'data:image\/(?:x-)?(?:emf|wmf)[^']*')[^>]*?>/gi,
+      ''
+    )
+    .replace(
+      /(^|>|\s)img\s+(?:alt\s*=\s*(?:"[^"]*"|'[^']*'|&quot;[^&]*&quot;)\s+)?src\s*=\s*(?:"data:image\/(?:x-)?(?:emf|wmf)[^"]+"|'data:image\/(?:x-)?(?:emf|wmf)[^']+'|&quot;data:image\/(?:x-)?(?:emf|wmf)[^&]+&quot;)\s*\/?(?:>|&gt;)?/gi,
+      '$1'
+    )
+    // 2. Khôi phục img alt="..." src="data:image/(png|jpeg|jpg|gif|webp)..." bị mất dấu '<'
+    .replace(
+      /(^|>|\s)img\s+(?:alt\s*=\s*(?:"([^"]*)"|'([^']*)'|&quot;([^&]*)&quot;)\s+)?src\s*=\s*(?:"(data:image\/(?:png|jpe?g|gif|webp)[^"]+)"|'(data:image\/(?:png|jpe?g|gif|webp)[^']+)'|&quot;(data:image\/(?:png|jpe?g|gif|webp)[^&]+)&quot;)\s*\/?(?:>|&gt;)?/gi,
       (full, prefix, a1, a2, a3, s1, s2, s3) => {
         const alt = escapeXml(decodeHtmlEntities(a1 || a2 || a3 || ''));
         const src = (s1 || s2 || s3 || '').replace(/\s+/g, '');
         if (!src) return prefix;
         return `${prefix}<img alt="${alt}" src="${src}" />`;
       }
-    );
+    )
+    // 3. Xóa các thẻ neo bookmark rỗng <a id="_Toc..."></a> và mảnh vỡ a id="_Toc...">/a> (kể cả khi dính liền chữ phía trước như Node.jsa id="_Toc...")
+    .replace(/<a\b[^>]*?\bid\s*=\s*(?:"[^"]*"|'[^']*')[^>]*?>\s*<\/a>/gi, '')
+    .replace(
+      /<?a\s+id\s*=\s*(?:"[^"]*"|'[^']*'|&quot;[^&]*&quot;)\s*(?:>|&gt;)\s*(?:<\/a>|\/a(?:>|&gt;))?/gi,
+      ''
+    )
+    // 4. Mở bọc thẻ <a href="#_Toc...">Nội dung</a> hoặc mảnh vỡ a href="...">Nội dung/a>
+    .replace(/<a\b[^>]*?\bhref\s*=\s*(?:"#[_a-zA-Z0-9-]+"|'#[_a-zA-Z0-9-]+')[^>]*?>([\s\S]*?)<\/a>/gi, '$1')
+    .replace(/<?a\s+href\s*=\s*(?:"[^"]*"|'[^']*'|&quot;[^&]*&quot;)\s*(?:>|&gt;)/gi, '')
+    .replace(/<\/a>|\/a(?:>|&gt;)/gi, '')
+    // 5. Xóa các mảnh vỡ danh sách như "• ol>", "li>", "/ol>", "/li>"
+    .replace(/(^|>|\s|•)\s*\/?(?:ol|ul|li)(?:>|&gt;)/gi, '$1')
+    // 6. Chuyển các class căn lề của Mammoth sang inline style chuẩn cho trình soạn thảo
+    .replace(/<(p|h[1-6])\s+class="docx-align-(center|right|justify)"([^>]*)>/gi, '<$1 style="text-align: $2;"$3>');
+
+  // 7. Chuẩn hóa các dòng Mục lục (TOC) có ký tự tab (\t) ngăn cách tiêu đề và số trang ở cuối dòng
+  cleaned = cleaned.replace(
+    /<p([^>]*)>([\s\S]*?)<\/p>/gi,
+    (full, attrs, inner) => {
+      if (attrs.includes('docx-toc-item') || inner.includes('docx-toc-dots')) {
+        return full;
+      }
+      // Nếu trong đoạn không chứa thẻ block/ảnh và có dạng: "Tiêu đề mục lục \t Số trang (số hoặc số La Mã)"
+      if (!/<(img|table|div|ul|ol)\b/i.test(inner) && inner.includes('\t')) {
+        const plainInner = inner.replace(/<\/?(?:strong|b|em|i|u|span)[^>]*>/gi, '').trim();
+        const tocMatch = /^([^\t]+(?:\t[^\t]+)*?)\t+([0-9]+|[ivxlcdmIVXLCDM]+)$/.exec(plainInner);
+        if (tocMatch) {
+          const rawTitle = tocMatch[1].replace(/\t+/g, ' ').trim();
+          const pageNum = tocMatch[2].trim();
+          const isBold = /^<(strong|b)\b/i.test(inner.trim()) || /^(CHƯƠNG\s+\d+|MỞ\s+ĐẦU|KẾT\s+LUẬN|PHỤ\s+LỤC|TÀI\s+LIỆU|LỜI\s+CẢM\s+ƠN|DANH\s+MỤC)/i.test(rawTitle);
+          const labelHtml = isBold ? `<strong>${escapeXml(decodeHtmlEntities(rawTitle))}</strong>` : escapeXml(decodeHtmlEntities(rawTitle));
+          return `<p class="docx-toc-item"${attrs}><span class="docx-toc-label">${labelHtml}</span><span class="docx-toc-dots">\t</span><span class="docx-toc-page">${escapeXml(pageNum)}</span></p>`;
+        }
+      }
+      return full;
+    }
+  );
+
+  return cleaned;
 };
 
 /**
@@ -153,10 +208,12 @@ const htmlToPlainText = (html = '') => {
   const withBreaks = String(cleanedHtml)
     .replace(/<\s*br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|h1|h2|h3|h4|h5|h6|li|tr|blockquote)>/gi, '\n')
+    .replace(/<\/(td|th)>/gi, '\t')
     .replace(/<li[^>]*>/gi, '• ')
     .replace(/<[^>]+>/g, '');
   return stripLeakedBase64Text(decodeHtmlEntities(withBreaks))
     .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 };
@@ -179,7 +236,6 @@ const getImageDimensionsPx = (buf, ext) => {
     if (!Buffer.isBuffer(buf) || buf.length < 24) {
       return { width: 220, height: 140 };
     }
-    // PNG: IHDR chunk ở byte 16..23
     if (ext === 'png' && buf[0] === 0x89 && buf[1] === 0x50) {
       const width = buf.readUInt32BE(16);
       const height = buf.readUInt32BE(20);
@@ -187,7 +243,6 @@ const getImageDimensionsPx = (buf, ext) => {
         return { width, height };
       }
     }
-    // GIF: byte 6..9 (UInt16LE)
     if (ext === 'gif' && buf[0] === 0x47 && buf[1] === 0x49) {
       const width = buf.readUInt16LE(6);
       const height = buf.readUInt16LE(8);
@@ -195,7 +250,6 @@ const getImageDimensionsPx = (buf, ext) => {
         return { width, height };
       }
     }
-    // JPEG: quét SOF0 / SOF2 marker
     if ((ext === 'jpeg' || ext === 'jpg') && buf[0] === 0xff && buf[1] === 0xd8) {
       let i = 2;
       while (i + 9 < buf.length) {
@@ -248,7 +302,6 @@ const registerInlineImageFromAttrs = (attrs = '', mediaList = []) => {
   if (!imgBuf || imgBuf.length === 0) return null;
 
   const { width, height } = getImageDimensionsPx(imgBuf, ext);
-  // Giới hạn kích thước hiển thị tối đa trên trang A4 (maxWidth = 460px, maxHeight = 460px)
   const maxPx = 460;
   let finalW = width;
   let finalH = height;
@@ -263,7 +316,6 @@ const registerInlineImageFromAttrs = (attrs = '', mediaList = []) => {
     finalW = Math.max(24, Math.round(finalW * ratio));
   }
 
-  // 1 pixel = 9525 EMUs trong OpenXML
   const cx = Math.round(finalW * 9525);
   const cy = Math.round(finalH * 9525);
 
@@ -286,8 +338,7 @@ const registerInlineImageFromAttrs = (attrs = '', mediaList = []) => {
 };
 
 /**
- * Tách các đoạn inline run (đậm, nghiêng, gạch chân, ảnh, xuống dòng) trong 1 block HTML thành mảng runs cho OpenXML.
- * Bắt TẤT CẢ các thẻ HTML (<...>) để không bao giờ rò rỉ thuộc tính thẻ (như <img src="data:image/...">) thành chữ.
+ * Tách các đoạn inline run (đậm, nghiêng, gạch chân, tab, ảnh, xuống dòng) trong 1 đoạn HTML thành mảng runs cho OpenXML.
  */
 const parseInlineRuns = (innerHtml = '', mediaList = []) => {
   const runs = [];
@@ -296,6 +347,7 @@ const parseInlineRuns = (innerHtml = '', mediaList = []) => {
   let bold = false;
   let italic = false;
   let underline = false;
+  let inTocDots = false;
   let match;
 
   while ((match = tokenRegex.exec(repaired)) !== null) {
@@ -319,22 +371,35 @@ const parseInlineRuns = (innerHtml = '', mediaList = []) => {
         underline = true;
       } else if (lowerTag === '/u') {
         underline = false;
+      } else if (lowerTag === 'span' && tagAttrs.includes('docx-toc-dots')) {
+        inTocDots = true;
+        runs.push({ tab: true });
+      } else if (lowerTag === '/span' && inTocDots) {
+        inTocDots = false;
       } else if (lowerTag === 'img') {
         const imgEntry = registerInlineImageFromAttrs(tagAttrs, mediaList);
         if (imgEntry) {
           runs.push({ image: imgEntry });
         }
       }
-      // Mọi thẻ HTML khác (span, a, font, table, td, th...) đều được bỏ qua an toàn, không biến thành văn bản
-    } else if (textChunk) {
+    } else if (textChunk && !inTocDots) {
       const cleanedText = stripLeakedBase64Text(decodeHtmlEntities(textChunk));
       if (cleanedText.length > 0) {
-        runs.push({
-          text: cleanedText,
-          bold,
-          italic,
-          underline
-        });
+        // Nếu chuỗi có chứa ký tự \t, tách thành các run văn bản và run <w:tab/>
+        const parts = cleanedText.split('\t');
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i].length > 0) {
+            runs.push({
+              text: parts[i],
+              bold,
+              italic,
+              underline
+            });
+          }
+          if (i < parts.length - 1) {
+            runs.push({ tab: true });
+          }
+        }
       }
     }
   }
@@ -380,99 +445,356 @@ const buildDrawingXml = (img) => `
 </w:r>`.trim();
 
 /**
- * Chuyển đổi HTML hoặc văn bản sang cấu trúc các đoạn văn OpenXML (<w:p>)
+ * Dựng XML cho 1 đoạn văn (<w:p>)
+ */
+const buildParagraphXml = (tag, attrs = '', innerHtml = '', mediaList = [], options = {}) => {
+  const lowerTag = (tag || 'p').toLowerCase();
+  const runs = parseInlineRuns(innerHtml, mediaList);
+  const hasTab = runs.some((r) => r.tab) || attrs.includes('docx-toc-item');
+  const hasImage = runs.some((r) => r.image);
+
+  let align = options.defaultAlign || null;
+  if (/text-align\s*:\s*center/i.test(attrs) || /docx-align-center/i.test(attrs)) align = 'center';
+  else if (/text-align\s*:\s*right/i.test(attrs) || /docx-align-right/i.test(attrs)) align = 'right';
+  else if (/text-align\s*:\s*justify/i.test(attrs) || /docx-align-justify/i.test(attrs)) align = 'both';
+  else if (/text-align\s*:\s*left/i.test(attrs) || /docx-align-left/i.test(attrs)) align = 'left';
+  else if (hasImage && runs.filter((r) => r.text && r.text.trim()).length === 0) {
+    align = 'center';
+  }
+
+  const pPrParts = [];
+  if (lowerTag === 'h1') {
+    pPrParts.push('<w:pStyle w:val="Heading1"/>');
+  } else if (lowerTag === 'h2') {
+    pPrParts.push('<w:pStyle w:val="Heading2"/>');
+  } else if (lowerTag === 'h3' || lowerTag === 'h4' || lowerTag === 'h5' || lowerTag === 'h6') {
+    pPrParts.push('<w:pStyle w:val="Heading3"/>');
+  }
+  if (align) {
+    pPrParts.push(`<w:jc w:val="${align}"/>`);
+  }
+  if (hasTab) {
+    pPrParts.push('<w:tabs><w:tab w:val="right" w:leader="dot" w:pos="9026"/></w:tabs>');
+  }
+  const pPr = pPrParts.length > 0 ? `<w:pPr>${pPrParts.join('')}</w:pPr>` : '';
+
+  let prefixRun = '';
+  if (lowerTag === 'li') {
+    const bulletText = options.listPrefix || '• ';
+    prefixRun = `<w:r><w:t xml:space="preserve">${escapeXml(bulletText)}</w:t></w:r>`;
+  }
+
+  const isHeading = /^h[1-6]$/.test(lowerTag);
+  const forceBold = isHeading || Boolean(options.forceBold);
+
+  const wRuns = runs
+    .map((r) => {
+      if (r.break) {
+        return '<w:r><w:br/></w:r>';
+      }
+      if (r.tab) {
+        return '<w:r><w:tab/></w:r>';
+      }
+      if (r.image) {
+        return buildDrawingXml(r.image);
+      }
+      const rPrParts = [];
+      if (r.bold || forceBold) {
+        rPrParts.push('<w:b/>');
+      }
+      if (r.italic) {
+        rPrParts.push('<w:i/>');
+      }
+      if (r.underline) {
+        rPrParts.push('<w:u w:val="single"/>');
+      }
+      if (lowerTag === 'h1') {
+        rPrParts.push('<w:sz w:val="32"/><w:szCs w:val="32"/>');
+      } else if (lowerTag === 'h2') {
+        rPrParts.push('<w:sz w:val="28"/><w:szCs w:val="28"/>');
+      } else if (lowerTag === 'h3' || lowerTag === 'h4') {
+        rPrParts.push('<w:sz w:val="26"/><w:szCs w:val="26"/>');
+      }
+      const rPr = rPrParts.length > 0 ? `<w:rPr>${rPrParts.join('')}</w:rPr>` : '';
+      return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(r.text)}</w:t></w:r>`;
+    })
+    .join('');
+
+  return `<w:p>${pPr}${prefixRun}${wRuns}</w:p>`;
+};
+
+/**
+ * Tìm vị trí thẻ đóng cân bằng (dùng cho <table> lồng nhau hoặc <ul>/<ol> lồng nhau)
+ */
+const findBalancedClosingTag = (html, tagName, contentStartIdx) => {
+  const tagRe = new RegExp(`<(\\/?)${tagName}\\b[^>]*>`, 'gi');
+  tagRe.lastIndex = contentStartIdx;
+  let depth = 1;
+  let m;
+  while ((m = tagRe.exec(html)) !== null) {
+    if (m[1] === '/') {
+      depth--;
+      if (depth === 0) {
+        return {
+          innerEnd: m.index,
+          afterClose: tagRe.lastIndex
+        };
+      }
+    } else if (!m[0].endsWith('/>')) {
+      depth++;
+    }
+  }
+  return null;
+};
+
+/**
+ * Tách các phần tử con cấp 1 (<tr> trong <table>, hoặc <td>/<th> trong <tr>) mà không xâm phạm vào bảng con lồng bên trong
+ */
+const extractTopLevelTableParts = (html, partRegex) => {
+  const results = [];
+  const tokenRe = /<(\/?)table\b[^>]*>|<(tr|td|th)\b([^>]*)>/gi;
+  let tableDepth = 0;
+  let m;
+
+  while ((m = tokenRe.exec(html)) !== null) {
+    const fullMatch = m[0];
+    if (/^<\/?table\b/i.test(fullMatch)) {
+      if (m[1] === '/') {
+        tableDepth = Math.max(0, tableDepth - 1);
+      } else if (!fullMatch.endsWith('/>')) {
+        tableDepth++;
+      }
+      continue;
+    }
+
+    if (tableDepth === 0 && m[2]) {
+      const partTag = m[2].toLowerCase();
+      if (partRegex.test(partTag)) {
+        const attrs = m[3] || '';
+        const contentStart = tokenRe.lastIndex;
+        // Tìm thẻ đóng tương ứng ở cùng tableDepth === 0
+        const closeSearchRe = new RegExp(`<(\\/?)(table|${partTag})\\b[^>]*>`, 'gi');
+        closeSearchRe.lastIndex = contentStart;
+        let subTableDepth = 0;
+        let partDepth = 1;
+        let cm;
+        while ((cm = closeSearchRe.exec(html)) !== null) {
+          const isClosing = cm[1] === '/';
+          const cTag = cm[2].toLowerCase();
+          if (cTag === 'table') {
+            if (isClosing) subTableDepth = Math.max(0, subTableDepth - 1);
+            else if (!cm[0].endsWith('/>')) subTableDepth++;
+          } else if (subTableDepth === 0 && cTag === partTag) {
+            if (isClosing) {
+              partDepth--;
+              if (partDepth === 0) {
+                results.push({
+                  tag: partTag,
+                  attrs,
+                  inner: html.slice(contentStart, cm.index)
+                });
+                tokenRe.lastIndex = closeSearchRe.lastIndex;
+                break;
+              }
+            } else if (!cm[0].endsWith('/>')) {
+              partDepth++;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return results;
+};
+
+/**
+ * Dựng XML cho bảng OpenXML (<w:tbl>) hỗ trợ cả bảng lồng nhau (như khung trang bìa + bảng danh sách sinh viên)
+ */
+const buildTableXml = (tableInnerHtml, mediaList = []) => {
+  const rowItems = extractTopLevelTableParts(tableInnerHtml, /^tr$/i);
+  if (rowItems.length === 0) return '';
+
+  const parsedRows = rowItems
+    .map((r) => extractTopLevelTableParts(r.inner, /^(td|th)$/i))
+    .filter((cells) => cells.length > 0);
+
+  if (parsedRows.length === 0) return '';
+
+  const maxCols = Math.max(
+    1,
+    ...parsedRows.map((cells) =>
+      cells.reduce((sum, c) => {
+        const cs = /colspan\s*=\s*["']?(\d+)/i.exec(c.attrs);
+        return sum + (cs ? Math.max(1, Number(cs[1])) : 1);
+      }, 0)
+    )
+  );
+
+  // Kiểm tra xem có phải khung bìa 1x1 hay bảng chữ ký không viền (1 dòng 2 cột mà ô đầu trống)
+  const isSingleFrame = parsedRows.length === 1 && maxCols === 1;
+  const isSignatureLayout =
+    parsedRows.length === 1 &&
+    maxCols === 2 &&
+    htmlToPlainText(parsedRows[0][0]?.inner || '').trim() === '';
+
+  let bordersXml = '';
+  if (isSignatureLayout) {
+    bordersXml = `
+      <w:tblBorders>
+        <w:top w:val="none" w:sz="0" w:space="0" w:color="auto"/>
+        <w:left w:val="none" w:sz="0" w:space="0" w:color="auto"/>
+        <w:bottom w:val="none" w:sz="0" w:space="0" w:color="auto"/>
+        <w:right w:val="none" w:sz="0" w:space="0" w:color="auto"/>
+        <w:insideH w:val="none" w:sz="0" w:space="0" w:color="auto"/>
+        <w:insideV w:val="none" w:sz="0" w:space="0" w:color="auto"/>
+      </w:tblBorders>`;
+  } else if (isSingleFrame) {
+    bordersXml = `
+      <w:tblBorders>
+        <w:top w:val="double" w:sz="12" w:space="0" w:color="1E293B"/>
+        <w:left w:val="double" w:sz="12" w:space="0" w:color="1E293B"/>
+        <w:bottom w:val="double" w:sz="12" w:space="0" w:color="1E293B"/>
+        <w:right w:val="double" w:sz="12" w:space="0" w:color="1E293B"/>
+      </w:tblBorders>`;
+  } else {
+    bordersXml = `
+      <w:tblBorders>
+        <w:top w:val="single" w:sz="6" w:space="0" w:color="475569"/>
+        <w:left w:val="single" w:sz="6" w:space="0" w:color="475569"/>
+        <w:bottom w:val="single" w:sz="6" w:space="0" w:color="475569"/>
+        <w:right w:val="single" w:sz="6" w:space="0" w:color="475569"/>
+        <w:insideH w:val="single" w:sz="4" w:space="0" w:color="94A3B8"/>
+        <w:insideV w:val="single" w:sz="4" w:space="0" w:color="94A3B8"/>
+      </w:tblBorders>`;
+  }
+
+  const colWidthDxa = Math.floor(9026 / maxCols);
+  const tblGridXml = `<w:tblGrid>${Array.from({ length: maxCols }, () => `<w:gridCol w:w="${colWidthDxa}"/>`).join('')}</w:tblGrid>`;
+
+  const wRows = parsedRows
+    .map((cells, rowIdx) => {
+      const isHeaderRow = rowIdx === 0 && parsedRows.length > 1 && !isSingleFrame;
+      const wCells = cells
+        .map((cell) => {
+          const csMatch = /colspan\s*=\s*["']?(\d+)/i.exec(cell.attrs);
+          const span = csMatch ? Math.max(1, Number(csMatch[1])) : 1;
+          const pctW = Math.floor((5000 * span) / maxCols);
+          const gridSpanXml = span > 1 ? `<w:gridSpan w:val="${span}"/>` : '';
+          const shdXml =
+            isHeaderRow || cell.tag === 'th'
+              ? '<w:shd w:val="clear" w:color="auto" w:fill="F1F5F9"/>'
+              : '';
+
+          // Xây dựng các block bên trong ô
+          const cellBlocks = parseHtmlBlocksToWordXml(cell.inner, mediaList, {
+            inTableCell: true,
+            defaultAlign: isSingleFrame || isSignatureLayout ? 'center' : null,
+            forceBold: cell.tag === 'th'
+          });
+
+          let cellContentXml = cellBlocks.join('');
+          // Quy chuẩn OpenXML: mỗi <w:tc> bắt buộc phải kết thúc bằng <w:p>
+          if (!cellContentXml || !cellContentXml.trim().endsWith('</w:p>')) {
+            cellContentXml += '<w:p/>';
+          }
+
+          return `<w:tc><w:tcPr><w:tcW w:w="${pctW}" w:type="pct"/>${gridSpanXml}${shdXml}</w:tcPr>${cellContentXml}</w:tc>`;
+        })
+        .join('');
+
+      return `<w:tr>${wCells}</w:tr>`;
+    })
+    .join('');
+
+  return `<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/>${bordersXml}<w:tblCellMar><w:top w:w="100" w:type="dxa"/><w:left w:w="140" w:type="dxa"/><w:bottom w:w="100" w:type="dxa"/><w:right w:w="140" w:type="dxa"/></w:tblCellMar></w:tblPr>${tblGridXml}${wRows}</w:tbl>`;
+};
+
+/**
+ * Phân tích chuỗi HTML thành danh sách các phần tử OpenXML (<w:p> và <w:tbl>) theo đúng thứ tự xuất hiện
+ */
+const parseHtmlBlocksToWordXml = (htmlContent = '', mediaList = [], options = {}) => {
+  const blocks = [];
+  const normalized = repairLeakedHtmlContent(String(htmlContent || '').trim());
+  if (!normalized) return blocks;
+
+  const topRe = /<(table|ul|ol|h1|h2|h3|h4|h5|h6|p|div|li|blockquote)\b([^>]*)>/gi;
+  let cursor = 0;
+  let m;
+
+  const flushLooseInline = (slice) => {
+    const trimmed = slice.trim();
+    if (!trimmed) return;
+    const textCheck = htmlToPlainText(trimmed);
+    const hasImg = /<img\b/i.test(trimmed);
+    if (textCheck || hasImg) {
+      blocks.push(buildParagraphXml('p', '', trimmed, mediaList, options));
+    }
+  };
+
+  while ((m = topRe.exec(normalized)) !== null) {
+    if (m.index > cursor) {
+      flushLooseInline(normalized.slice(cursor, m.index));
+    }
+
+    const tag = m[1].toLowerCase();
+    const attrs = m[2] || '';
+    const contentStart = topRe.lastIndex;
+
+    const balanced = findBalancedClosingTag(normalized, tag, contentStart);
+    if (!balanced) {
+      // Nếu thẻ không có thẻ đóng cân bằng, xử lý phần còn lại như inline
+      flushLooseInline(normalized.slice(m.index));
+      cursor = normalized.length;
+      break;
+    }
+
+    const inner = normalized.slice(contentStart, balanced.innerEnd);
+    cursor = balanced.afterClose;
+    topRe.lastIndex = cursor;
+
+    if (tag === 'table') {
+      const tblXml = buildTableXml(inner, mediaList);
+      if (tblXml) {
+        blocks.push(tblXml);
+      }
+    } else if (tag === 'ul' || tag === 'ol') {
+      const liRe = /<li\b([^>]*)>([\s\S]*?)<\/li>/gi;
+      let liMatch;
+      let idx = 1;
+      while ((liMatch = liRe.exec(inner)) !== null) {
+        const listPrefix = tag === 'ol' ? `${idx}. ` : '• ';
+        idx++;
+        blocks.push(
+          buildParagraphXml('li', liMatch[1] || '', liMatch[2] || '', mediaList, {
+            ...options,
+            listPrefix
+          })
+        );
+      }
+    } else {
+      blocks.push(buildParagraphXml(tag, attrs, inner, mediaList, options));
+    }
+  }
+
+  if (cursor < normalized.length) {
+    flushLooseInline(normalized.slice(cursor));
+  }
+
+  return blocks;
+};
+
+/**
+ * Chuyển đổi HTML hoặc văn bản sang cấu trúc tài liệu OpenXML (<w:document>)
  */
 const buildDocumentXmlFromHtml = (htmlContent = '', mediaList = []) => {
   const raw = repairLeakedHtmlContent(String(htmlContent || '').trim());
   const normalized = raw.startsWith('<') ? raw : plainTextToHtml(raw);
 
-  // Tách thành từng block theo thẻ đóng hoặc dòng
-  const blockRegex = /<(h1|h2|h3|h4|p|div|li|blockquote)([^>]*)>([\s\S]*?)<\/\1>/gi;
-  const paragraphs = [];
-  let match;
-
-  while ((match = blockRegex.exec(normalized)) !== null) {
-    const tag = match[1].toLowerCase();
-    const attrs = match[2] || '';
-    const inner = match[3] || '';
-
-    let align = null;
-    if (/text-align\s*:\s*center/i.test(attrs)) align = 'center';
-    else if (/text-align\s*:\s*right/i.test(attrs)) align = 'right';
-    else if (/text-align\s*:\s*justify/i.test(attrs)) align = 'both';
-
-    paragraphs.push({
-      tag,
-      align,
-      runs: parseInlineRuns(inner, mediaList)
-    });
+  const wBlocks = parseHtmlBlocksToWordXml(normalized, mediaList);
+  if (wBlocks.length === 0) {
+    wBlocks.push('<w:p/>');
   }
-
-  // Fallback nếu người dùng nhập văn bản không bọc trong thẻ block
-  if (paragraphs.length === 0) {
-    const lines = htmlToPlainText(normalized).split('\n');
-    for (const line of lines) {
-      paragraphs.push({
-        tag: 'p',
-        align: null,
-        runs: line ? [{ text: line, bold: false, italic: false, underline: false }] : []
-      });
-    }
-  }
-
-  const wParagraphs = paragraphs
-    .map((p) => {
-      const pPrParts = [];
-      if (p.tag === 'h1') {
-        pPrParts.push('<w:pStyle w:val="Heading1"/>');
-      } else if (p.tag === 'h2') {
-        pPrParts.push('<w:pStyle w:val="Heading2"/>');
-      } else if (p.tag === 'h3' || p.tag === 'h4') {
-        pPrParts.push('<w:pStyle w:val="Heading3"/>');
-      }
-      if (p.align) {
-        pPrParts.push(`<w:jc w:val="${p.align}"/>`);
-      }
-      const pPr = pPrParts.length > 0 ? `<w:pPr>${pPrParts.join('')}</w:pPr>` : '';
-
-      const prefixRun =
-        p.tag === 'li'
-          ? '<w:r><w:t xml:space="preserve">• </w:t></w:r>'
-          : '';
-
-      const wRuns = p.runs
-        .map((r) => {
-          if (r.break) {
-            return '<w:r><w:br/></w:r>';
-          }
-          if (r.image) {
-            return buildDrawingXml(r.image);
-          }
-          const rPrParts = [];
-          if (r.bold || p.tag === 'h1' || p.tag === 'h2' || p.tag === 'h3' || p.tag === 'h4') {
-            rPrParts.push('<w:b/>');
-          }
-          if (r.italic) {
-            rPrParts.push('<w:i/>');
-          }
-          if (r.underline) {
-            rPrParts.push('<w:u w:val="single"/>');
-          }
-          if (p.tag === 'h1') {
-            rPrParts.push('<w:sz w:val="36"/><w:szCs w:val="36"/>');
-          } else if (p.tag === 'h2') {
-            rPrParts.push('<w:sz w:val="28"/><w:szCs w:val="28"/>');
-          } else if (p.tag === 'h3' || p.tag === 'h4') {
-            rPrParts.push('<w:sz w:val="24"/><w:szCs w:val="24"/>');
-          }
-          const rPr = rPrParts.length > 0 ? `<w:rPr>${rPrParts.join('')}</w:rPr>` : '';
-          return `<w:r>${rPr}<w:t xml:space="preserve">${escapeXml(r.text)}</w:t></w:r>`;
-        })
-        .join('');
-
-      return `<w:p>${pPr}${prefixRun}${wRuns}</w:p>`;
-    })
-    .join('');
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -481,7 +803,7 @@ const buildDocumentXmlFromHtml = (htmlContent = '', mediaList = []) => {
             xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
             xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
   <w:body>
-    ${wParagraphs}
+    ${wBlocks.join('')}
     <w:sectPr>
       <w:pgSz w:w="11906" w:h="16838"/>
       <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/>
@@ -491,7 +813,7 @@ const buildDocumentXmlFromHtml = (htmlContent = '', mediaList = []) => {
 };
 
 /**
- * Tạo Buffer tệp .docx hoàn chỉnh từ chuỗi HTML hoặc văn bản (hỗ trợ cả hình ảnh nhúng)
+ * Tạo Buffer tệp .docx hoàn chỉnh từ chuỗi HTML hoặc văn bản (hỗ trợ cả bảng biểu, căn lề, mục lục và hình ảnh)
  */
 const buildDocxBufferFromHtml = (htmlContent = '') => {
   const mediaList = [];
@@ -531,14 +853,14 @@ ${mediaRels ? `${mediaRels}\n` : ''}</Relationships>`;
   <w:docDefaults>
     <w:rPrDefault>
       <w:rPr>
-        <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>
-        <w:sz w:val="22"/>
-        <w:szCs w:val="22"/>
+        <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/>
+        <w:sz w:val="26"/>
+        <w:szCs w:val="26"/>
       </w:rPr>
     </w:rPrDefault>
     <w:pPrDefault>
       <w:pPr>
-        <w:spacing w:after="160" w:line="276" w:lineRule="auto"/>
+        <w:spacing w:after="120" w:line="312" w:lineRule="auto"/>
       </w:pPr>
     </w:pPrDefault>
   </w:docDefaults>
@@ -551,7 +873,7 @@ ${mediaRels ? `${mediaRels}\n` : ''}</Relationships>`;
     <w:basedOn w:val="Normal"/>
     <w:qFormat/>
     <w:pPr><w:spacing w:before="240" w:after="120"/></w:pPr>
-    <w:rPr><w:b/><w:sz w:val="36"/><w:szCs w:val="36"/></w:rPr>
+    <w:rPr><w:b/><w:sz w:val="32"/><w:szCs w:val="32"/></w:rPr>
   </w:style>
   <w:style w:type="paragraph" w:styleId="Heading2">
     <w:name w:val="heading 2"/>
@@ -565,7 +887,7 @@ ${mediaRels ? `${mediaRels}\n` : ''}</Relationships>`;
     <w:basedOn w:val="Normal"/>
     <w:qFormat/>
     <w:pPr><w:spacing w:before="160" w:after="80"/></w:pPr>
-    <w:rPr><w:b/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>
+    <w:rPr><w:b/><w:sz w:val="26"/><w:szCs w:val="26"/></w:rPr>
   </w:style>
 </w:styles>`;
 
@@ -585,13 +907,45 @@ ${mediaRels ? `${mediaRels}\n` : ''}</Relationships>`;
 };
 
 /**
- * Đọc Buffer .docx và trích xuất HTML định dạng + văn bản thuần cho trình soạn thảo
+ * Đọc Buffer .docx và trích xuất HTML định dạng (giữ nguyên căn lề, gạch chân, bảng biểu, mục lục) + văn bản thuần
  */
 const extractHtmlFromDocxBuffer = async (buffer, fallbackText = '') => {
   if (buffer && Buffer.isBuffer(buffer) && buffer.length > 0) {
     try {
       const [htmlResult, rawResult] = await Promise.all([
-        mammoth.convertToHtml({ buffer }),
+        mammoth.convertToHtml(
+          { buffer },
+          {
+            transformDocument: mammoth.transforms.paragraph((p) => {
+              const sName = String(p.styleName || '');
+              const sId = String(p.styleId || '');
+              const isH1 = /^heading\s*1$/i.test(sName) || /^heading1$/i.test(sId);
+              const isH2 = /^heading\s*2$/i.test(sName) || /^heading2$/i.test(sId);
+              const isH3 = /^heading\s*3$/i.test(sName) || /^heading3$/i.test(sId);
+
+              if (p.alignment === 'center') {
+                if (isH1) return { ...p, styleName: 'Heading1Center' };
+                if (isH2) return { ...p, styleName: 'Heading2Center' };
+                if (isH3) return { ...p, styleName: 'Heading3Center' };
+                if (!isH1 && !isH2 && !isH3) return { ...p, styleName: 'DocxAlignCenter' };
+              } else if (p.alignment === 'right') {
+                if (!isH1 && !isH2 && !isH3) return { ...p, styleName: 'DocxAlignRight' };
+              } else if (p.alignment === 'both') {
+                if (!isH1 && !isH2 && !isH3) return { ...p, styleName: 'DocxAlignJustify' };
+              }
+              return p;
+            }),
+            styleMap: [
+              "p[style-name='Heading1Center'] => h1.docx-align-center:fresh",
+              "p[style-name='Heading2Center'] => h2.docx-align-center:fresh",
+              "p[style-name='Heading3Center'] => h3.docx-align-center:fresh",
+              "p[style-name='DocxAlignCenter'] => p.docx-align-center:fresh",
+              "p[style-name='DocxAlignRight'] => p.docx-align-right:fresh",
+              "p[style-name='DocxAlignJustify'] => p.docx-align-justify:fresh",
+              'u => u'
+            ]
+          }
+        ),
         mammoth.extractRawText({ buffer })
       ]);
       const html = repairLeakedHtmlContent((htmlResult?.value || '').trim());
