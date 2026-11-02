@@ -24,9 +24,12 @@ const getAllUsers = async (query = {}) => {
     filter.role = query.role;
   }
 
-  // Lọc theo trạng thái active
-  if (query.isActive !== undefined) {
+  // Lọc theo trạng thái active / status
+  if (query.isActive !== undefined && query.isActive !== '') {
     filter.isActive = query.isActive === 'true' || query.isActive === true;
+  } else if (query.status) {
+    if (query.status === 'active') filter.isActive = true;
+    if (query.status === 'inactive' || query.status === 'blocked') filter.isActive = false;
   }
 
   const [users, total] = await Promise.all([

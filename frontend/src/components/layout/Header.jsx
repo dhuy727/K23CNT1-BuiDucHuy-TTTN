@@ -14,7 +14,8 @@ import {
   PanelLeft,
   Menu,
   Clock,
-  Sparkles
+  Sparkles,
+  Broom
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import searchService from '../../services/searchService';
@@ -270,6 +271,17 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => 
               >
                 <Clock size={15} />
                 <span>Lịch sử thao tác</span>
+              </button>
+
+              <button
+                className="dropdown-item"
+                onClick={() => {
+                  setShowUserMenu(false);
+                  navigate('/drive/cleanup');
+                }}
+              >
+                <Broom size={15} />
+                <span>Dọn dẹp & Trùng lặp</span>
               </button>
 
               {isAdmin && (

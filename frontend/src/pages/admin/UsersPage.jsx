@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Shield, Search, Edit2, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Shield, Search, Edit2, Trash2, CheckCircle, XCircle, Filter } from 'lucide-react';
 import userService from '../../services/userService';
 import Modal from '../../components/common/Modal';
 import Pagination from '../../components/common/Pagination';
+import EmptyState from '../../components/common/EmptyState';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -12,6 +13,7 @@ const UsersPage = () => {
   const [pagination, setPagination] = useState(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Edit Modal State
@@ -27,13 +29,14 @@ const UsersPage = () => {
   const toast = useToast();
   const { user: currentUser } = useAuth();
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
       const res = await userService.getUsers({
         page,
         limit: 10,
-        search: search.trim() || undefined
+        search: search.trim() || undefined,
+        isActive: statusFilter !== '' ? statusFilter : undefined
       });
       setUsers(res.data || []);
       setPagination(res.metadata || null);
@@ -43,11 +46,11 @@ const UsersPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, search, statusFilter, toast]);
 
   useEffect(() => {
     fetchUsers();
-  }, [page]);
+  }, [page, statusFilter]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -105,21 +108,42 @@ const UsersPage = () => {
           <span>Quản trị người dùng</span>
         </div>
 
-        <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '8px' }}>
-          <div className="search-input-wrapper" style={{ width: '280px', borderRadius: 'var(--radius-md)' }}>
-            <Search size={16} style={{ color: 'var(--text-muted)' }} />
-            <input
-              type="text"
-              placeholder="Tìm theo tên hoặc email..."
-              className="search-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Lọc theo trạng thái tài khoản */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Filter size={15} style={{ color: 'var(--text-muted)' }} />
+            <select
+              className="form-select"
+              style={{ width: '165px', padding: '6px 10px', fontSize: '0.825rem' }}
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
+              title="Lọc theo trạng thái tài khoản"
+            >
+              <option value="">Tất cả trạng thái</option>
+              <option value="true">Đang hoạt động</option>
+              <option value="false">Đã bị khóa</option>
+            </select>
           </div>
-          <button className="btn btn-secondary" type="submit">
-            Tìm
-          </button>
-        </form>
+
+          <form onSubmit={handleSearchSubmit} style={{ display: 'flex', gap: '8px' }}>
+            <div className="search-input-wrapper" style={{ width: '260px', borderRadius: 'var(--radius-md)' }}>
+              <Search size={16} style={{ color: 'var(--text-muted)' }} />
+              <input
+                type="text"
+                placeholder="Tìm theo tên hoặc email..."
+                className="search-input"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <button className="btn btn-secondary" type="submit">
+              Tìm
+            </button>
+          </form>
+        </div>
       </div>
 
       {loading ? (
@@ -127,6 +151,12 @@ const UsersPage = () => {
           <span className="spinner" style={{ width: 36, height: 36, margin: '0 auto' }} />
           <div style={{ marginTop: '16px' }}>Đang tải người dùng...</div>
         </div>
+      ) : users.length === 0 ? (
+        <EmptyState
+          icon={Shield}
+          title="Không tìm thấy người dùng"
+          description="Không có tài khoản nào phù hợp với bộ lọc trạng thái hoặc từ khóa tìm kiếm đã nhập."
+        />
       ) : (
         <>
           <div className="file-table-container">

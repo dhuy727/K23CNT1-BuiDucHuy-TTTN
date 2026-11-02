@@ -218,7 +218,6 @@ const ActivityLogPage = () => {
 
                     <div className="activity-right">
                       <span className="activity-time">{formatActivityTime(item.createdAt)}</span>
-                      {item.ip && <span className="activity-ip-tag">IP: {item.ip}</span>}
                     </div>
                   </div>
                 );

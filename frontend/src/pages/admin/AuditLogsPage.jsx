@@ -194,7 +194,7 @@ const AuditLogsPage = () => {
               <Search size={15} style={{ color: 'var(--text-muted)' }} />
               <input
                 type="text"
-                placeholder="Tìm tên tệp, IP, người dùng..."
+                placeholder="Tìm tên tệp, người dùng..."
                 className="search-input"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -226,9 +226,8 @@ const AuditLogsPage = () => {
                   <tr>
                     <th style={{ width: '18%' }}>Thời gian</th>
                     <th style={{ width: '22%' }}>Người thực hiện</th>
-                    <th style={{ width: '15%' }}>Hành động</th>
-                    <th style={{ width: '30%' }}>Chi tiết thao tác</th>
-                    <th style={{ width: '15%', textAlign: 'right' }}>Địa chỉ IP</th>
+                    <th style={{ width: '18%' }}>Hành động</th>
+                    <th style={{ width: '42%' }}>Chi tiết thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -275,9 +274,6 @@ const AuditLogsPage = () => {
                               <span>{log.targetName}</span>
                             </div>
                           )}
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <span className="activity-ip-tag">{log.ip || '-'}</span>
                         </td>
                       </tr>
                     );

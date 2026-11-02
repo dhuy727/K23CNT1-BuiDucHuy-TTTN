@@ -825,7 +825,11 @@ const MyDrivePage = () => {
     );
   };
 
-  const isEmpty = folders.length === 0 && files.length === 0;
+  const isInsideFolder = Boolean(folderId && folderId !== 'root');
+  const displayedFolders = isInsideFolder ? folders : [];
+  const isEmpty = isInsideFolder
+    ? (folders.length === 0 && files.length === 0)
+    : (files.length === 0);
 
   return (
     <>
@@ -959,8 +963,8 @@ const MyDrivePage = () => {
           />
         )}
 
-        {/* Dải Truy cập nhanh (Quick Access Folders Strip: Đã ghim & Gần đây) */}
-        {(pinnedFolders.length > 0 || recentFolders.length > 0) && (
+        {/* Dải Truy cập nhanh (Quick Access Folders Strip: Đã ghim & Gần đây) - Chỉ hiện ở thư mục gốc */}
+        {!isInsideFolder && (pinnedFolders.length > 0 || recentFolders.length > 0) && (
           <div className="drive-quick-folders-section">
             <div className="drive-quick-header">
               <div className="drive-quick-tabs">
@@ -1037,12 +1041,16 @@ const MyDrivePage = () => {
         ) : isEmpty ? (
           <EmptyState
             icon={FolderOpen}
-            title="Thư mục trống"
-            description="Chưa có tệp tin hoặc thư mục nào ở vị trí này. Bạn có thể kéo thả tệp từ máy tính vào đây hoặc nhấn nút Tạo mới để bắt đầu."
+            title={isInsideFolder ? "Thư mục trống" : "Chưa có tệp tin nào"}
+            description={
+              isInsideFolder
+                ? "Chưa có tệp tin hoặc thư mục con nào ở vị trí này. Bạn có thể kéo thả tệp từ máy tính vào đây hoặc nhấn nút Tạo mới để bắt đầu."
+                : "Chưa có tệp tin nào ở thư mục gốc. Bạn có thể kéo thả tệp từ máy tính vào đây hoặc nhấn nút Tạo mới để bắt đầu, hoặc mở các thư mục ở trên để xem tài liệu."
+            }
           />
         ) : viewMode === 'grid' ? (
           <FileGrid
-            folders={folders}
+            folders={displayedFolders}
             files={files}
             selectedItem={selectedItem}
             onSelectItem={setSelectedItem}
@@ -1063,7 +1071,7 @@ const MyDrivePage = () => {
           />
         ) : (
           <FileTable
-            folders={folders}
+            folders={displayedFolders}
             files={files}
             selectedItem={selectedItem}
             onSelectItem={setSelectedItem}

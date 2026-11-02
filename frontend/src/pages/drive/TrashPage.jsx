@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, AlertTriangle, LayoutGrid, List } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Trash2, AlertTriangle, LayoutGrid, List, Broom } from 'lucide-react';
 import FileGrid from '../../components/drive/FileGrid';
 import FileTable from '../../components/drive/FileTable';
 import ContextualActionBar from '../../components/drive/ContextualActionBar';
@@ -24,6 +25,7 @@ const TrashPage = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
 
+  const navigate = useNavigate();
   const toast = useToast();
 
   const fetchTrash = async () => {
@@ -130,6 +132,23 @@ const TrashPage = () => {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{
+                padding: '5px 12px',
+                fontSize: '0.8rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              onClick={() => navigate('/drive/cleanup')}
+              title="Mở trang Dọn dẹp dung lượng & tệp trùng lặp"
+            >
+              <Broom size={14} style={{ color: 'var(--primary-600)' }} />
+              <span>Dọn dẹp & Trùng lặp</span>
+            </button>
+
             {(files.length > 0 || folders.length > 0) && (
               <button
                 className="btn btn-danger"
@@ -203,6 +222,22 @@ const TrashPage = () => {
             icon={Trash2}
             title="Thùng rác trống"
             description="Không có tệp tin hoặc thư mục nào nằm trong thùng rác."
+            action={
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '0.85rem'
+                }}
+                onClick={() => navigate('/drive/cleanup')}
+              >
+                <Broom size={15} style={{ color: 'var(--primary-600)' }} />
+                <span>Dọn dẹp & Trùng lặp</span>
+              </button>
+            }
           />
         ) : viewMode === 'grid' ? (
           <FileGrid

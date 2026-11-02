@@ -71,6 +71,7 @@ const AppRoutes = () => {
         <Route path="settings/profile" element={<ProfilePage />} />
         <Route path="settings/change-password" element={<ChangePasswordPage />} />
         <Route path="settings/activities" element={<ActivityLogPage />} />
+        <Route path="settings/cleanup" element={<CleanupPage />} />
 
         {/* Admin only route */}
         <Route

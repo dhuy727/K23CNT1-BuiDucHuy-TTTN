@@ -462,15 +462,6 @@ const Sidebar = ({
         </NavLink>
 
         <NavLink
-          to="/drive/cleanup"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title="Dọn dẹp & Trùng lặp"
-        >
-          <Broom size={17} />
-          <span>Dọn dẹp & Trùng lặp</span>
-        </NavLink>
-
-        <NavLink
           to="/starred"
           className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           title="Có gắn dấu sao"
