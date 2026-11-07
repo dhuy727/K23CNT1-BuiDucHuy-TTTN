@@ -146,38 +146,53 @@
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s ease;
+  max-width: 220px;
 }
 
 .scope-pill-btn:hover {
   border-color: var(--primary-400);
   color: var(--primary-600);
+  background: var(--bg-surface-hover);
+}
+
+.scope-pill-text {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Scope Dropdown Menu */
 .scope-dropdown {
   position: absolute;
-  top: 96px;
-  left: 20px;
+  top: calc(100% + 6px);
+  left: 0;
   background: var(--bg-surface);
   border: 1px solid var(--border-main);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  padding: 6px;
-  z-index: 20;
-  min-width: 240px;
-  animation: copilotFadeIn 0.15s ease;
+  border-radius: var(--radius-xl);
+  box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.22), 0 8px 16px -4px rgba(0, 0, 0, 0.12);
+  padding: 8px;
+  z-index: 50;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  max-height: 440px;
+  display: flex;
+  flex-direction: column;
+  animation: copilotFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(16px);
 }
 
 .scope-option-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 10px;
+  padding: 7px 10px;
   border-radius: var(--radius-md);
-  font-size: 13px;
+  font-size: 12.5px;
   color: var(--text-primary);
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: all 0.15s ease;
+  user-select: none;
 }
 
 .scope-option-item:hover {
@@ -186,8 +201,137 @@
 
 .scope-option-item.selected {
   background: var(--primary-50);
-  color: var(--primary-600);
+  color: var(--primary-700);
   font-weight: 600;
+}
+
+[data-theme='dark'] .scope-option-item.selected {
+  background: rgba(99, 102, 241, 0.18);
+  color: #a5b4fc;
+}
+
+.scope-option-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.scope-icon-all {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--primary-600);
+}
+
+.scope-icon-folder {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--accent-amber);
+}
+
+.scope-icon-file {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent-blue);
+}
+
+.scope-option-title {
+  font-weight: 600;
+  font-size: 12.5px;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+.scope-option-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.25;
+}
+
+.scope-check-icon {
+  color: var(--primary-600);
+  flex-shrink: 0;
+}
+
+[data-theme='dark'] .scope-check-icon {
+  color: #818cf8;
+}
+
+.scope-divider {
+  height: 1px;
+  background: var(--border-subtle);
+  margin: 6px 4px;
+}
+
+.scope-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.scope-count-badge {
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--bg-surface-hover);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+.scope-search-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  margin: 4px;
+  border-radius: var(--radius-md);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.15s ease;
+}
+
+.scope-search-wrapper:focus-within {
+  border-color: var(--primary-500);
+  background: var(--bg-surface);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.scope-search-input {
+  border: none;
+  background: transparent;
+  width: 100%;
+  font-size: 12px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.scope-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.scope-folders-scroll {
+  overflow-y: auto;
+  max-height: 200px;
+  padding: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.scope-folders-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.scope-folders-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-main);
+  border-radius: 4px;
 }
 
 /* 5. Messages Body */
@@ -407,7 +551,7 @@
   margin: 8px 0;
 }
 .rag-markdown blockquote {
-  border-left: 3px solid var(--primary-400);
+  border-left: 2px solid var(--border-main);
   margin: 8px 0;
   padding-left: 12px;
   color: var(--text-secondary);

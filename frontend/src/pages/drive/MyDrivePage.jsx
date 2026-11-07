@@ -17,7 +17,10 @@ import {
   FolderInput,
   Trash2,
   Files,
-  Sparkles
+  Sparkles,
+  SlidersHorizontal,
+  X,
+  Check
 } from 'lucide-react';
 import Breadcrumb from '../../components/drive/Breadcrumb';
 import FileGrid from '../../components/drive/FileGrid';
@@ -382,6 +385,8 @@ const MyDrivePage = () => {
 
   // Modals state
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  const activeFilterCount = (filterType ? 1 : 0) + (filterCategory ? 1 : 0) + (sortBy !== 'createdAt' || sortOrder !== 'desc' ? 1 : 0);
   const [assignCategoryTarget, setAssignCategoryTarget] = useState(null);
   const [previewFile, setPreviewFile] = useState(null);
   const [renameTarget, setRenameTarget] = useState(null);
@@ -850,78 +855,97 @@ const MyDrivePage = () => {
             onExternalDrop={handleExternalDropToFolder}
           />
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Lọc loại tệp */}
-            <select
-              className="form-select"
-              style={{ width: '130px', padding: '5px 8px', fontSize: '0.8rem' }}
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-            >
-              <option value="">Tất cả loại tệp</option>
-              <option value="image">Hình ảnh</option>
-              <option value="document">Tài liệu</option>
-              <option value="video">Video</option>
-              <option value="audio">Âm thanh</option>
-              <option value="archive">Tệp nén (ZIP)</option>
-            </select>
+          <div className="drive-toolbar-actions">
+            {/* Desktop Filters (>= 768px) */}
+            <div className="desktop-toolbar-filters">
+              {/* Lọc loại tệp */}
+              <select
+                className="form-select"
+                style={{ width: '130px', padding: '5px 8px', fontSize: '0.8rem' }}
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+              >
+                <option value="">Tất cả loại tệp</option>
+                <option value="image">Hình ảnh</option>
+                <option value="document">Tài liệu</option>
+                <option value="video">Video</option>
+                <option value="audio">Âm thanh</option>
+                <option value="archive">Tệp nén (ZIP)</option>
+              </select>
 
-            {/* Lọc theo danh mục */}
-            <select
-              className="form-select"
-              style={{ width: '145px', padding: '5px 8px', fontSize: '0.8rem' }}
-              value={filterCategory}
-              onChange={(e) => setFilterCategory(e.target.value)}
-            >
-              <option value="">Tất cả danh mục</option>
-              {categoriesList.map((cat) => (
-                <option key={cat._id} value={cat.name}>
-                  {cat.name} {cat.fileCount !== undefined ? `(${cat.fileCount})` : ''}
-                </option>
-              ))}
-            </select>
+              {/* Lọc theo danh mục */}
+              <select
+                className="form-select"
+                style={{ width: '145px', padding: '5px 8px', fontSize: '0.8rem' }}
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+              >
+                <option value="">Tất cả danh mục</option>
+                {categoriesList.map((cat) => (
+                  <option key={cat._id} value={cat.name}>
+                    {cat.name} {cat.fileCount !== undefined ? `(${cat.fileCount})` : ''}
+                  </option>
+                ))}
+              </select>
 
-            {/* Quản lý danh mục */}
-            <button
-              type="button"
-              className="btn btn-outline-secondary"
-              style={{
-                padding: '5px 10px',
-                fontSize: '0.8rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                borderRadius: 'var(--border-radius-sm, 6px)',
-                border: '1px solid var(--border-color)',
-                background: 'var(--surface-color)',
-                color: 'var(--text-main)',
-                cursor: 'pointer'
-              }}
-              onClick={() => setIsCategoryModalOpen(true)}
-              title="Quản lý danh mục tài liệu"
-            >
-              <Tags size={15} style={{ color: 'var(--primary-color)' }} />
-              <span>Danh mục</span>
-            </button>
+              {/* Quản lý danh mục */}
+              <button
+                type="button"
+                className="btn btn-outline-secondary"
+                style={{
+                  padding: '5px 10px',
+                  fontSize: '0.8rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  borderRadius: 'var(--border-radius-sm, 6px)',
+                  border: '1px solid var(--border-color)',
+                  background: 'var(--surface-color)',
+                  color: 'var(--text-main)',
+                  cursor: 'pointer'
+                }}
+                onClick={() => setIsCategoryModalOpen(true)}
+                title="Quản lý danh mục tài liệu"
+              >
+                <Tags size={15} style={{ color: 'var(--primary-color)' }} />
+                <span>Danh mục</span>
+              </button>
 
-            {/* Sắp xếp */}
-            <select
-              className="form-select"
-              style={{ width: '130px', padding: '5px 8px', fontSize: '0.8rem' }}
-              value={`${sortBy}-${sortOrder}`}
-              onChange={(e) => {
-                const [sb, so] = e.target.value.split('-');
-                setSortBy(sb);
-                setSortOrder(so);
-              }}
-            >
-              <option value="createdAt-desc">Mới nhất</option>
-              <option value="createdAt-asc">Cũ nhất</option>
-              <option value="name-asc">Tên (A-Z)</option>
-              <option value="name-desc">Tên (Z-A)</option>
-              <option value="size-desc">Dung lượng lớn</option>
-              <option value="size-asc">Dung lượng nhỏ</option>
-            </select>
+              {/* Sắp xếp */}
+              <select
+                className="form-select"
+                style={{ width: '130px', padding: '5px 8px', fontSize: '0.8rem' }}
+                value={`${sortBy}-${sortOrder}`}
+                onChange={(e) => {
+                  const [sb, so] = e.target.value.split('-');
+                  setSortBy(sb);
+                  setSortOrder(so);
+                }}
+              >
+                <option value="createdAt-desc">Mới nhất</option>
+                <option value="createdAt-asc">Cũ nhất</option>
+                <option value="name-asc">Tên (A-Z)</option>
+                <option value="name-desc">Tên (Z-A)</option>
+                <option value="size-desc">Dung lượng lớn</option>
+                <option value="size-asc">Dung lượng nhỏ</option>
+              </select>
+            </div>
+
+            {/* Mobile Filter Trigger Button (< 768px) */}
+            <div className="mobile-toolbar-actions">
+              <button
+                type="button"
+                className={`btn-mobile-filter ${activeFilterCount > 0 ? 'has-active' : ''}`}
+                onClick={() => setIsFilterSheetOpen(true)}
+                aria-label="Mở bộ lọc và sắp xếp"
+              >
+                <SlidersHorizontal size={14} />
+                <span>Bộ lọc</span>
+                {activeFilterCount > 0 && (
+                  <span className="mobile-filter-badge">{activeFilterCount}</span>
+                )}
+              </button>
+            </div>
 
             {/* Chuyển đổi Grid / List View */}
             <div className="view-toggle-group">
@@ -929,6 +953,7 @@ const MyDrivePage = () => {
                 className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
                 onClick={() => handleToggleView('grid')}
                 title="Chế độ Lưới"
+                aria-label="Chế độ Lưới"
               >
                 <LayoutGrid size={16} />
               </button>
@@ -936,6 +961,7 @@ const MyDrivePage = () => {
                 className={`view-toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
                 onClick={() => handleToggleView('table')}
                 title="Chế độ Danh sách"
+                aria-label="Chế độ Danh sách"
               >
                 <List size={16} />
               </button>
@@ -1200,6 +1226,136 @@ const MyDrivePage = () => {
         isDanger={true}
         loading={deleting}
       />
+
+      {/* Mobile Filter & Sort Bottom Sheet */}
+      {isFilterSheetOpen && createPortal(
+        <div className="mobile-bottom-sheet-overlay" onClick={() => setIsFilterSheetOpen(false)}>
+          <div className="mobile-bottom-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="sheet-handle-bar" />
+            <div className="sheet-header">
+              <div className="sheet-title-group">
+                <SlidersHorizontal size={18} className="sheet-icon" />
+                <h3 className="sheet-title">Bộ lọc & Sắp xếp</h3>
+              </div>
+              <button
+                type="button"
+                className="btn-icon sheet-close-btn"
+                onClick={() => setIsFilterSheetOpen(false)}
+                aria-label="Đóng bộ lọc"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="sheet-content">
+              {/* Section 1: Sắp xếp */}
+              <div className="sheet-section">
+                <label className="sheet-section-label">Sắp xếp theo</label>
+                <div className="sheet-chips-grid">
+                  {[
+                    { id: 'createdAt-desc', label: 'Mới nhất' },
+                    { id: 'createdAt-asc', label: 'Cũ nhất' },
+                    { id: 'name-asc', label: 'Tên (A-Z)' },
+                    { id: 'name-desc', label: 'Tên (Z-A)' },
+                    { id: 'size-desc', label: 'Dung lượng lớn' },
+                    { id: 'size-asc', label: 'Dung lượng nhỏ' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`sheet-chip ${`${sortBy}-${sortOrder}` === opt.id ? 'active' : ''}`}
+                      onClick={() => {
+                        const [sb, so] = opt.id.split('-');
+                        setSortBy(sb);
+                        setSortOrder(so);
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Section 2: Loại tệp */}
+              <div className="sheet-section">
+                <label className="sheet-section-label">Loại tệp tin</label>
+                <div className="sheet-chips-grid">
+                  {[
+                    { id: '', label: 'Tất cả loại tệp' },
+                    { id: 'image', label: 'Hình ảnh' },
+                    { id: 'document', label: 'Tài liệu' },
+                    { id: 'video', label: 'Video' },
+                    { id: 'audio', label: 'Âm thanh' },
+                    { id: 'archive', label: 'Tệp nén (ZIP)' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`sheet-chip ${filterType === opt.id ? 'active' : ''}`}
+                      onClick={() => setFilterType(opt.id)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Section 3: Danh mục */}
+              <div className="sheet-section">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label className="sheet-section-label" style={{ marginBottom: 0 }}>Danh mục tài liệu</label>
+                  <button
+                    type="button"
+                    className="sheet-manage-cat-btn"
+                    onClick={() => {
+                      setIsFilterSheetOpen(false);
+                      setIsCategoryModalOpen(true);
+                    }}
+                  >
+                    <Tags size={13} />
+                    <span>Quản lý danh mục</span>
+                  </button>
+                </div>
+                <select
+                  className="sheet-select"
+                  value={filterCategory}
+                  onChange={(e) => setFilterCategory(e.target.value)}
+                >
+                  <option value="">Tất cả danh mục</option>
+                  {categoriesList.map((cat) => (
+                    <option key={cat._id} value={cat.name}>
+                      {cat.name} {cat.fileCount !== undefined ? `(${cat.fileCount})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="sheet-footer">
+              <button
+                type="button"
+                className="btn-sheet-reset"
+                onClick={() => {
+                  setFilterType('');
+                  setFilterCategory('');
+                  setSortBy('createdAt');
+                  setSortOrder('desc');
+                }}
+              >
+                Đặt lại
+              </button>
+              <button
+                type="button"
+                className="btn-sheet-apply"
+                onClick={() => setIsFilterSheetOpen(false)}
+              >
+                Áp dụng ({files.length} tệp)
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </>
   );
 };

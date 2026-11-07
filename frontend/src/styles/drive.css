@@ -1876,3 +1876,376 @@ tr.folder-row.drop-target-active {
   transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
     opacity 150ms cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+/* ══════════════════════════════════════════════════════════════
+   MOBILE DASHBOARD RESTYLING (Ảnh 3 - Viewport < 768px)
+   ══════════════════════════════════════════════════════════════ */
+
+/* Default (Desktop and Tablet >= 768px): Hide mobile dashboard components */
+.mobile-only {
+  display: none !important;
+}
+
+.mobile-copilot-banner,
+.mobile-folders-grid,
+.mobile-doc-list,
+.mobile-section {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  /* Hide desktop-only sections on mobile */
+  .desktop-only {
+    display: none !important;
+  }
+
+  .mobile-only {
+    display: block !important;
+  }
+
+  .mobile-section {
+    display: block !important;
+    margin-bottom: 18px;
+    width: 100%;
+  }
+
+  .home-page {
+    gap: 16px;
+    overflow-x: hidden;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* 1. Banner Copilot RAG (Ảnh 3) */
+  .mobile-copilot-banner {
+    display: block !important;
+    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #3b82f6 100%);
+    border-radius: 20px;
+    padding: 18px 18px 16px 18px;
+    color: #ffffff;
+    box-shadow: 0 8px 20px -4px rgba(37, 99, 235, 0.35);
+    margin-bottom: 4px;
+    box-sizing: border-box;
+    width: 100%;
+  }
+
+  [data-theme='dark'] .mobile-copilot-banner {
+    background: linear-gradient(135deg, #1e40af 0%, #2563eb 55%, #3b82f6 100%);
+    box-shadow: 0 8px 24px -4px rgba(37, 99, 235, 0.45);
+  }
+
+  .mobile-copilot-banner-content {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .mobile-copilot-badge {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: rgba(255, 255, 255, 0.88);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .mobile-copilot-title {
+    font-size: 1.1875rem;
+    font-weight: 800;
+    color: #ffffff;
+    margin: 0 0 8px 0;
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+  }
+
+  .mobile-copilot-bottom-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .mobile-copilot-desc {
+    font-size: 0.8125rem;
+    color: rgba(255, 255, 255, 0.92);
+    margin: 0;
+    line-height: 1.35;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-copilot-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #ffffff;
+    color: #2563eb;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    height: 34px;
+    padding: 0 16px;
+    border-radius: 9999px;
+    border: none;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .mobile-copilot-btn:active {
+    transform: scale(0.96);
+  }
+
+  /* 2. Section Titles */
+  .mobile-section-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* 3. Recent Folders Grid (2 Columns) */
+  .mobile-folders-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .mobile-folder-grid-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  .mobile-folder-grid-card:active {
+    transform: scale(0.98);
+    background-color: var(--bg-surface-hover);
+  }
+
+  .mobile-folder-icon-wrap {
+    color: #64748b;
+    flex-shrink: 0;
+    margin-top: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mobile-folder-card-info {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .mobile-folder-name {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+    margin-bottom: 3px;
+  }
+
+  .mobile-folder-file-count {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 500;
+  }
+
+  .mobile-folder-status-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #16a34a;
+  }
+
+  [data-theme='dark'] .mobile-folder-status-badge {
+    color: #22c55e;
+  }
+
+  /* 4. Uploaded Documents Vertical List View */
+  .mobile-doc-list {
+    display: flex !important;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .mobile-doc-list-item {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    user-select: none;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .mobile-doc-list-item:active {
+    background-color: var(--bg-surface-hover);
+  }
+
+  /* File Type Badges */
+  .mobile-doc-badge {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+  }
+
+  .badge-file-pdf {
+    background-color: #fef2f2;
+    color: #ef4444;
+  }
+
+  [data-theme='dark'] .badge-file-pdf {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+  }
+
+  .badge-file-img {
+    background-color: #fffbeb;
+    color: #d97706;
+  }
+
+  [data-theme='dark'] .badge-file-img {
+    background-color: rgba(245, 158, 11, 0.15);
+    color: #fbbf24;
+  }
+
+  .badge-file-doc {
+    background-color: #eff6ff;
+    color: #2563eb;
+  }
+
+  [data-theme='dark'] .badge-file-doc {
+    background-color: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+  }
+
+  .badge-file-other {
+    background-color: #f1f5f9;
+    color: #64748b;
+  }
+
+  [data-theme='dark'] .badge-file-other {
+    background-color: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+  }
+
+  /* File Info */
+  .mobile-doc-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .mobile-doc-name {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.35;
+    margin-bottom: 3px;
+  }
+
+  .mobile-doc-meta {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-doc-dot {
+    opacity: 0.5;
+  }
+
+  .mobile-doc-tag {
+    font-weight: 700;
+  }
+
+  .tag-rag-ready {
+    color: #16a34a;
+  }
+
+  [data-theme='dark'] .tag-rag-ready {
+    color: #22c55e;
+  }
+
+  .tag-ocr-done {
+    color: #4f46e5;
+  }
+
+  [data-theme='dark'] .tag-ocr-done {
+    color: #818cf8;
+  }
+
+  .tag-ai-summary {
+    color: #7c3aed;
+  }
+
+  [data-theme='dark'] .tag-ai-summary {
+    color: #a78bfa;
+  }
+
+  /* 3-dots Menu Button */
+  .mobile-doc-action {
+    flex-shrink: 0;
+  }
+
+  .mobile-doc-menu-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .mobile-doc-menu-btn:active {
+    background-color: var(--bg-surface-hover);
+    color: var(--text-primary);
+  }
+}

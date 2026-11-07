@@ -348,7 +348,7 @@ const DocxViewer = ({
           className="docx-render-container"
           style={{
             transform: zoom !== 1 ? `scale(${zoom})` : 'none',
-            transformOrigin: 'top center',
+            transformOrigin: zoom > 1 ? 'top left' : 'top center',
             transition: 'transform 0.15s ease-out'
           }}
         />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, NavLink } from 'react-router-dom';
 import {
   Search,
   Sun,
@@ -11,11 +11,12 @@ import {
   File,
   Folder,
   PanelRight,
-  PanelLeft,
   Menu,
   Clock,
   Sparkles,
-  Broom
+  Broom,
+  ArrowLeft,
+  X
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import searchService from '../../services/searchService';
@@ -24,16 +25,18 @@ import NotificationDropdown from '../notifications/NotificationDropdown';
 const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => {
   const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [isMobileSearchActive, setIsMobileSearchActive] = useState(false);
 
   const searchInputRef = useRef(null);
+  const mobileSearchInputRef = useRef(null);
   const searchContainerRef = useRef(null);
+  const mobileSearchContainerRef = useRef(null);
   const userMenuRef = useRef(null);
 
   // Sync theme
@@ -66,6 +69,9 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => 
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target)) {
+        setShowSuggestions(false);
+      }
+      if (mobileSearchContainerRef.current && !mobileSearchContainerRef.current.contains(e.target)) {
         setShowSuggestions(false);
       }
       if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
@@ -117,42 +123,69 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => 
 
   return (
     <header className="app-header">
-      <div className="header-left">
-        {/* Mobile Hamburger Drawer Trigger */}
-        <button
-          type="button"
-          className="btn-icon mobile-menu-trigger"
-          onClick={onOpenMobileDrawer}
-          title="Mở menu điều hướng"
-          aria-label="Mở menu điều hướng"
-        >
-          <Menu size={20} />
-        </button>
+      {isMobileSearchActive ? (
+        <div className="mobile-search-bar-active" ref={mobileSearchContainerRef}>
+          <button
+            type="button"
+            className="mobile-search-back-btn"
+            onClick={() => {
+              setIsMobileSearchActive(false);
+              setShowSuggestions(false);
+            }}
+            aria-label="Đóng tìm kiếm"
+          >
+            <ArrowLeft size={18} />
+          </button>
 
-        {/* Studio Search Command Bar */}
-        <div className="search-container" ref={searchContainerRef}>
-          <form onSubmit={handleSearchSubmit}>
-            <div className="search-input-wrapper">
-              <Search size={16} style={{ color: 'var(--text-muted)' }} />
-              <input
-                ref={searchInputRef}
-                type="text"
-                placeholder="Tìm nhanh tệp tin, thư mục, thẻ phân loại AI..."
-                className="search-input"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => {
-                  if (suggestions.length > 0) setShowSuggestions(true);
+          <form
+            onSubmit={(e) => {
+              handleSearchSubmit(e);
+              setIsMobileSearchActive(false);
+            }}
+            className="mobile-search-form"
+          >
+            <input
+              ref={mobileSearchInputRef}
+              type="text"
+              placeholder="Tìm nhanh tệp tin, thư mục..."
+              className="mobile-search-input"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => {
+                if (suggestions.length > 0) setShowSuggestions(true);
+              }}
+              autoFocus
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="mobile-search-clear-btn"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSuggestions([]);
                 }}
-              />
-              <span className="search-kbd">Ctrl K</span>
-            </div>
+                aria-label="Xóa từ khóa"
+              >
+                <X size={15} />
+              </button>
+            )}
           </form>
 
-          {/* Autocomplete Suggestions */}
+          <button
+            type="button"
+            className="mobile-search-submit-btn"
+            onClick={(e) => {
+              handleSearchSubmit(e);
+              setIsMobileSearchActive(false);
+            }}
+          >
+            Tìm
+          </button>
+
+          {/* Autocomplete Suggestions Dropdown on Mobile */}
           {showSuggestions && suggestions.length > 0 && (
-            <div className="search-suggestions-dropdown">
-              <div style={{ padding: '4px 14px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div className="search-suggestions-dropdown mobile-search-suggestions">
+              <div style={{ padding: '6px 14px', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                 Gợi ý kết quả
               </div>
               {suggestions.map((item, idx) => {
@@ -162,7 +195,10 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => 
                   <div
                     key={idx}
                     className="suggestion-item"
-                    onClick={() => handleSelectSuggestion(item)}
+                    onClick={() => {
+                      handleSelectSuggestion(item);
+                      setIsMobileSearchActive(false);
+                    }}
                   >
                     {type === 'folder' ? (
                       <Folder size={15} style={{ color: 'var(--primary-600)' }} />
@@ -176,14 +212,106 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => 
             </div>
           )}
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="header-left">
+            {/* Mobile Header Brand Logo */}
+            <NavLink to="/home" className="mobile-header-brand" aria-label="DocuFlow">
+              DocuFlow
+            </NavLink>
 
-      {/* Header Actions */}
-      <div className="header-actions">
+            {/* Mobile Hamburger Drawer Trigger */}
+            <button
+              type="button"
+              className="btn-icon mobile-menu-trigger"
+              onClick={onOpenMobileDrawer}
+              title="Mở menu điều hướng"
+              aria-label="Mở menu điều hướng"
+            >
+              <Menu size={20} />
+            </button>
+
+            {/* Studio Search Command Bar */}
+            <div className="search-container desktop-search-bar" ref={searchContainerRef}>
+              <form onSubmit={handleSearchSubmit}>
+                <div className="search-input-wrapper">
+                  <Search size={16} style={{ color: 'var(--text-muted)' }} />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Tìm nhanh tệp tin, thư mục, thẻ phân loại AI..."
+                    className="search-input"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onFocus={() => {
+                      if (suggestions.length > 0) setShowSuggestions(true);
+                    }}
+                  />
+                  <span className="search-kbd">Ctrl K</span>
+                </div>
+              </form>
+
+              {/* Autocomplete Suggestions */}
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="search-suggestions-dropdown">
+                  <div style={{ padding: '4px 14px', fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Gợi ý kết quả
+                  </div>
+                  {suggestions.map((item, idx) => {
+                    const text = typeof item === 'string' ? item : item.name || item.text;
+                    const type = item.type || 'file';
+                    return (
+                      <div
+                        key={idx}
+                        className="suggestion-item"
+                        onClick={() => handleSelectSuggestion(item)}
+                      >
+                        {type === 'folder' ? (
+                          <Folder size={15} style={{ color: 'var(--primary-600)' }} />
+                        ) : (
+                          <File size={15} style={{ color: 'var(--text-muted)' }} />
+                        )}
+                        <span>{text}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Header Actions */}
+          <div className="header-actions">
+            {/* Mobile Sidebar Drawer Button */}
+            <button
+              type="button"
+              className="btn-icon mobile-sidebar-btn"
+              onClick={onOpenMobileDrawer}
+              title="Mở thanh bên menu"
+              aria-label="Mở thanh bên menu"
+            >
+              <Menu size={18} />
+            </button>
+
+            {/* Mobile Search Button */}
+            <button
+              type="button"
+              className="btn-icon mobile-search-btn"
+              onClick={() => {
+                setIsMobileSearchActive(true);
+                setTimeout(() => mobileSearchInputRef.current?.focus(), 80);
+                if (false) navigate('/search');
+              }}
+              title="Tìm kiếm"
+              aria-label="Tìm kiếm"
+            >
+              <Search size={18} />
+            </button>
+
         {/* Nút Trợ lý AI Copilot */}
         <button
           type="button"
-          className="header-copilot-btn"
+          className="header-copilot-btn desktop-only-action"
           onClick={() => window.dispatchEvent(new CustomEvent('open-rag-drawer'))}
           title="Mở Trợ lý AI DocuFlow (Ctrl + J)"
         >
@@ -193,11 +321,13 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => 
         </button>
 
         {/* Notification Dropdown Menu */}
-        <NotificationDropdown />
+        <div className="desktop-only-action">
+          <NotificationDropdown />
+        </div>
 
         {/* Toggle Inspector Panel */}
         <button
-          className="btn-icon"
+          className="btn-icon desktop-only-action"
           onClick={toggleInspector}
           title="Bật / tắt bảng chi tiết Inspector"
         >
@@ -206,7 +336,7 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => 
 
         {/* Theme Toggle */}
         <button
-          className="btn-icon"
+          className="btn-icon desktop-only-action"
           onClick={toggleTheme}
           title={theme === 'light' ? 'Chuyển sang chế độ tối' : 'Chuyển sang chế độ sáng'}
         >
@@ -223,7 +353,7 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => 
             <div className="avatar-circle">
               {(user?.name || user?.email || 'U')[0].toUpperCase()}
             </div>
-            <span style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+            <span className="user-name-text desktop-only-inline" style={{ fontSize: '0.825rem', fontWeight: 600, color: 'var(--text-primary)' }}>
               {user?.name || 'Tài khoản'}
             </span>
           </button>
@@ -307,7 +437,9 @@ const Header = ({ isSidebarCollapsed, onToggleSidebar, onOpenMobileDrawer }) => 
           )}
         </div>
       </div>
-    </header>
+    </>
+  )}
+</header>
   );
 };
 

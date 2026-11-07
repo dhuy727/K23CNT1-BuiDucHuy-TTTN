@@ -9,6 +9,8 @@ import fileService from '../../services/fileService';
 import { useToast } from '../../contexts/ToastContext';
 import AiCopilotDrawer from '../rag/AiCopilotDrawer';
 import FilePreviewModal from '../drive/FilePreviewModal';
+import BottomNavigation from './BottomNavigation';
+import MobileFAB from './MobileFAB';
 
 const MainLayout = () => {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -273,6 +275,17 @@ const MainLayout = () => {
           window.dispatchEvent(new Event('drive:refresh'));
         }}
       />
+
+      {/* Mobile Floating Action Button (+) */}
+      <MobileFAB
+        onOpenUpload={() => {
+          setUploadMode('file');
+          setIsUploadOpen(true);
+        }}
+      />
+
+      {/* Mobile Bottom Navigation Bar (4 tabs) */}
+      <BottomNavigation />
     </div>
   );
 };

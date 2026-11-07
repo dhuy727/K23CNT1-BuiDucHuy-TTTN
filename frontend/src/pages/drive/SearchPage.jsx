@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Filter, LayoutGrid, List, Sparkles } from 'lucide-react';
+import { Search, Filter, LayoutGrid, List, Sparkles, SlidersHorizontal, X } from 'lucide-react';
 import FileGrid from '../../components/drive/FileGrid';
 import FileTable from '../../components/drive/FileTable';
 import ContextualActionBar from '../../components/drive/ContextualActionBar';
@@ -35,6 +36,7 @@ const SearchPage = () => {
   // Filter states
   const [typeFilter, setTypeFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [metadata, setMetadata] = useState(null);
 
   // Modals
@@ -155,6 +157,44 @@ const SearchPage = () => {
   return (
     <>
       <main className={`page-body ${isInspectorOpen ? 'has-inspector' : ''}`}>
+        {/* Search Input Bar on Search Page */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSearch();
+          }}
+          className="search-page-bar-container"
+        >
+          <div className="search-input-wrapper">
+            <Search size={16} style={{ color: 'var(--text-muted)' }} />
+            <input
+              type="text"
+              placeholder="Nhập từ khóa tìm kiếm tài liệu..."
+              className="search-input"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+            {keyword && (
+              <button
+                type="button"
+                onClick={() => setKeyword('')}
+                className="btn-icon"
+                style={{ width: '28px', height: '28px', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}
+                aria-label="Xóa từ khóa"
+              >
+                <X size={14} />
+              </button>
+            )}
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{ padding: '6px 14px', fontSize: '0.8rem', borderRadius: 'var(--radius-md)', whiteSpace: 'nowrap' }}
+            >
+              Tìm
+            </button>
+          </div>
+        </form>
+
         {/* Search & Filter Header */}
         <div className="drive-action-bar">
           <div>
@@ -165,42 +205,61 @@ const SearchPage = () => {
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Lọc loại tệp */}
-            <select
-              className="form-select"
-              style={{ width: '130px', padding: '5px 8px', fontSize: '0.8rem' }}
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <option value="">Tất cả loại tệp</option>
-              <option value="image">Hình ảnh</option>
-              <option value="document">Tài liệu</option>
-              <option value="video">Video</option>
-              <option value="audio">Âm thanh</option>
-              <option value="archive">Tệp nén (ZIP)</option>
-            </select>
-
-            {/* Lọc danh mục AI */}
-            {Array.isArray(metadata?.categories) && metadata.categories.length > 0 && (
+          <div className="drive-toolbar-actions">
+            {/* Desktop Filters */}
+            <div className="desktop-toolbar-filters">
+              {/* Lọc loại tệp */}
               <select
                 className="form-select"
-                style={{ width: '150px', padding: '5px 8px', fontSize: '0.8rem' }}
-                value={categoryFilter}
-                onChange={(e) => setCategoryFilter(e.target.value)}
+                style={{ width: '130px', padding: '5px 8px', fontSize: '0.8rem' }}
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
               >
-                <option value="">Phân loại AI</option>
-                {metadata.categories.map((cat, i) => {
-                  const catName = typeof cat === 'object' ? cat.name : cat;
-                  const catCount = typeof cat === 'object' && cat.count !== undefined ? ` (${cat.count})` : '';
-                  return (
-                    <option key={i} value={catName}>
-                      {catName}{catCount}
-                    </option>
-                  );
-                })}
+                <option value="">Tất cả loại tệp</option>
+                <option value="image">Hình ảnh</option>
+                <option value="document">Tài liệu</option>
+                <option value="video">Video</option>
+                <option value="audio">Âm thanh</option>
+                <option value="archive">Tệp nén (ZIP)</option>
               </select>
-            )}
+
+              {/* Lọc danh mục AI */}
+              {Array.isArray(metadata?.categories) && metadata.categories.length > 0 && (
+                <select
+                  className="form-select"
+                  style={{ width: '150px', padding: '5px 8px', fontSize: '0.8rem' }}
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                >
+                  <option value="">Phân loại AI</option>
+                  {metadata.categories.map((cat, i) => {
+                    const catName = typeof cat === 'object' ? cat.name : cat;
+                    const catCount = typeof cat === 'object' && cat.count !== undefined ? ` (${cat.count})` : '';
+                    return (
+                      <option key={i} value={catName}>
+                        {catName}{catCount}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
+            </div>
+
+            {/* Mobile Filter Button */}
+            <div className="mobile-toolbar-actions">
+              <button
+                type="button"
+                className={`btn-mobile-filter ${(typeFilter || categoryFilter) ? 'has-active' : ''}`}
+                onClick={() => setIsFilterSheetOpen(true)}
+                aria-label="Mở bộ lọc tìm kiếm"
+              >
+                <SlidersHorizontal size={14} />
+                <span>Bộ lọc</span>
+                {(typeFilter || categoryFilter) && (
+                  <span className="mobile-filter-badge">{(typeFilter ? 1 : 0) + (categoryFilter ? 1 : 0)}</span>
+                )}
+              </button>
+            </div>
 
             {/* View Mode Toggle */}
             <div className="view-toggle-group">
@@ -354,6 +413,99 @@ const SearchPage = () => {
         confirmText="Chuyển vào thùng rác"
         isDanger={true}
       />
+
+      {/* Mobile Filter Bottom Sheet for SearchPage */}
+      {isFilterSheetOpen && createPortal(
+        <div className="mobile-bottom-sheet-overlay" onClick={() => setIsFilterSheetOpen(false)}>
+          <div className="mobile-bottom-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="sheet-handle-bar" />
+            <div className="sheet-header">
+              <div className="sheet-title-group">
+                <SlidersHorizontal size={18} className="sheet-icon" />
+                <h3 className="sheet-title">Bộ lọc kết quả</h3>
+              </div>
+              <button
+                type="button"
+                className="btn-icon sheet-close-btn"
+                onClick={() => setIsFilterSheetOpen(false)}
+                aria-label="Đóng bộ lọc"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="sheet-content">
+              {/* Section 1: Loại tệp */}
+              <div className="sheet-section">
+                <label className="sheet-section-label">Loại tệp tin</label>
+                <div className="sheet-chips-grid">
+                  {[
+                    { id: '', label: 'Tất cả loại tệp' },
+                    { id: 'image', label: 'Hình ảnh' },
+                    { id: 'document', label: 'Tài liệu' },
+                    { id: 'video', label: 'Video' },
+                    { id: 'audio', label: 'Âm thanh' },
+                    { id: 'archive', label: 'Tệp nén (ZIP)' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`sheet-chip ${typeFilter === opt.id ? 'active' : ''}`}
+                      onClick={() => setTypeFilter(opt.id)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Section 2: Danh mục AI */}
+              {Array.isArray(metadata?.categories) && metadata.categories.length > 0 && (
+                <div className="sheet-section">
+                  <label className="sheet-section-label">Phân loại AI</label>
+                  <select
+                    className="sheet-select"
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                  >
+                    <option value="">Tất cả phân loại AI</option>
+                    {metadata.categories.map((cat, i) => {
+                      const catName = typeof cat === 'object' ? cat.name : cat;
+                      const catCount = typeof cat === 'object' && cat.count !== undefined ? ` (${cat.count})` : '';
+                      return (
+                        <option key={i} value={catName}>
+                          {catName}{catCount}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="sheet-footer">
+              <button
+                type="button"
+                className="btn-sheet-reset"
+                onClick={() => {
+                  setTypeFilter('');
+                  setCategoryFilter('');
+                }}
+              >
+                Đặt lại
+              </button>
+              <button
+                type="button"
+                className="btn-sheet-apply"
+                onClick={() => setIsFilterSheetOpen(false)}
+              >
+                Áp dụng ({folders.length + files.length} kết quả)
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </>
   );
 };

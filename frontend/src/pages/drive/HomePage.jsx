@@ -19,7 +19,6 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingUp,
-  HardDrive,
   Clock,
   Files,
   Pin
@@ -365,6 +364,158 @@ const HomeSection = ({ icon, title, count, onViewAll, children }) => (
   </div>
 );
 
+/* ── Mobile Helpers & Component Contracts (Ảnh 3) ── */
+const getMobileFileBadge = (file) => {
+  if (!file) return { label: 'DOC', badgeClass: 'badge-file-doc', color: '#2563eb' };
+  const ext = (file.extension || '').toLowerCase();
+  const mime = (file.mimeType || '').toLowerCase();
+
+  if (ext === 'pdf' || mime.includes('pdf')) {
+    return { label: 'PDF', badgeClass: 'badge-file-pdf', color: '#ef4444' };
+  }
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(ext) || mime.startsWith('image/')) {
+    return { label: 'IMG', badgeClass: 'badge-file-img', color: '#d97706' };
+  }
+  if (['doc', 'docx', 'txt', 'rtf', 'odt'].includes(ext) || mime.includes('word') || mime.includes('text')) {
+    return { label: 'DOC', badgeClass: 'badge-file-doc', color: '#2563eb' };
+  }
+  return { label: ext ? ext.slice(0, 3).toUpperCase() : 'DOC', badgeClass: 'badge-file-other', color: '#64748b' };
+};
+
+const getMobileFeatureTag = (file) => {
+  if (!file) return { label: 'RAG Ready', tagClass: 'tag-rag-ready', color: '#16a34a' };
+  if (file.ragStatus === 'indexed') {
+    return { label: 'RAG Ready', tagClass: 'tag-rag-ready', color: '#16a34a' };
+  }
+  if (file.mimeType?.startsWith('image/') || ['png', 'jpg', 'jpeg'].includes((file.extension || '').toLowerCase())) {
+    return { label: 'OCR Xong', tagClass: 'tag-ocr-done', color: '#4f46e5' };
+  }
+  if (file.aiSummary) {
+    return { label: 'Tóm tắt AI', tagClass: 'tag-ai-summary', color: '#7c3aed' };
+  }
+  return { label: 'RAG Ready', tagClass: 'tag-rag-ready', color: '#16a34a' };
+};
+
+const formatFileSize = (bytes) => {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+};
+
+/* ── Mobile Uploaded Document Item (Vertical List Item - Ảnh 3) ── */
+const MobileDocListItem = ({
+  file,
+  onPreview,
+  onDownload,
+  onToggleStar,
+  onShare,
+  onRename,
+  onMove,
+  onVersions,
+  onDelete
+}) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuBtnRef = useRef(null);
+
+  const badge = getMobileFileBadge(file);
+  const tag = getMobileFeatureTag(file);
+  const formattedSize = file.formattedSize || formatFileSize(file.size);
+
+  const menuItems = [
+    {
+      icon: <Eye size={14} />,
+      label: 'Xem trước',
+      onClick: () => onPreview(file)
+    },
+    {
+      icon: <Download size={14} />,
+      label: 'Tải xuống',
+      onClick: () => onDownload(file)
+    },
+    {
+      icon: (
+        <Star
+          size={14}
+          style={{
+            color: file.isStarred ? '#f59e0b' : 'inherit',
+            fill: file.isStarred ? '#f59e0b' : 'none'
+          }}
+        />
+      ),
+      label: file.isStarred ? 'Bỏ yêu thích' : 'Yêu thích',
+      onClick: () => onToggleStar(file._id)
+    },
+    {
+      icon: <Share2 size={14} />,
+      label: 'Chia sẻ',
+      onClick: () => onShare(file)
+    },
+    {
+      icon: <Edit2 size={14} />,
+      label: 'Đổi tên',
+      onClick: () => onRename(file)
+    },
+    {
+      icon: <FolderInput size={14} />,
+      label: 'Di chuyển',
+      onClick: () => onMove(file)
+    },
+    {
+      icon: <History size={14} />,
+      label: 'Lịch sử phiên bản',
+      onClick: () => onVersions(file)
+    },
+    { divider: true },
+    {
+      icon: <Trash2 size={14} />,
+      label: 'Xóa tệp',
+      danger: true,
+      onClick: () => onDelete(file)
+    }
+  ];
+
+  return (
+    <div className="mobile-doc-list-item" onClick={() => onPreview(file)}>
+      <div className={`mobile-doc-badge ${badge.badgeClass}`}>
+        {badge.label}
+      </div>
+      <div className="mobile-doc-info">
+        <div className="mobile-doc-name" title={file.name}>
+          {file.name}
+        </div>
+        <div className="mobile-doc-meta">
+          <span>{formattedSize}</span>
+          <span className="mobile-doc-dot">•</span>
+          <span className={`mobile-doc-tag ${tag.tagClass}`}>{tag.label}</span>
+        </div>
+      </div>
+      <div className="mobile-doc-action" onClick={(e) => e.stopPropagation()}>
+        <button
+          ref={menuBtnRef}
+          type="button"
+          className="mobile-doc-menu-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsMenuOpen((prev) => !prev);
+          }}
+          aria-label="Thao tác tài liệu"
+        >
+          <MoreVertical size={16} />
+        </button>
+        {isMenuOpen && (
+          <MoreMenu
+            buttonRef={menuBtnRef}
+            items={menuItems}
+            onClose={() => setIsMenuOpen(false)}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
 const HomePage = () => {
   const navigate = useNavigate();
   const toast = useToast();
@@ -498,6 +649,16 @@ const HomePage = () => {
   const greeting =
     hour < 12 ? 'Chào buổi sáng' : hour < 18 ? 'Chào buổi chiều' : 'Chào buổi tối';
   const displayName = user?.name || user?.email || 'bạn';
+
+  const handleAskAi = () => {
+    window.dispatchEvent(
+      new CustomEvent('open-rag-drawer', {
+        detail: {
+          scope: { type: 'all', targetId: null, name: 'Toàn bộ Drive' }
+        }
+      })
+    );
+  };
 
   /* ── Điều khiển cuộn ngang thư mục gần đây ── */
   const handleScrollFolders = (direction) => {
@@ -783,8 +944,8 @@ const HomePage = () => {
             />
           )}
 
-          {/* Studio Workspace Header Hero */}
-          <div className="home-studio-hero">
+          {/* Studio Workspace Header Hero (Desktop only) */}
+          <div className="home-studio-hero desktop-only">
             <div>
               <h1 className="home-studio-greeting-title">
                 {greeting}, {displayName}
@@ -805,6 +966,20 @@ const HomePage = () => {
             </div>
           </div>
 
+          {/* Banner Copilot RAG (Mobile only - Ảnh 3) */}
+          <div className="mobile-copilot-banner mobile-only">
+            <div className="mobile-copilot-banner-content">
+              <span className="mobile-copilot-badge">TRỢ LÝ COPILOT RAG</span>
+              <h2 className="mobile-copilot-title">Tra cứu tài liệu tức thì</h2>
+              <div className="mobile-copilot-bottom-row">
+                <p className="mobile-copilot-desc">Hỏi đáp trực tiếp nội dung kho lưu trữ</p>
+                <button type="button" className="mobile-copilot-btn" onClick={handleAskAi}>
+                  <span>Hỏi AI ✨</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           {loading ? (
             <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
               <span className="spinner" style={{ width: 32, height: 32, margin: '0 auto' }} />
@@ -812,9 +987,92 @@ const HomePage = () => {
             </div>
           ) : (
             <>
-              {/* Thư mục gần đây (Thanh cuộn ngang) */}
+              {/* Thư mục gần đây (Mobile 2-Column Grid - Ảnh 3) */}
               {recentFolders.length > 0 && (
-                <div className="home-section">
+                <div className="mobile-section mobile-only">
+                  <div className="mobile-section-title">THƯ MỤC GẦN ĐÂY</div>
+                  <div className="mobile-folders-grid">
+                    {recentFolders.slice(0, 4).map((folder) => {
+                      const isOcrFolder = folder.name && (
+                        folder.name.toLowerCase().includes('ocr') ||
+                        folder.name.toLowerCase().includes('scan') ||
+                        folder.isDigitized
+                      );
+                      return (
+                        <div
+                          key={folder._id}
+                          className="mobile-folder-grid-card"
+                          onClick={() => navigate(`/drive/folder/${folder._id}`)}
+                        >
+                          <div className="mobile-folder-icon-wrap">
+                            <Folder size={22} className="mobile-folder-icon" />
+                          </div>
+                          <div className="mobile-folder-card-info">
+                            <div className="mobile-folder-name" title={folder.name}>
+                              {folder.name}
+                            </div>
+                            {isOcrFolder ? (
+                              <span className="mobile-folder-status-badge">Đã số hóa</span>
+                            ) : (
+                              <span className="mobile-folder-file-count">{folder.fileCount || 0} files</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Tài liệu mới tải lên (Mobile Vertical List - Ảnh 3) */}
+              {recentFiles.length > 0 && (
+                <div className="mobile-section mobile-only">
+                  <div className="mobile-section-title">TÀI LIỆU MỚI TẢI LÊN</div>
+                  <div className="mobile-doc-list">
+                    {recentFiles.map((file) => (
+                      <MobileDocListItem
+                        key={file._id}
+                        file={file}
+                        onPreview={(f) => setPreviewFile(f)}
+                        onDownload={handleDownloadFile}
+                        onToggleStar={handleToggleStar}
+                        onShare={(f) => setShareTarget({ type: 'file', item: f })}
+                        onRename={(f) => setRenameTarget({ type: 'file', item: f })}
+                        onMove={(f) => setMoveCopyTarget({ type: 'file', item: f, mode: 'move' })}
+                        onVersions={(f) => setVersionsTarget(f)}
+                        onDelete={(f) => setDeleteTarget({ type: 'file', item: f })}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Tài liệu yêu thích (Mobile Vertical List) */}
+              {starredFiles.length > 0 && (
+                <div className="mobile-section mobile-only">
+                  <div className="mobile-section-title">TÀI LIỆU YÊU THÍCH</div>
+                  <div className="mobile-doc-list">
+                    {starredFiles.map((file) => (
+                      <MobileDocListItem
+                        key={`starred-${file._id}`}
+                        file={file}
+                        onPreview={(f) => setPreviewFile(f)}
+                        onDownload={handleDownloadFile}
+                        onToggleStar={handleToggleStar}
+                        onShare={(f) => setShareTarget({ type: 'file', item: f })}
+                        onRename={(f) => setRenameTarget({ type: 'file', item: f })}
+                        onMove={(f) => setMoveCopyTarget({ type: 'file', item: f, mode: 'move' })}
+                        onVersions={(f) => setVersionsTarget(f)}
+                        onDelete={(f) => setDeleteTarget({ type: 'file', item: f })}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Desktop Thư mục gần đây (Thanh cuộn ngang) */}
+              {recentFolders.length > 0 && (
+                <div className="home-section desktop-only">
                   <div className="home-section-header">
                     <div className="home-section-title">
                       <FolderClock size={16} style={{ color: 'var(--primary-600)' }} />
@@ -852,32 +1110,36 @@ const HomePage = () => {
                 </div>
               )}
 
-              {/* Tệp tin gần đây */}
+              {/* Desktop Tệp tin gần đây */}
               {recentFiles.length > 0 && (
-                <HomeSection
-                  icon={<Upload size={15} style={{ color: 'var(--accent-blue)' }} />}
-                  title="Tài liệu gần đây"
-                  count={recentFiles.length}
-                  onViewAll={() => navigate('/drive')}
-                >
-                  <div className="file-grid">
-                    {recentFiles.map(renderFileCard)}
-                  </div>
-                </HomeSection>
+                <div className="desktop-only">
+                  <HomeSection
+                    icon={<Upload size={15} style={{ color: 'var(--accent-blue)' }} />}
+                    title="Tài liệu gần đây"
+                    count={recentFiles.length}
+                    onViewAll={() => navigate('/drive')}
+                  >
+                    <div className="file-grid">
+                      {recentFiles.map(renderFileCard)}
+                    </div>
+                  </HomeSection>
+                </div>
               )}
 
-              {/* Mục yêu thích */}
+              {/* Desktop Mục yêu thích */}
               {starredFiles.length > 0 && (
-                <HomeSection
-                  icon={<Star size={15} style={{ color: 'var(--accent-amber)', fill: 'var(--accent-amber)' }} />}
-                  title="Tài liệu yêu thích"
-                  count={starredFiles.length}
-                  onViewAll={() => navigate('/starred')}
-                >
-                  <div className="file-grid">
-                    {starredFiles.map(renderFileCard)}
-                  </div>
-                </HomeSection>
+                <div className="desktop-only">
+                  <HomeSection
+                    icon={<Star size={15} style={{ color: 'var(--accent-amber)', fill: 'var(--accent-amber)' }} />}
+                    title="Tài liệu yêu thích"
+                    count={starredFiles.length}
+                    onViewAll={() => navigate('/starred')}
+                  >
+                    <div className="file-grid">
+                      {starredFiles.map(renderFileCard)}
+                    </div>
+                  </HomeSection>
+                </div>
               )}
             </>
           )}

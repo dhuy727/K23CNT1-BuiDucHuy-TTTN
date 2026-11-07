@@ -339,27 +339,42 @@ const FilePreviewModal = ({
       <div className="modal-card modal-full" role="dialog" aria-modal="true">
         {/* Thanh công cụ Preview & Edit */}
         <div className="preview-toolbar">
-          <div className="preview-toolbar-title-wrap">
-            <FileIcon mimeType={currentFile.mimeType} extension={currentFile.extension} size={24} />
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div
-                style={{
-                  fontWeight: 700,
-                  fontSize: '0.9375rem',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis'
-                }}
-                title={currentFile.name}
-              >
-                {currentFile.name}
-              </div>
-              <div className="tabular-nums" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                {currentFile.formattedSize || `${currentFile.size} Bytes`}
+          {/* Hàng 1 trên Mobile (kết hợp tiêu đề tệp và nút đóng trực quan ở góc trên bên phải) */}
+          <div className="preview-toolbar-top-row">
+            <div className="preview-toolbar-title-wrap">
+              <FileIcon mimeType={currentFile.mimeType} extension={currentFile.extension} size={24} />
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div
+                  className="preview-file-title"
+                  style={{
+                    fontWeight: 700,
+                    fontSize: '0.9375rem',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}
+                  title={currentFile.name}
+                >
+                  {currentFile.name}
+                </div>
+                <div className="tabular-nums" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {currentFile.formattedSize || `${currentFile.size} Bytes`}
+                </div>
               </div>
             </div>
+
+            <button
+              type="button"
+              className="btn-icon preview-close-btn"
+              onClick={onClose}
+              aria-label="Đóng xem trước"
+              title="Đóng xem trước"
+            >
+              <X size={20} />
+            </button>
           </div>
 
+          {/* Hàng 2 trên Mobile: Mode switchers và các hành động phụ trợ */}
           <div className="preview-toolbar-actions">
             {/* Chuyển đổi giữa Xem trước và Chỉnh sửa thời gian thực (chỉ hiện cho .docx, .txt, .md, .excel) */}
             {canRealtimeEdit && (
@@ -454,10 +469,6 @@ const FilePreviewModal = ({
             >
               <Sparkles size={16} />
               <span>Trợ lý AI</span>
-            </button>
-
-            <button className="btn-icon" onClick={onClose} aria-label="Đóng xem trước">
-              <X size={20} />
             </button>
           </div>
         </div>

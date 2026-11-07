@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Sparkles,
   X,
@@ -16,9 +17,12 @@ import {
   RotateCcw,
   Info,
   ShieldCheck,
-  ShieldAlert
+  ShieldAlert,
+  Search,
+  FolderOpen
 } from 'lucide-react';
 import ragService from '../../services/ragService';
+import folderService from '../../services/folderService';
 import CitationPill from './CitationPill';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -154,7 +158,7 @@ const SimpleMarkdown = ({ text, citations = [] }) => {
     } else if (trimmed.startsWith('# ')) {
       elements.push(<h2 key={idx} style={{ fontSize: 16, fontWeight: 700, margin: '14px 0 8px', color: 'var(--text-primary)' }}>{formatInline(trimmed.slice(2))}</h2>);
     } else if (trimmed.startsWith('> ')) {
-      elements.push(<blockquote key={idx} style={{ borderLeft: '3px solid var(--primary-500)', paddingLeft: 12, margin: '8px 0', color: 'var(--text-secondary)', fontStyle: 'italic' }}>{formatInline(trimmed.slice(2))}</blockquote>);
+      elements.push(<blockquote key={idx} style={{ borderLeft: '2px solid var(--border-main)', paddingLeft: 12, margin: '8px 0', color: 'var(--text-secondary)', fontStyle: 'italic' }}>{formatInline(trimmed.slice(2))}</blockquote>);
     } else if (trimmed.length > 0) {
       elements.push(<p key={idx} style={{ margin: '0 0 8px', lineHeight: 1.55 }}>{formatInline(line)}</p>);
     }
@@ -184,6 +188,25 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
   const [copiedIdx, setCopiedIdx] = useState(null);
   const [rateLimitSeconds, setRateLimitSeconds] = useState(0);
 
+  // Danh sách thư mục của người dùng & tìm kiếm trong scope
+  const location = useLocation();
+  const folderMatch = location.pathname.match(/\/drive\/folder\/([a-zA-Z0-9_-]+)/);
+  const currentNavFolderId = folderMatch ? folderMatch[1] : null;
+
+  const [folderList, setFolderList] = useState([]);
+  const [loadingFolders, setLoadingFolders] = useState(false);
+  const [folderSearch, setFolderSearch] = useState('');
+  const scopeContainerRef = useRef(null);
+
+  // Thư mục tương ứng với vị trí trang hiện tại (nếu đang ở trang /drive/folder/:id)
+  const currentNavFolder = currentNavFolderId
+    ? folderList.find((f) => String(f._id) === String(currentNavFolderId)) || {
+        _id: currentNavFolderId,
+        name: 'Thư mục hiện tại',
+        color: null
+      }
+    : null;
+
   // Scope hiện tại: 'all' | 'folder' | 'file'
   const [scope, setScope] = useState({
     type: 'all',
@@ -205,12 +228,119 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
     return () => clearInterval(timer);
   }, [rateLimitSeconds]);
 
+  // Tải danh sách thư mục của người dùng
+  const loadFolders = async () => {
+    setLoadingFolders(true);
+    try {
+      const res = await folderService.getFolderTree();
+      const rawTree = Array.isArray(res?.data)
+        ? res.data
+        : (Array.isArray(res) ? res : []);
+
+      if (rawTree.length > 0) {
+        const flatten = (nodes, depth = 0, pathNames = []) => {
+          let list = [];
+          for (const node of nodes) {
+            const currentPath = [...pathNames, node.name];
+            list.push({
+              _id: node._id,
+              name: node.name,
+              color: node.color,
+              depth,
+              pathText: currentPath.join(' / ')
+            });
+            if (node.children && node.children.length > 0) {
+              list = list.concat(flatten(node.children, depth + 1, currentPath));
+            }
+          }
+          return list;
+        };
+        setFolderList(flatten(rawTree));
+      } else {
+        const flatRes = await folderService.getFolders({ limit: 1000 });
+        const rawList = Array.isArray(flatRes?.data)
+          ? flatRes.data
+          : (Array.isArray(flatRes) ? flatRes : (flatRes?.data?.folders || []));
+        setFolderList(
+          rawList.map((f) => ({
+            _id: f._id,
+            name: f.name,
+            color: f.color,
+            depth: 0,
+            pathText: f.name
+          }))
+        );
+      }
+    } catch (err) {
+      console.warn('Lỗi lấy cây thư mục trong Copilot:', err);
+      try {
+        const flatRes = await folderService.getFolders({ limit: 1000 });
+        const rawList = Array.isArray(flatRes?.data)
+          ? flatRes.data
+          : (Array.isArray(flatRes) ? flatRes : (flatRes?.data?.folders || []));
+        setFolderList(
+          rawList.map((f) => ({
+            _id: f._id,
+            name: f.name,
+            color: f.color,
+            depth: 0,
+            pathText: f.name
+          }))
+        );
+      } catch (fallbackErr) {
+        console.error('Không thể lấy danh sách thư mục:', fallbackErr);
+      }
+    } finally {
+      setLoadingFolders(false);
+    }
+  };
+
+  // Tải danh sách thư mục khi mở drawer
+  useEffect(() => {
+    if (isOpen) {
+      loadFolders();
+    }
+  }, [isOpen]);
+
+  // Click outside & Escape listener cho Scope Dropdown
+  useEffect(() => {
+    if (!showScopeDropdown) return;
+    const handleClickOutside = (e) => {
+      if (scopeContainerRef.current && !scopeContainerRef.current.contains(e.target)) {
+        setShowScopeDropdown(false);
+      }
+    };
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') {
+        setShowScopeDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [showScopeDropdown]);
+
   // Đồng bộ initialScope nếu được truyền vào
   useEffect(() => {
     if (initialScope) {
+      if (initialScope.type === 'folder' && initialScope.targetId && folderList.length > 0) {
+        const matched = folderList.find((f) => String(f._id) === String(initialScope.targetId));
+        if (matched) {
+          setScope({
+            type: 'folder',
+            targetId: matched._id,
+            name: matched.name,
+            color: matched.color
+          });
+          return;
+        }
+      }
       setScope(initialScope);
     }
-  }, [initialScope]);
+  }, [initialScope, folderList]);
 
   // Cuộn xuống cuối tin nhắn
   const scrollToBottom = () => {
@@ -266,6 +396,8 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
     setStreamDelta('');
     setStreamCitations([]);
     setShowThreadsPanel(false);
+    // Tự động đặt lại về Toàn bộ Drive
+    setScope({ type: 'all', targetId: null, name: 'Toàn bộ Drive' });
     if (textareaRef.current) textareaRef.current.focus();
   };
 
@@ -425,19 +557,247 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
 
         {/* Scope Selector Bar */}
         <div className="copilot-scope-bar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ color: 'var(--text-muted)' }}>Phạm vi:</span>
-            <button
-              type="button"
-              className="scope-pill-btn"
-              onClick={() => setShowScopeDropdown((prev) => !prev)}
-            >
-              {scope.type === 'all' && <Globe size={13} style={{ color: 'var(--primary-500)' }} />}
-              {scope.type === 'folder' && <Folder size={13} style={{ color: 'var(--accent-amber)' }} />}
-              {scope.type === 'file' && <FileText size={13} style={{ color: 'var(--accent-blue)' }} />}
-              <span>{scope.name}</span>
-              <ChevronDown size={12} />
-            </button>
+          <div className="scope-selector-container" ref={scopeContainerRef} style={{ position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ color: 'var(--text-muted)' }}>Phạm vi:</span>
+              <button
+                type="button"
+                className="scope-pill-btn"
+                onClick={() => {
+                  setShowScopeDropdown((prev) => !prev);
+                  if (!showScopeDropdown && folderList.length === 0) {
+                    loadFolders();
+                  }
+                }}
+                title={`Đang tìm kiếm trong: ${scope.name}. Bấm để đổi phạm vi`}
+              >
+                {scope.type === 'all' && <Globe size={13} style={{ color: 'var(--primary-500)' }} />}
+                {scope.type === 'folder' && (
+                  <Folder
+                    size={13}
+                    style={{
+                      color: scope.color || 'var(--accent-amber)',
+                      fill: scope.color ? `${scope.color}33` : undefined
+                    }}
+                  />
+                )}
+                {scope.type === 'file' && <FileText size={13} style={{ color: 'var(--accent-blue)' }} />}
+                <span className="scope-pill-text">{scope.name}</span>
+                <ChevronDown size={12} style={{ transition: 'transform 0.15s', transform: showScopeDropdown ? 'rotate(180deg)' : 'none' }} />
+              </button>
+            </div>
+
+            {/* Scope Dropdown Menu */}
+            {showScopeDropdown && (
+              <div className="scope-dropdown">
+                {/* 1. Toàn bộ Drive */}
+                <div
+                  className={`scope-option-item ${scope.type === 'all' ? 'selected' : ''}`}
+                  onClick={() => {
+                    setScope({ type: 'all', targetId: null, name: 'Toàn bộ Drive' });
+                    setShowScopeDropdown(false);
+                    setFolderSearch('');
+                  }}
+                >
+                  <div className="scope-option-icon scope-icon-all">
+                    <Globe size={15} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="scope-option-title">Toàn bộ Drive</div>
+                    <div className="scope-option-sub">Tìm trên tất cả tệp bạn có quyền xem</div>
+                  </div>
+                  {scope.type === 'all' && <Check size={14} className="scope-check-icon" />}
+                </div>
+
+                {/* 2. Thư mục hiện tại (khi đang duyệt trong 1 thư mục cụ thể) */}
+                {currentNavFolder && (
+                  <div
+                    className={`scope-option-item ${
+                      scope.type === 'folder' && String(scope.targetId) === String(currentNavFolder._id)
+                        ? 'selected'
+                        : ''
+                    }`}
+                    onClick={() => {
+                      setScope({
+                        type: 'folder',
+                        targetId: currentNavFolder._id,
+                        name: currentNavFolder.name,
+                        color: currentNavFolder.color
+                      });
+                      setShowScopeDropdown(false);
+                      setFolderSearch('');
+                    }}
+                  >
+                    <div
+                      className="scope-option-icon scope-icon-folder"
+                      style={{
+                        backgroundColor: currentNavFolder.color ? `${currentNavFolder.color}20` : undefined,
+                        color: currentNavFolder.color || undefined
+                      }}
+                    >
+                      <Folder size={15} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span className="scope-option-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {currentNavFolder.name}
+                        </span>
+                        <span className="badge badge-amber" style={{ fontSize: '9.5px', padding: '1px 5px' }}>
+                          Vị trí hiện tại
+                        </span>
+                      </div>
+                      <div className="scope-option-sub">Chỉ tìm trong thư mục này</div>
+                    </div>
+                    {scope.type === 'folder' && String(scope.targetId) === String(currentNavFolder._id) && (
+                      <Check size={14} className="scope-check-icon" />
+                    )}
+                  </div>
+                )}
+
+                {/* 3. Tệp tin đang mở (nếu scope đang gắn với file) */}
+                {scope.type === 'file' && (
+                  <div className="scope-option-item selected">
+                    <div className="scope-option-icon scope-icon-file">
+                      <FileText size={15} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="scope-option-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {scope.name}
+                      </div>
+                      <div className="scope-option-sub">Chỉ hỏi đáp trên tệp tin này</div>
+                    </div>
+                    <Check size={14} className="scope-check-icon" />
+                  </div>
+                )}
+
+                <div className="scope-divider" />
+
+                {/* 4. Bộ lọc & Danh sách thư mục của bạn */}
+                <div className="scope-section-header">
+                  <span>Thư mục của bạn</span>
+                  <span className="scope-count-badge">
+                    {folderList.filter((f) => {
+                      if (!folderSearch.trim()) return true;
+                      const q = folderSearch.trim().toLowerCase();
+                      return f.name.toLowerCase().includes(q) || (f.pathText && f.pathText.toLowerCase().includes(q));
+                    }).length}
+                  </span>
+                </div>
+
+                {/* Ô tìm kiếm nhanh thư mục */}
+                <div className="scope-search-wrapper" onClick={(e) => e.stopPropagation()}>
+                  <Search size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                  <input
+                    type="text"
+                    className="scope-search-input"
+                    placeholder="Tìm nhanh thư mục..."
+                    value={folderSearch}
+                    onChange={(e) => setFolderSearch(e.target.value)}
+                  />
+                  {folderSearch && (
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      style={{ width: 18, height: 18, padding: 0 }}
+                      onClick={() => setFolderSearch('')}
+                    >
+                      <X size={11} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Danh sách cuộn các thư mục */}
+                <div className="scope-folders-scroll">
+                  {loadingFolders ? (
+                    <div style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)', fontSize: 12 }}>
+                      <span className="spinner" style={{ width: 16, height: 16, margin: '0 auto 6px auto' }} />
+                      <div>Đang tải thư mục...</div>
+                    </div>
+                  ) : (() => {
+                    const filtered = folderList.filter((f) => {
+                      if (!folderSearch.trim()) return true;
+                      const q = folderSearch.trim().toLowerCase();
+                      return f.name.toLowerCase().includes(q) || (f.pathText && f.pathText.toLowerCase().includes(q));
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)', fontSize: 12 }}>
+                          {folderSearch ? 'Không tìm thấy thư mục nào phù hợp' : 'Chưa có thư mục nào'}
+                        </div>
+                      );
+                    }
+
+                    return filtered.map((f) => {
+                      const isSelected = scope.type === 'folder' && String(scope.targetId) === String(f._id);
+                      const isCurrentNav = Boolean(currentNavFolder && String(currentNavFolder._id) === String(f._id));
+
+                      return (
+                        <div
+                          key={f._id}
+                          className={`scope-option-item scope-folder-item ${isSelected ? 'selected' : ''}`}
+                          onClick={() => {
+                            setScope({
+                              type: 'folder',
+                              targetId: f._id,
+                              name: f.name,
+                              color: f.color
+                            });
+                            setShowScopeDropdown(false);
+                            setFolderSearch('');
+                          }}
+                          title={f.pathText || f.name}
+                          style={{ paddingLeft: `${8 + (f.depth || 0) * 12}px` }}
+                        >
+                          <div
+                            className="scope-option-icon scope-icon-folder"
+                            style={{
+                              backgroundColor: f.color ? `${f.color}20` : undefined,
+                              color: f.color || undefined
+                            }}
+                          >
+                            <Folder size={14} />
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span
+                                className="scope-option-title"
+                                style={{
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                {f.name}
+                              </span>
+                              {isCurrentNav && (
+                                <span className="badge badge-slate" style={{ fontSize: '9px', padding: '0 4px' }}>
+                                  Đang xem
+                                </span>
+                              )}
+                            </div>
+                            {f.depth > 0 && f.pathText && (
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  color: 'var(--text-muted)',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap'
+                                }}
+                              >
+                                {f.pathText}
+                              </div>
+                            )}
+                          </div>
+                          {isSelected && <Check size={14} className="scope-check-icon" />}
+                        </div>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -467,43 +827,6 @@ const AiCopilotDrawer = ({ isOpen, onClose, initialScope }) => {
             )}
           </div>
         </div>
-
-        {/* Scope Dropdown Menu */}
-        {showScopeDropdown && (
-          <div className="scope-dropdown">
-            <div
-              className={`scope-option-item ${scope.type === 'all' ? 'selected' : ''}`}
-              onClick={() => {
-                setScope({ type: 'all', targetId: null, name: 'Toàn bộ Drive' });
-                setShowScopeDropdown(false);
-              }}
-            >
-              <Globe size={15} style={{ color: 'var(--primary-500)' }} />
-              <div>
-                <div style={{ fontWeight: 600 }}>Toàn bộ Drive</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Tìm trên tất cả tệp bạn có quyền xem</div>
-              </div>
-            </div>
-            {scope.type === 'folder' && (
-              <div className="scope-option-item selected">
-                <Folder size={15} style={{ color: 'var(--accent-amber)' }} />
-                <div>
-                  <div style={{ fontWeight: 600 }}>{scope.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Chỉ tìm trong thư mục này</div>
-                </div>
-              </div>
-            )}
-            {scope.type === 'file' && (
-              <div className="scope-option-item selected">
-                <FileText size={15} style={{ color: 'var(--accent-blue)' }} />
-                <div>
-                  <div style={{ fontWeight: 600 }}>{scope.name}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Chỉ hỏi đáp trên tệp tin này</div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Threads History Sub-panel */}
         {showThreadsPanel && (
