@@ -3,7 +3,7 @@ const crypto = require('crypto');
 
 /**
  * Tính toán mã băm SHA-256 của tệp tin trên ổ đĩa bằng phương pháp stream (luồng dữ liệu).
- * Đảm bảo an toàn bộ nhớ (RAM-safe) cho các tệp dung lượng lớn (lên tới 500MB hoặc hơn).
+ * Đảm bảo an toàn bộ nhớ (RAM-safe) cho các tệp dung lượng lớn .
  * 
  * @param {string} filePath - Đường dẫn tuyệt đối hoặc tương đối tới tệp tin
  * @returns {Promise<string>} Mã băm SHA-256 dạng hex string

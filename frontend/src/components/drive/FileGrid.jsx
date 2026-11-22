@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   Folder,
+  FolderOpen,
   Star,
   Download,
   Share2,
@@ -14,9 +15,18 @@ import {
   Copy,
   RefreshCw,
   Clock,
-  XCircle
+  XCircle,
+  Pin
 } from 'lucide-react';
 import FileIcon from './FileIcon';
+import {
+  setActiveDragItem,
+  getActiveDragItem,
+  clearActiveDragItem,
+  isExternalFileDrag
+} from '../../utils/dragDropUpload';
+
+const SPRING_OPEN_FOLDER_DELAY_MS = 1000;
 
 /* ── Dropdown menu 3 chấm dùng chung ── */
 const MoreMenu = ({ items, onClose, preferUpwards = false }) => {
@@ -96,7 +106,10 @@ const FileGrid = ({
   onVersionHistory,
   onDeleteItem,
   isTrash = false,
-  onRestoreItem
+  onRestoreItem,
+  onDirectDrop,
+  onExternalDrop,
+  onTogglePinFolder
 }) => {
   const formatSize = (bytes) => {
     if (!bytes && bytes !== 0) return '0 B';
@@ -109,10 +122,29 @@ const FileGrid = ({
   /* ── Studio Folder Card ── */
   const FolderCard = ({ folder }) => {
     const [menuOpen, setMenuOpen] = useState(false);
+    const [isDropTarget, setIsDropTarget] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
+    const springTimerRef = useRef(null);
     const isSelected = selectedItem?.type === 'folder' && selectedItem?.data?._id === folder._id;
+
+    const clearSpringTimer = () => {
+      if (springTimerRef.current) {
+        clearTimeout(springTimerRef.current);
+        springTimerRef.current = null;
+      }
+    };
+
+    useEffect(() => {
+      return () => clearSpringTimer();
+    }, []);
 
     const menuItems = [
       onOpenFolder && { icon: <Folder size={14} />, label: 'Mở thư mục', onClick: () => onOpenFolder(folder._id) },
+      onTogglePinFolder && {
+        icon: <Pin size={14} style={{ color: folder.isPinned ? '#f59e0b' : 'inherit' }} />,
+        label: folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục',
+        onClick: () => onTogglePinFolder(folder._id)
+      },
       onShareItem && { icon: <Share2 size={14} />, label: 'Chia sẻ', onClick: () => onShareItem('folder', folder) },
       onRenameItem && { icon: <Edit2 size={14} />, label: 'Đổi tên', onClick: () => onRenameItem('folder', folder) },
       onMoveItem && { icon: <FolderInput size={14} />, label: 'Di chuyển', onClick: () => onMoveItem('folder', folder) },
@@ -120,9 +152,91 @@ const FileGrid = ({
       onDeleteItem && { icon: <Trash2 size={14} />, label: 'Xóa vào thùng rác', danger: true, onClick: () => onDeleteItem('folder', folder) },
     ].filter(Boolean);
 
+    const handleDragStart = (e) => {
+      if (isTrash) return;
+      setIsDragging(true);
+      const payload = {
+        type: 'folder',
+        id: folder._id,
+        name: folder.name,
+        parentId: folder.parentId || 'root'
+      };
+      setActiveDragItem(payload);
+      e.dataTransfer.setData('application/json', JSON.stringify(payload));
+      e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragEnd = () => {
+      setIsDragging(false);
+      clearSpringTimer();
+      clearActiveDragItem();
+    };
+
+    const handleDragOver = (e) => {
+      if (isTrash) return;
+      const activeDrag = getActiveDragItem();
+      if (isDragging || (activeDrag?.type === 'folder' && String(activeDrag.id) === String(folder._id))) {
+        return;
+      }
+      e.preventDefault();
+      e.dataTransfer.dropEffect = isExternalFileDrag(e) ? 'copy' : 'move';
+      if (!isDropTarget) {
+        setIsDropTarget(true);
+      }
+
+      // Giữ chuột trên thẻ thư mục ~1 giây sẽ tự động mở đi vào thư mục đó (Spring-loaded folder)
+      if (!springTimerRef.current && onOpenFolder) {
+        springTimerRef.current = setTimeout(() => {
+          springTimerRef.current = null;
+          setIsDropTarget(false);
+          onOpenFolder(folder._id);
+        }, SPRING_OPEN_FOLDER_DELAY_MS);
+      }
+    };
+
+    const handleDragLeave = (e) => {
+      // Chỉ hủy khi rời khỏi hẳn container
+      if (!e.currentTarget.contains(e.relatedTarget)) {
+        setIsDropTarget(false);
+        clearSpringTimer();
+      }
+    };
+
+    const handleDrop = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDropTarget(false);
+      clearSpringTimer();
+      if (isTrash) return;
+
+      if (isExternalFileDrag(e)) {
+        if (onExternalDrop) {
+          onExternalDrop(e, folder);
+        }
+        return;
+      }
+
+      try {
+        const raw = e.dataTransfer.getData('application/json');
+        const item = raw ? JSON.parse(raw) : getActiveDragItem();
+        clearActiveDragItem();
+        if (item && String(item.id) !== String(folder._id) && onDirectDrop) {
+          onDirectDrop(item, folder);
+        }
+      } catch (err) {
+        console.error('Lỗi drop:', err);
+      }
+    };
+
     return (
       <div
-        className={`folder-card ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
+        className={`folder-card ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDropTarget ? 'drop-target-active' : ''} ${isDragging ? 'is-dragging' : ''}`}
+        draggable={!isTrash}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         onClick={() => onSelectItem && onSelectItem({ type: 'folder', data: folder })}
         onDoubleClick={() => onOpenFolder && onOpenFolder(folder._id)}
       >
@@ -134,13 +248,23 @@ const FileGrid = ({
               borderColor: folder.color ? `${folder.color}40` : 'var(--border-subtle)'
             }}
           >
-            <Folder
-              size={18}
-              style={{
-                color: folder.color || 'var(--primary-600)',
-                fill: folder.color ? `${folder.color}33` : 'var(--primary-200)'
-              }}
-            />
+            {isDropTarget ? (
+              <FolderOpen
+                size={18}
+                style={{
+                  color: 'var(--primary-600)',
+                  fill: 'var(--primary-200)'
+                }}
+              />
+            ) : (
+              <Folder
+                size={18}
+                style={{
+                  color: folder.color || 'var(--primary-600)',
+                  fill: folder.color ? `${folder.color}33` : 'var(--primary-200)'
+                }}
+              />
+            )}
           </div>
           <div className="folder-card-info">
             <span className="folder-card-name" title={folder.name}>
@@ -151,7 +275,26 @@ const FileGrid = ({
         </div>
 
         {!isTrash && (
-          <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+            {onTogglePinFolder && (
+              <button
+                className={`btn-icon home-quick-btn ${folder.isPinned ? 'is-pinned' : ''}`}
+                title={folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục'}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onTogglePinFolder(folder._id);
+                }}
+              >
+                <Pin
+                  size={13}
+                  style={{
+                    color: folder.isPinned ? '#f59e0b' : 'inherit',
+                    fill: folder.isPinned ? '#f59e0b' : 'none',
+                    opacity: folder.isPinned ? 1 : 0.6
+                  }}
+                />
+              </button>
+            )}
             <button
               className="btn-icon home-quick-btn"
               title="Thêm thao tác"
@@ -185,6 +328,7 @@ const FileGrid = ({
   /* ── Studio File Card ── */
   const FileCard = ({ file }) => {
     const [menuOpen, setMenuOpen] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
     const isSelected = selectedItem?.type === 'file' && selectedItem?.data?._id === file._id;
 
     const isImage = (
@@ -204,10 +348,32 @@ const FileGrid = ({
       onDeleteItem && { icon: <Trash2 size={14} />, label: 'Xóa vào thùng rác', danger: true, onClick: () => onDeleteItem('file', file) },
     ].filter(Boolean);
 
+    const handleDragStart = (e) => {
+      if (isTrash) return;
+      setIsDragging(true);
+      const payload = {
+        type: 'file',
+        id: file._id,
+        name: file.name,
+        parentId: file.folderId || 'root'
+      };
+      setActiveDragItem(payload);
+      e.dataTransfer.setData('application/json', JSON.stringify(payload));
+      e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragEnd = () => {
+      setIsDragging(false);
+      clearActiveDragItem();
+    };
+
     return (
       <div
         data-file-id={file._id}
-        className={`file-card ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
+        className={`file-card ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDragging ? 'is-dragging' : ''}`}
+        draggable={!isTrash}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
         onClick={() => onSelectItem && onSelectItem({ type: 'file', data: file })}
         onDoubleClick={() => onPreviewFile && onPreviewFile(file)}
       >

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Cleanup & AI Duplicate Scanner Styles - SmartDocs Studio Workstation
+   Cleanup & AI Duplicate Scanner Styles - DocuFlow Studio Workstation
    ========================================================================== */
 
 .cleanup-page-wrapper {
@@ -105,6 +105,12 @@
 
 .cleanup-select-scope:focus {
   border-color: var(--border-focus);
+}
+
+.cleanup-select-scope option {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  padding: 6px 10px;
 }
 
 .btn-scan-trigger {

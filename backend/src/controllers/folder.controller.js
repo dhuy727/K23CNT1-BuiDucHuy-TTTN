@@ -1,4 +1,5 @@
 const folderService = require('../services/folder.service');
+const activityService = require('../services/activity.service');
 const { sendSuccess, sendCreated } = require('../utils/apiResponse');
 
 /**
@@ -7,6 +8,18 @@ const { sendSuccess, sendCreated } = require('../utils/apiResponse');
 const createFolder = async (req, res, next) => {
   try {
     const folder = await folderService.createFolder(req.user._id, req.body);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'folder_create',
+      targetType: 'folder',
+      targetId: folder._id,
+      targetName: folder.name,
+      description: `Đã tạo thư mục mới "${folder.name}"`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendCreated(res, {
       message: 'Tạo thư mục thành công',
       data: folder
@@ -72,6 +85,18 @@ const getFolderById = async (req, res, next) => {
 const renameFolder = async (req, res, next) => {
   try {
     const folder = await folderService.renameFolder(req.user._id, req.params.id, req.body.name);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'folder_rename',
+      targetType: 'folder',
+      targetId: folder._id,
+      targetName: folder.name,
+      description: `Đã đổi tên thư mục thành "${folder.name}"`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: 'Đổi tên thư mục thành công',
       data: folder
@@ -87,6 +112,18 @@ const renameFolder = async (req, res, next) => {
 const moveFolder = async (req, res, next) => {
   try {
     const folder = await folderService.moveFolder(req.user._id, req.params.id, req.body.targetParentId);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'folder_move',
+      targetType: 'folder',
+      targetId: folder._id,
+      targetName: folder.name,
+      description: `Đã di chuyển thư mục "${folder.name}"`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: 'Di chuyển thư mục thành công',
       data: folder
@@ -103,6 +140,17 @@ const deleteFolder = async (req, res, next) => {
   try {
     const permanent = req.query.permanent === 'true';
     const result = await folderService.deleteFolder(req.user._id, req.params.id, permanent);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: permanent ? 'folder_delete_permanent' : 'folder_trash',
+      targetType: 'folder',
+      targetId: req.params.id,
+      description: permanent ? 'Đã xóa vĩnh viễn thư mục' : 'Đã chuyển thư mục vào thùng rác',
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: result.message,
       data: result
@@ -131,6 +179,92 @@ const getFolderFiles = async (req, res, next) => {
   }
 };
 
+/**
+ * Lấy danh sách thư mục trong thùng rác
+ */
+const getTrashFolders = async (req, res, next) => {
+  try {
+    const folders = await folderService.getTrashFolders(req.user._id);
+    return sendSuccess(res, {
+      message: 'Lấy danh sách thư mục trong thùng rác thành công',
+      data: folders
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Khôi phục thư mục từ thùng rác
+ */
+const restoreFolder = async (req, res, next) => {
+  try {
+    const result = await folderService.restoreFolder(req.user._id, req.params.id);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'folder_restore',
+      targetType: 'folder',
+      targetId: req.params.id,
+      description: 'Đã khôi phục thư mục từ thùng rác',
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
+    return sendSuccess(res, {
+      message: result.message,
+      data: result
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Đảm bảo đường dẫn thư mục phân cấp tồn tại
+ */
+const ensureFolderPath = async (req, res, next) => {
+  try {
+    const { baseFolderId, relativeDirPath } = req.body;
+    const folderId = await folderService.ensureFolderPath(req.user._id, baseFolderId, relativeDirPath);
+    return sendSuccess(res, {
+      message: 'Đã xác định thư mục thành công',
+      data: { folderId }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Ghim / Bỏ ghim thư mục
+ */
+const togglePinFolder = async (req, res, next) => {
+  try {
+    const folder = await folderService.togglePinFolder(req.user._id, req.params.id);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: folder.isPinned ? 'folder_pin' : 'folder_unpin',
+      targetType: 'folder',
+      targetId: folder._id,
+      targetName: folder.name,
+      description: folder.isPinned
+        ? `Đã ghim thư mục "${folder.name}" lên lối tắt nhanh`
+        : `Đã bỏ ghim thư mục "${folder.name}"`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
+    return sendSuccess(res, {
+      message: folder.isPinned ? 'Đã ghim thư mục thành công' : 'Đã bỏ ghim thư mục',
+      data: folder
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createFolder,
   getFolders,
@@ -139,5 +273,10 @@ module.exports = {
   renameFolder,
   moveFolder,
   deleteFolder,
-  getFolderFiles
+  getFolderFiles,
+  getTrashFolders,
+  restoreFolder,
+  ensureFolderPath,
+  togglePinFolder
 };
+

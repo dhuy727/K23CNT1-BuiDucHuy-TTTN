@@ -11,6 +11,9 @@ const { Upload } = require('@aws-sdk/lib-storage');
 const ApiError = require('../utils/apiError');
 const { UPLOAD_DIR } = require('../middlewares/upload.middleware');
 
+const BUCKET_NAME = process.env.AWS_S3_BUCKET || 'smartdocs-files';
+const REGION = process.env.AWS_REGION || 'ap-southeast-2';
+
 /**
  * Kiểm tra xem thông tin kết nối AWS S3 có đầy đủ không
  */
@@ -35,9 +38,6 @@ const shouldUseS3ForUpload = () => {
   const driver = (process.env.STORAGE_DRIVER || 's3').toLowerCase();
   return (driver === 's3' || driver === 'aws') && isS3Configured();
 };
-
-const BUCKET_NAME = process.env.AWS_S3_BUCKET || 'smartdocs-files';
-const REGION = process.env.AWS_REGION || 'ap-southeast-1';
 
 let s3Client = null;
 
@@ -104,7 +104,7 @@ const resolveLocalPath = (storagePath, fileDoc = null) => {
             if (h === fileDoc.contentHash) {
               return fullP;
             }
-          } catch (e) {}
+          } catch (e) { }
         }
       }
 
@@ -116,7 +116,7 @@ const resolveLocalPath = (storagePath, fileDoc = null) => {
               if (fs.statSync(fullP).size === fileDoc.size) {
                 return fullP;
               }
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       }
@@ -198,6 +198,79 @@ const storageService = {
       storageType: 'local',
       storageKey: multerFile.filename || path.basename(multerFile.path),
       storagePath: multerFile.path
+    };
+  },
+
+  /**
+   * Ghi đè nội dung Buffer vào tệp tin vật lý (dùng cho chỉnh sửa trực tuyến thời gian thực)
+   */
+  saveBufferToFile: async (fileDoc, buffer, mimeType = null) => {
+    if (!fileDoc || !Buffer.isBuffer(buffer)) {
+      throw new ApiError(400, 'Dữ liệu lưu tệp không hợp lệ');
+    }
+
+    const contentHash = crypto.createHash('sha256').update(buffer).digest('hex');
+    const size = buffer.length;
+    const ext = fileDoc.extension ? `.${fileDoc.extension.replace(/^\./, '')}` : path.extname(fileDoc.name || '') || '.txt';
+    const client = getS3Client();
+
+    // 1. Nếu file đang lưu trên AWS S3
+    if ((fileDoc.storageType === 's3' || fileDoc.storageType === 'minio') && client) {
+      const storageKey =
+        fileDoc.storageKey ||
+        `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+
+      const parallelUpload = new Upload({
+        client,
+        params: {
+          Bucket: BUCKET_NAME,
+          Key: storageKey,
+          Body: buffer,
+          ContentType: mimeType || fileDoc.mimeType || 'application/octet-stream'
+        }
+      });
+
+      await parallelUpload.done();
+
+      // Đồng bộ thêm bản local nếu tồn tại trên đĩa
+      const existingLocal = resolveLocalPath(fileDoc.storagePath, fileDoc);
+      if (existingLocal) {
+        try {
+          await fs.promises.writeFile(existingLocal, buffer);
+        } catch (e) {
+          // Bỏ qua nếu không ghi được bản đệm local
+        }
+      }
+
+      return {
+        storageType: 's3',
+        storageKey,
+        storagePath: `s3://${BUCKET_NAME}/${storageKey}`,
+        size,
+        contentHash
+      };
+    }
+
+    // 2. Lưu trên Local Disk
+    if (!fs.existsSync(UPLOAD_DIR)) {
+      fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    }
+
+    const existingLocal = resolveLocalPath(fileDoc.storagePath, fileDoc);
+    const storageKey =
+      existingLocal
+        ? path.basename(existingLocal)
+        : fileDoc.storageKey || `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+    const targetPath = existingLocal || path.join(UPLOAD_DIR, storageKey);
+
+    await fs.promises.writeFile(targetPath, buffer);
+
+    return {
+      storageType: 'local',
+      storageKey,
+      storagePath: targetPath,
+      size,
+      contentHash
     };
   },
 

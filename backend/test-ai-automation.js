@@ -23,11 +23,11 @@ async function testEngine() {
     console.log('-> Kết nối MongoDB thành công');
 
     // 1. Tạo user giả lập cho test
-    let user = await User.findOne({ email: 'autotest@smartdoc.com' });
+    let user = await User.findOne({ email: 'autotest@docuflow.com' });
     if (!user) {
       user = new User({
         name: 'Auto Tester',
-        email: 'autotest@smartdoc.com',
+        email: 'autotest@docuflow.com',
         password: 'Password123!',
         isEmailVerified: true
       });

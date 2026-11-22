@@ -2,6 +2,7 @@ require('dotenv').config();
 const app = require('./src/app');
 const connectDB = require('./src/config/db');
 const { resumePendingJobs } = require('./src/services/ai.service');
+const { initQueueEngine } = require('./src/queues/queue.engine');
 
 const PORT = process.env.PORT || 3000;
 
@@ -9,6 +10,9 @@ const PORT = process.env.PORT || 3000;
 const startServer = async () => {
   try {
     await connectDB();
+
+    // Khởi tạo hàng đợi xử lý tác vụ nền (BullMQ + Redis hoặc In-Memory Adaptive Queue)
+    await initQueueEngine();
 
     // Tự động khôi phục và xử lý các tác vụ AI còn dang dở
     await resumePendingJobs();

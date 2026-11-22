@@ -34,33 +34,37 @@ const shareService = {
   },
 
   // Public APIs (không bắt buộc đăng nhập)
-  getPublicItem: async (shareToken, password = null) => {
+  getPublicItem: async (shareToken, password = null, params = {}) => {
     const headers = {};
     if (password) {
       headers['x-share-password'] = password;
     }
-    return await axiosClient.get(`/shares/public/${shareToken}`, { headers });
+    return await axiosClient.get(`/shares/public/${shareToken}`, { headers, params });
   },
 
-  getPublicFileDownload: async (shareToken, password = null) => {
+  getPublicFileDownload: async (shareToken, password = null, fileId = null) => {
     const headers = {};
     if (password) {
       headers['x-share-password'] = password;
     }
+    const params = fileId ? { fileId } : {};
     const response = await axiosClient.get(`/shares/public/${shareToken}/download`, {
       headers,
+      params,
       responseType: 'blob'
     });
     return response.data;
   },
 
-  getPublicFilePreview: async (shareToken, password = null) => {
+  getPublicFilePreview: async (shareToken, password = null, fileId = null) => {
     const headers = {};
     if (password) {
       headers['x-share-password'] = password;
     }
+    const params = fileId ? { fileId } : {};
     const response = await axiosClient.get(`/shares/public/${shareToken}/preview`, {
       headers,
+      params,
       responseType: 'blob'
     });
     return response.data;

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   Upload,
@@ -12,15 +13,19 @@ import {
   History,
   MoreVertical,
   Folder,
+  FolderOpen,
+  FolderClock,
   Sparkles,
+  ChevronLeft,
   ChevronRight,
   TrendingUp,
-  HardDrive
+  Clock,
+  Files,
+  Pin
 } from 'lucide-react';
 import FileIcon from '../../components/drive/FileIcon';
 import ContextualActionBar from '../../components/drive/ContextualActionBar';
 import FilePreviewModal from '../../components/drive/FilePreviewModal';
-
 
 import RenameModal from '../../components/drive/RenameModal';
 import MoveCopyModal from '../../components/drive/MoveCopyModal';
@@ -32,21 +37,78 @@ import fileService from '../../services/fileService';
 import folderService from '../../services/folderService';
 import { useToast } from '../../contexts/ToastContext';
 import { useAuth } from '../../contexts/AuthContext';
+import {
+  setActiveDragItem,
+  getActiveDragItem,
+  clearActiveDragItem,
+  isExternalFileDrag,
+  uploadDroppedFilesFromEvent
+} from '../../utils/dragDropUpload';
 
-/* ── Dropdown menu 3 chấm ── */
-const MoreMenu = ({ items, onClose }) => {
-  const ref = useRef(null);
+const SPRING_OPEN_FOLDER_DELAY_MS = 1000;
+
+/* ── Dropdown menu 3 chấm qua Portal chống bị che khuất bởi overflow ── */
+const MoreMenu = ({ buttonRef, items, onClose }) => {
+  const menuRef = useRef(null);
+  const [coords, setCoords] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!buttonRef?.current) return;
+    const btnRect = buttonRef.current.getBoundingClientRect();
+    const menuWidth = 200;
+    const numItems = items.filter((it) => !it.divider).length;
+    const numDividers = items.filter((it) => it.divider).length;
+    const estHeight = numItems * 36 + numDividers * 8 + 14;
+
+    const spaceBelow = window.innerHeight - btnRect.bottom;
+    const openUpwards = spaceBelow < estHeight && btnRect.top > estHeight;
+
+    const top = openUpwards
+      ? Math.max(10, btnRect.top - estHeight - 4)
+      : Math.min(window.innerHeight - estHeight - 10, btnRect.bottom + 4);
+
+    const left = Math.max(10, Math.min(btnRect.right - menuWidth, window.innerWidth - menuWidth - 10));
+
+    setCoords({ top, left });
+  }, [buttonRef, items]);
 
   useEffect(() => {
     const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target) &&
+        buttonRef?.current &&
+        !buttonRef.current.contains(e.target)
+      ) {
+        onClose();
+      }
     };
+    const scrollHandler = () => onClose();
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose]);
+    window.addEventListener('scroll', scrollHandler, true);
+    window.addEventListener('resize', scrollHandler);
 
-  return (
-    <div className="home-more-menu" ref={ref} onClick={(e) => e.stopPropagation()}>
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      window.removeEventListener('scroll', scrollHandler, true);
+      window.removeEventListener('resize', scrollHandler);
+    };
+  }, [onClose, buttonRef]);
+
+  if (!coords) return null;
+
+  return createPortal(
+    <div
+      className="home-more-menu portal-table-menu"
+      ref={menuRef}
+      style={{
+        position: 'fixed',
+        top: `${coords.top}px`,
+        left: `${coords.left}px`,
+        zIndex: 9999
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
       {items.map((item, i) =>
         item.divider ? (
           <div key={i} className="home-more-divider" />
@@ -65,12 +127,225 @@ const MoreMenu = ({ items, onClose }) => {
           </button>
         )
       )}
+    </div>,
+    document.body
+  );
+};
+
+/* ── Thẻ thư mục gần đây trên Trang chủ ── */
+const HomeFolderCard = ({
+  folder,
+  isSelected,
+  isDragTarget,
+  onSelect,
+  onOpen,
+  onTogglePin,
+  onShare,
+  onRename,
+  onMove,
+  onDelete,
+  onDragOver,
+  onDragLeave,
+  onDrop
+}) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const moreBtnRef = useRef(null);
+  const springTimerRef = useRef(null);
+
+  const clearSpringTimer = () => {
+    if (springTimerRef.current) {
+      clearTimeout(springTimerRef.current);
+      springTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearSpringTimer();
+  }, []);
+
+  const folderMenuItems = [
+    {
+      icon: <FolderOpen size={14} />,
+      label: 'Mở thư mục',
+      onClick: () => onOpen(folder._id)
+    },
+    {
+      icon: <Pin size={14} style={{ color: folder.isPinned ? '#f59e0b' : 'inherit' }} />,
+      label: folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục',
+      onClick: () => onTogglePin(folder._id)
+    },
+    {
+      icon: <Share2 size={14} />,
+      label: 'Chia sẻ',
+      onClick: () => onShare(folder)
+    },
+    {
+      icon: <Edit2 size={14} />,
+      label: 'Đổi tên',
+      onClick: () => onRename(folder)
+    },
+    {
+      icon: <FolderInput size={14} />,
+      label: 'Di chuyển',
+      onClick: () => onMove(folder)
+    },
+    { divider: true },
+    {
+      icon: <Trash2 size={14} />,
+      label: 'Xóa thư mục',
+      danger: true,
+      onClick: () => onDelete(folder)
+    }
+  ];
+
+  const updatedAtFormatted = folder.updatedAt
+    ? new Date(folder.updatedAt).toLocaleDateString('vi-VN', {
+        day: '2-digit',
+        month: '2-digit'
+      })
+    : '';
+
+  const handleDragStart = (e) => {
+    setIsDragging(true);
+    const payload = {
+      type: 'folder',
+      id: folder._id,
+      name: folder.name,
+      parentId: folder.parentId || 'root'
+    };
+    setActiveDragItem(payload);
+    e.dataTransfer.setData('application/json', JSON.stringify(payload));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    clearSpringTimer();
+    clearActiveDragItem();
+  };
+
+  return (
+    <div
+      className={`home-folder-scroll-card ${isSelected ? 'is-selected' : ''} ${
+        isDragTarget ? 'drop-target-active' : ''
+      } ${isDragging ? 'is-dragging' : ''}`}
+      draggable={true}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onClick={() => onSelect(folder)}
+      onDoubleClick={() => onOpen(folder._id)}
+      onDragOver={(e) => {
+        const activeDrag = getActiveDragItem();
+        if (isDragging || (activeDrag?.type === 'folder' && String(activeDrag.id) === String(folder._id))) {
+          return;
+        }
+        onDragOver(e, folder);
+        if (!springTimerRef.current && onOpen) {
+          springTimerRef.current = setTimeout(() => {
+            springTimerRef.current = null;
+            onOpen(folder._id);
+          }, SPRING_OPEN_FOLDER_DELAY_MS);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) {
+          clearSpringTimer();
+          onDragLeave(e, folder);
+        }
+      }}
+      onDrop={(e) => {
+        clearSpringTimer();
+        onDrop(e, folder);
+      }}
+    >
+      <div className="home-folder-card-top">
+        <div
+          className="home-folder-icon-box"
+          style={{
+            backgroundColor: folder.color ? `${folder.color}18` : 'rgba(99, 102, 241, 0.1)',
+            borderColor: folder.color ? `${folder.color}35` : 'rgba(99, 102, 241, 0.2)'
+          }}
+        >
+          <Folder
+            size={18}
+            style={{
+              color: folder.color || 'var(--primary-600)',
+              fill: folder.color ? `${folder.color}33` : 'var(--primary-200)'
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className={`home-folder-action-btn ${folder.isPinned ? 'is-pinned' : ''}`}
+            title={folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim lên lối tắt'}
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePin(folder._id);
+            }}
+            aria-label={folder.isPinned ? 'Bỏ ghim' : 'Ghim'}
+          >
+            <Pin
+              size={13}
+              style={{
+                color: folder.isPinned ? 'var(--accent-amber, #f59e0b)' : 'var(--text-secondary)',
+                fill: folder.isPinned ? 'var(--accent-amber, #f59e0b)' : 'none',
+                opacity: folder.isPinned ? 1 : 0.85
+              }}
+            />
+          </button>
+          <div className={`home-folder-card-actions ${isMenuOpen ? 'menu-open' : ''}`}>
+            <button
+              ref={moreBtnRef}
+              type="button"
+              className={`home-folder-action-btn ${isMenuOpen ? 'active' : ''}`}
+              title="Thao tác"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMenuOpen((prev) => !prev);
+              }}
+              aria-label="Thao tác khác"
+            >
+              <MoreVertical size={14} style={{ color: 'var(--text-secondary)' }} />
+            </button>
+            {isMenuOpen && (
+              <MoreMenu
+                buttonRef={moreBtnRef}
+                items={folderMenuItems}
+                onClose={() => setIsMenuOpen(false)}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="home-folder-card-title" title={folder.name}>
+        {folder.name}
+      </div>
+
+      <div className="home-folder-card-meta">
+        <span className="home-folder-meta-count" title={`${folder.fileCount || 0} tệp tin trong thư mục`}>
+          <Files size={12} style={{ color: 'var(--primary-400)' }} />
+          <span>{folder.fileCount || 0} tệp</span>
+        </span>
+        {updatedAtFormatted && (
+          <span
+            className="home-folder-meta-time"
+            title={`Cập nhật: ${new Date(folder.updatedAt).toLocaleString('vi-VN')}`}
+          >
+            <Clock size={11} />
+            <span>{updatedAtFormatted}</span>
+          </span>
+        )}
+      </div>
     </div>
   );
 };
 
 /* ── Home Section Container ── */
-const HomeSection = ({ icon, title, count, onViewAll, children, emptyText }) => (
+const HomeSection = ({ icon, title, count, onViewAll, children }) => (
   <div className="home-section">
     <div className="home-section-header">
       <div className="home-section-title">
@@ -89,6 +364,158 @@ const HomeSection = ({ icon, title, count, onViewAll, children, emptyText }) => 
   </div>
 );
 
+/* ── Mobile Helpers & Component Contracts (Ảnh 3) ── */
+const getMobileFileBadge = (file) => {
+  if (!file) return { label: 'DOC', badgeClass: 'badge-file-doc', color: '#2563eb' };
+  const ext = (file.extension || '').toLowerCase();
+  const mime = (file.mimeType || '').toLowerCase();
+
+  if (ext === 'pdf' || mime.includes('pdf')) {
+    return { label: 'PDF', badgeClass: 'badge-file-pdf', color: '#ef4444' };
+  }
+  if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg'].includes(ext) || mime.startsWith('image/')) {
+    return { label: 'IMG', badgeClass: 'badge-file-img', color: '#d97706' };
+  }
+  if (['doc', 'docx', 'txt', 'rtf', 'odt'].includes(ext) || mime.includes('word') || mime.includes('text')) {
+    return { label: 'DOC', badgeClass: 'badge-file-doc', color: '#2563eb' };
+  }
+  return { label: ext ? ext.slice(0, 3).toUpperCase() : 'DOC', badgeClass: 'badge-file-other', color: '#64748b' };
+};
+
+const getMobileFeatureTag = (file) => {
+  if (!file) return { label: 'RAG Ready', tagClass: 'tag-rag-ready', color: '#16a34a' };
+  if (file.ragStatus === 'indexed') {
+    return { label: 'RAG Ready', tagClass: 'tag-rag-ready', color: '#16a34a' };
+  }
+  if (file.mimeType?.startsWith('image/') || ['png', 'jpg', 'jpeg'].includes((file.extension || '').toLowerCase())) {
+    return { label: 'OCR Xong', tagClass: 'tag-ocr-done', color: '#4f46e5' };
+  }
+  if (file.aiSummary) {
+    return { label: 'Tóm tắt AI', tagClass: 'tag-ai-summary', color: '#7c3aed' };
+  }
+  return { label: 'RAG Ready', tagClass: 'tag-rag-ready', color: '#16a34a' };
+};
+
+const formatFileSize = (bytes) => {
+  if (!bytes || bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+};
+
+/* ── Mobile Uploaded Document Item (Vertical List Item - Ảnh 3) ── */
+const MobileDocListItem = ({
+  file,
+  onPreview,
+  onDownload,
+  onToggleStar,
+  onShare,
+  onRename,
+  onMove,
+  onVersions,
+  onDelete
+}) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuBtnRef = useRef(null);
+
+  const badge = getMobileFileBadge(file);
+  const tag = getMobileFeatureTag(file);
+  const formattedSize = file.formattedSize || formatFileSize(file.size);
+
+  const menuItems = [
+    {
+      icon: <Eye size={14} />,
+      label: 'Xem trước',
+      onClick: () => onPreview(file)
+    },
+    {
+      icon: <Download size={14} />,
+      label: 'Tải xuống',
+      onClick: () => onDownload(file)
+    },
+    {
+      icon: (
+        <Star
+          size={14}
+          style={{
+            color: file.isStarred ? '#f59e0b' : 'inherit',
+            fill: file.isStarred ? '#f59e0b' : 'none'
+          }}
+        />
+      ),
+      label: file.isStarred ? 'Bỏ yêu thích' : 'Yêu thích',
+      onClick: () => onToggleStar(file._id)
+    },
+    {
+      icon: <Share2 size={14} />,
+      label: 'Chia sẻ',
+      onClick: () => onShare(file)
+    },
+    {
+      icon: <Edit2 size={14} />,
+      label: 'Đổi tên',
+      onClick: () => onRename(file)
+    },
+    {
+      icon: <FolderInput size={14} />,
+      label: 'Di chuyển',
+      onClick: () => onMove(file)
+    },
+    {
+      icon: <History size={14} />,
+      label: 'Lịch sử phiên bản',
+      onClick: () => onVersions(file)
+    },
+    { divider: true },
+    {
+      icon: <Trash2 size={14} />,
+      label: 'Xóa tệp',
+      danger: true,
+      onClick: () => onDelete(file)
+    }
+  ];
+
+  return (
+    <div className="mobile-doc-list-item" onClick={() => onPreview(file)}>
+      <div className={`mobile-doc-badge ${badge.badgeClass}`}>
+        {badge.label}
+      </div>
+      <div className="mobile-doc-info">
+        <div className="mobile-doc-name" title={file.name}>
+          {file.name}
+        </div>
+        <div className="mobile-doc-meta">
+          <span>{formattedSize}</span>
+          <span className="mobile-doc-dot">•</span>
+          <span className={`mobile-doc-tag ${tag.tagClass}`}>{tag.label}</span>
+        </div>
+      </div>
+      <div className="mobile-doc-action" onClick={(e) => e.stopPropagation()}>
+        <button
+          ref={menuBtnRef}
+          type="button"
+          className="mobile-doc-menu-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsMenuOpen((prev) => !prev);
+          }}
+          aria-label="Thao tác tài liệu"
+        >
+          <MoreVertical size={16} />
+        </button>
+        {isMenuOpen && (
+          <MoreMenu
+            buttonRef={menuBtnRef}
+            items={menuItems}
+            onClose={() => setIsMenuOpen(false)}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
 const HomePage = () => {
   const navigate = useNavigate();
   const toast = useToast();
@@ -102,6 +529,11 @@ const HomePage = () => {
   // Studio Inspector state
   const [selectedItem, setSelectedItem] = useState(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
+
+  // Horizontal scroll ref & active states
+  const foldersScrollRef = useRef(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState(null);
+  const [isWorkspaceExternalDragOver, setIsWorkspaceExternalDragOver] = useState(false);
 
   // Modals state
   const [previewFile, setPreviewFile] = useState(null);
@@ -118,7 +550,7 @@ const HomePage = () => {
       const [recentRes, starredRes, folderRes] = await Promise.allSettled([
         fileService.getFiles({ sortBy: 'createdAt', sortOrder: 'desc', folderId: 'root' }),
         fileService.getFiles({ isStarred: true, sortBy: 'updatedAt', sortOrder: 'desc' }),
-        folderService.getFolders({ parentId: 'root' })
+        folderService.getFolders({ sortBy: 'updatedAt', sortOrder: 'desc', limit: 10 })
       ]);
 
       if (recentRes.status === 'fulfilled') {
@@ -128,7 +560,9 @@ const HomePage = () => {
         setStarredFiles((starredRes.value.data || []).slice(0, 6));
       }
       if (folderRes.status === 'fulfilled') {
-        setRecentFolders((folderRes.value.data?.folders || []).slice(0, 6));
+        const raw = folderRes.value.data;
+        const list = Array.isArray(raw) ? raw : raw?.folders || raw?.data || [];
+        setRecentFolders(list.slice(0, 10));
       }
     } catch (err) {
       console.error('Lỗi khi tải trang chủ:', err);
@@ -216,40 +650,187 @@ const HomePage = () => {
     hour < 12 ? 'Chào buổi sáng' : hour < 18 ? 'Chào buổi chiều' : 'Chào buổi tối';
   const displayName = user?.name || user?.email || 'bạn';
 
-  /* ── Card thư mục Studio ── */
-  const renderFolderCard = (folder) => {
+  const handleAskAi = () => {
+    window.dispatchEvent(
+      new CustomEvent('open-rag-drawer', {
+        detail: {
+          scope: { type: 'all', targetId: null, name: 'Toàn bộ Drive' }
+        }
+      })
+    );
+  };
+
+  /* ── Điều khiển cuộn ngang thư mục gần đây ── */
+  const handleScrollFolders = (direction) => {
+    if (foldersScrollRef.current) {
+      const offset = direction === 'left' ? -240 : 240;
+      foldersScrollRef.current.scrollBy({ left: offset, behavior: 'smooth' });
+    }
+  };
+
+  /* ── Kéo thả tệp tin vào thư mục ── */
+  const handleFileDragStart = (e, file) => {
+    const payload = {
+      type: 'file',
+      id: file._id,
+      name: file.name,
+      parentId: file.folderId || 'root'
+    };
+    setActiveDragItem(payload);
+    e.dataTransfer.setData('application/json', JSON.stringify(payload));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleFileDragEnd = () => {
+    clearActiveDragItem();
+  };
+
+  /* ── Ghim / Bỏ ghim thư mục ── */
+  const handleTogglePinFolder = async (folderId) => {
+    try {
+      const res = await folderService.togglePinFolder(folderId);
+      const updated = res.data;
+      toast.success(
+        updated.isPinned
+          ? `Đã ghim thư mục "${updated.name}" lên lối tắt`
+          : `Đã bỏ ghim thư mục "${updated.name}"`
+      );
+      setRecentFolders((prev) =>
+        prev.map((f) => (f._id === folderId ? { ...f, isPinned: updated.isPinned } : f))
+      );
+      if (selectedItem?.type === 'folder' && selectedItem?.data?._id === folderId) {
+        setSelectedItem((prev) => ({
+          ...prev,
+          data: { ...prev.data, isPinned: updated.isPinned }
+        }));
+      }
+      window.dispatchEvent(new Event('folder:pinned'));
+      window.dispatchEvent(new Event('folder:updated'));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Thao tác ghim thất bại');
+    }
+  };
+
+  /* ── Kéo thả tệp/thư mục từ máy tính vào Trang chủ ── */
+  const handleWorkspaceDragOver = (e) => {
+    if (!isExternalFileDrag(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    if (!isWorkspaceExternalDragOver) {
+      setIsWorkspaceExternalDragOver(true);
+    }
+  };
+
+  const handleWorkspaceDragLeave = (e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsWorkspaceExternalDragOver(false);
+    }
+  };
+
+  const handleWorkspaceDrop = async (e) => {
+    if (!isExternalFileDrag(e)) return;
+    e.preventDefault();
+    setIsWorkspaceExternalDragOver(false);
+    await uploadDroppedFilesFromEvent(e, 'root', 'Drive của tôi', toast, fetchData);
+  };
+
+  /* ── Kéo thả tệp tin hoặc thư mục vào thư mục với nút Hoàn tác ── */
+  const handleFolderDrop = async (e, targetFolder) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverFolderId(null);
+    setIsWorkspaceExternalDragOver(false);
+
+    if (isExternalFileDrag(e)) {
+      await uploadDroppedFilesFromEvent(e, targetFolder._id, targetFolder.name, toast, fetchData);
+      return;
+    }
+
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      const dragData = raw ? JSON.parse(raw) : getActiveDragItem();
+      clearActiveDragItem();
+      if (!dragData || String(dragData.id) === String(targetFolder._id)) return;
+
+      if (dragData.type === 'file' && dragData.id) {
+        const prevId = dragData.parentId || 'root';
+        await fileService.moveFile(dragData.id, targetFolder._id);
+        toast.success(`Đã di chuyển "${dragData.name}" vào thư mục "${targetFolder.name}"`, {
+          action: {
+            label: 'Hoàn tác',
+            onClick: async () => {
+              try {
+                await fileService.moveFile(dragData.id, prevId);
+                toast.info(`Đã hoàn tác: chuyển "${dragData.name}" về lại vị trí cũ`);
+                fetchData();
+                window.dispatchEvent(new Event('file:updated'));
+                window.dispatchEvent(new Event('drive:refresh'));
+              } catch (err) {
+                toast.error('Không thể hoàn tác');
+              }
+            }
+          }
+        });
+        fetchData();
+        window.dispatchEvent(new Event('file:updated'));
+        window.dispatchEvent(new Event('drive:refresh'));
+      } else if (dragData.type === 'folder' && dragData.id) {
+        const prevId = dragData.parentId || 'root';
+        await folderService.moveFolder(dragData.id, targetFolder._id);
+        toast.success(`Đã di chuyển thư mục "${dragData.name}" vào "${targetFolder.name}"`, {
+          action: {
+            label: 'Hoàn tác',
+            onClick: async () => {
+              try {
+                await folderService.moveFolder(dragData.id, prevId);
+                toast.info(`Đã hoàn tác: chuyển "${dragData.name}" về lại vị trí cũ`);
+                fetchData();
+                window.dispatchEvent(new Event('folder:updated'));
+                window.dispatchEvent(new Event('drive:refresh'));
+              } catch (err) {
+                toast.error('Không thể hoàn tác');
+              }
+            }
+          }
+        });
+        fetchData();
+        window.dispatchEvent(new Event('folder:updated'));
+        window.dispatchEvent(new Event('drive:refresh'));
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Di chuyển thất bại');
+    }
+  };
+
+  /* ── Card Thư mục gần đây (Horizontal Scroll Card) ── */
+  const renderRecentFolderCard = (folder) => {
     const isSelected = selectedItem?.type === 'folder' && selectedItem?.data?._id === folder._id;
+    const isDragTarget = dragOverFolderId === folder._id;
+
     return (
-      <div
+      <HomeFolderCard
         key={folder._id}
-        className={`folder-card ${isSelected ? 'is-selected' : ''}`}
-        onClick={() => setSelectedItem({ type: 'folder', data: folder })}
-        onDoubleClick={() => navigate(`/drive/folder/${folder._id}`)}
-      >
-        <div className="folder-card-main">
-          <div
-            className="folder-card-icon"
-            style={{
-              backgroundColor: folder.color ? `${folder.color}15` : 'var(--bg-surface-hover)',
-              borderColor: folder.color ? `${folder.color}40` : 'var(--border-subtle)'
-            }}
-          >
-            <Folder
-              size={18}
-              style={{
-                color: folder.color || 'var(--primary-600)',
-                fill: folder.color ? `${folder.color}33` : 'var(--primary-200)'
-              }}
-            />
-          </div>
-          <div className="folder-card-info">
-            <span className="folder-card-name" title={folder.name}>
-              {folder.name}
-            </span>
-            <span className="folder-card-sub">Thư mục</span>
-          </div>
-        </div>
-      </div>
+        folder={folder}
+        isSelected={isSelected}
+        isDragTarget={isDragTarget}
+        onSelect={(f) => setSelectedItem({ type: 'folder', data: f })}
+        onOpen={(id) => navigate(`/drive/folder/${id}`)}
+        onTogglePin={handleTogglePinFolder}
+        onShare={(f) => setShareTarget({ type: 'folder', item: f })}
+        onRename={(f) => setRenameTarget({ type: 'folder', item: f })}
+        onMove={(f) => setMoveCopyTarget({ type: 'folder', item: f, mode: 'move' })}
+        onDelete={(f) => setDeleteTarget({ type: 'folder', item: f })}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = isExternalFileDrag(e) ? 'copy' : 'move';
+          if (dragOverFolderId !== folder._id) setDragOverFolderId(folder._id);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          if (dragOverFolderId === folder._id) setDragOverFolderId(null);
+        }}
+        onDrop={(e) => handleFolderDrop(e, folder)}
+      />
     );
   };
 
@@ -265,6 +846,9 @@ const HomePage = () => {
       <div
         key={file._id}
         className={`file-card ${isSelected ? 'is-selected' : ''}`}
+        draggable={true}
+        onDragStart={(e) => handleFileDragStart(e, file)}
+        onDragEnd={handleFileDragEnd}
         onClick={() => setSelectedItem({ type: 'file', data: file })}
         onDoubleClick={() => setPreviewFile(file)}
       >
@@ -332,13 +916,22 @@ const HomePage = () => {
 
   return (
     <>
-      <main className={`page-body ${isInspectorOpen ? 'has-inspector' : ''}`}>
+      <main
+        className={`page-body ${isInspectorOpen ? 'has-inspector' : ''} ${
+          isWorkspaceExternalDragOver ? 'workspace-drop-active' : ''
+        }`}
+        onDragOver={handleWorkspaceDragOver}
+        onDragLeave={handleWorkspaceDragLeave}
+        onDrop={handleWorkspaceDrop}
+      >
         <div className="home-page">
-          {/* Thanh thao tác ngữ cảnh khi chọn tệp/thư mục (Ảnh 1) */}
+          {/* Thanh thao tác ngữ cảnh khi chọn tệp/thư mục */}
           {selectedItem && (
             <ContextualActionBar
               selectedItem={selectedItem}
               onClearSelection={() => setSelectedItem(null)}
+              onOpenFolder={(folderId) => navigate(`/drive/folder/${folderId}`)}
+              onTogglePinFolder={handleTogglePinFolder}
               onShareItem={(type, item) => setShareTarget({ type, item })}
               onDownloadFile={handleDownloadFile}
               onRenameItem={(type, item) => setRenameTarget({ type, item })}
@@ -351,9 +944,8 @@ const HomePage = () => {
             />
           )}
 
-          {/* Studio Workspace Header Hero */}
-
-          <div className="home-studio-hero">
+          {/* Studio Workspace Header Hero (Desktop only) */}
+          <div className="home-studio-hero desktop-only">
             <div>
               <h1 className="home-studio-greeting-title">
                 {greeting}, {displayName}
@@ -374,6 +966,20 @@ const HomePage = () => {
             </div>
           </div>
 
+          {/* Banner Copilot RAG (Mobile only - Ảnh 3) */}
+          <div className="mobile-copilot-banner mobile-only">
+            <div className="mobile-copilot-banner-content">
+              <span className="mobile-copilot-badge">TRỢ LÝ COPILOT RAG</span>
+              <h2 className="mobile-copilot-title">Tra cứu tài liệu tức thì</h2>
+              <div className="mobile-copilot-bottom-row">
+                <p className="mobile-copilot-desc">Hỏi đáp trực tiếp nội dung kho lưu trữ</p>
+                <button type="button" className="mobile-copilot-btn" onClick={handleAskAi}>
+                  <span>Hỏi AI ✨</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           {loading ? (
             <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
               <span className="spinner" style={{ width: 32, height: 32, margin: '0 auto' }} />
@@ -381,46 +987,159 @@ const HomePage = () => {
             </div>
           ) : (
             <>
-              {/* Thư mục gần đây */}
+              {/* Thư mục gần đây (Mobile 2-Column Grid - Ảnh 3) */}
               {recentFolders.length > 0 && (
-                <HomeSection
-                  icon={<Folder size={15} style={{ color: 'var(--primary-600)' }} />}
-                  title="Thư mục làm việc"
-                  count={recentFolders.length}
-                  onViewAll={() => navigate('/drive')}
-                >
-                  <div className="folder-grid">
-                    {recentFolders.map(renderFolderCard)}
+                <div className="mobile-section mobile-only">
+                  <div className="mobile-section-title">THƯ MỤC GẦN ĐÂY</div>
+                  <div className="mobile-folders-grid">
+                    {recentFolders.slice(0, 4).map((folder) => {
+                      const isOcrFolder = folder.name && (
+                        folder.name.toLowerCase().includes('ocr') ||
+                        folder.name.toLowerCase().includes('scan') ||
+                        folder.isDigitized
+                      );
+                      return (
+                        <div
+                          key={folder._id}
+                          className="mobile-folder-grid-card"
+                          onClick={() => navigate(`/drive/folder/${folder._id}`)}
+                        >
+                          <div className="mobile-folder-icon-wrap">
+                            <Folder size={22} className="mobile-folder-icon" />
+                          </div>
+                          <div className="mobile-folder-card-info">
+                            <div className="mobile-folder-name" title={folder.name}>
+                              {folder.name}
+                            </div>
+                            {isOcrFolder ? (
+                              <span className="mobile-folder-status-badge">Đã số hóa</span>
+                            ) : (
+                              <span className="mobile-folder-file-count">{folder.fileCount || 0} files</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                </HomeSection>
+                </div>
               )}
 
-              {/* Tệp tin gần đây */}
+              {/* Tài liệu mới tải lên (Mobile Vertical List - Ảnh 3) */}
               {recentFiles.length > 0 && (
-                <HomeSection
-                  icon={<Upload size={15} style={{ color: 'var(--accent-blue)' }} />}
-                  title="Tài liệu gần đây"
-                  count={recentFiles.length}
-                  onViewAll={() => navigate('/drive')}
-                >
-                  <div className="file-grid">
-                    {recentFiles.map(renderFileCard)}
+                <div className="mobile-section mobile-only">
+                  <div className="mobile-section-title">TÀI LIỆU MỚI TẢI LÊN</div>
+                  <div className="mobile-doc-list">
+                    {recentFiles.map((file) => (
+                      <MobileDocListItem
+                        key={file._id}
+                        file={file}
+                        onPreview={(f) => setPreviewFile(f)}
+                        onDownload={handleDownloadFile}
+                        onToggleStar={handleToggleStar}
+                        onShare={(f) => setShareTarget({ type: 'file', item: f })}
+                        onRename={(f) => setRenameTarget({ type: 'file', item: f })}
+                        onMove={(f) => setMoveCopyTarget({ type: 'file', item: f, mode: 'move' })}
+                        onVersions={(f) => setVersionsTarget(f)}
+                        onDelete={(f) => setDeleteTarget({ type: 'file', item: f })}
+                      />
+                    ))}
                   </div>
-                </HomeSection>
+                </div>
               )}
 
-              {/* Mục yêu thích */}
+              {/* Tài liệu yêu thích (Mobile Vertical List) */}
               {starredFiles.length > 0 && (
-                <HomeSection
-                  icon={<Star size={15} style={{ color: 'var(--accent-amber)', fill: 'var(--accent-amber)' }} />}
-                  title="Tài liệu yêu thích"
-                  count={starredFiles.length}
-                  onViewAll={() => navigate('/starred')}
-                >
-                  <div className="file-grid">
-                    {starredFiles.map(renderFileCard)}
+                <div className="mobile-section mobile-only">
+                  <div className="mobile-section-title">TÀI LIỆU YÊU THÍCH</div>
+                  <div className="mobile-doc-list">
+                    {starredFiles.map((file) => (
+                      <MobileDocListItem
+                        key={`starred-${file._id}`}
+                        file={file}
+                        onPreview={(f) => setPreviewFile(f)}
+                        onDownload={handleDownloadFile}
+                        onToggleStar={handleToggleStar}
+                        onShare={(f) => setShareTarget({ type: 'file', item: f })}
+                        onRename={(f) => setRenameTarget({ type: 'file', item: f })}
+                        onMove={(f) => setMoveCopyTarget({ type: 'file', item: f, mode: 'move' })}
+                        onVersions={(f) => setVersionsTarget(f)}
+                        onDelete={(f) => setDeleteTarget({ type: 'file', item: f })}
+                      />
+                    ))}
                   </div>
-                </HomeSection>
+                </div>
+              )}
+
+              {/* Desktop Thư mục gần đây (Thanh cuộn ngang) */}
+              {recentFolders.length > 0 && (
+                <div className="home-section desktop-only">
+                  <div className="home-section-header">
+                    <div className="home-section-title">
+                      <FolderClock size={16} style={{ color: 'var(--primary-600)' }} />
+                      <span>Thư mục gần đây</span>
+                      <span className="drive-section-count">{recentFolders.length}</span>
+                    </div>
+                    <div className="home-folders-header-right">
+                      <button className="home-view-all-btn" onClick={() => navigate('/drive')}>
+                        <span>Xem tất cả</span>
+                        <ChevronRight size={14} />
+                      </button>
+                      <div className="home-folders-nav-controls">
+                        <button
+                          className="home-scroll-nav-btn"
+                          title="Cuộn sang trái"
+                          onClick={() => handleScrollFolders('left')}
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        <button
+                          className="home-scroll-nav-btn"
+                          title="Cuộn sang phải"
+                          onClick={() => handleScrollFolders('right')}
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="home-folders-scroll-viewport">
+                    <div className="home-folders-scroll-row" ref={foldersScrollRef}>
+                      {recentFolders.map(renderRecentFolderCard)}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Desktop Tệp tin gần đây */}
+              {recentFiles.length > 0 && (
+                <div className="desktop-only">
+                  <HomeSection
+                    icon={<Upload size={15} style={{ color: 'var(--accent-blue)' }} />}
+                    title="Tài liệu gần đây"
+                    count={recentFiles.length}
+                    onViewAll={() => navigate('/drive')}
+                  >
+                    <div className="file-grid">
+                      {recentFiles.map(renderFileCard)}
+                    </div>
+                  </HomeSection>
+                </div>
+              )}
+
+              {/* Desktop Mục yêu thích */}
+              {starredFiles.length > 0 && (
+                <div className="desktop-only">
+                  <HomeSection
+                    icon={<Star size={15} style={{ color: 'var(--accent-amber)', fill: 'var(--accent-amber)' }} />}
+                    title="Tài liệu yêu thích"
+                    count={starredFiles.length}
+                    onViewAll={() => navigate('/starred')}
+                  >
+                    <div className="file-grid">
+                      {starredFiles.map(renderFileCard)}
+                    </div>
+                  </HomeSection>
+                </div>
               )}
             </>
           )}

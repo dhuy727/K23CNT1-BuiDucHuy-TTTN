@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Trash2, AlertTriangle, LayoutGrid, List } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Trash2, AlertTriangle, LayoutGrid, List, Broom } from 'lucide-react';
 import FileGrid from '../../components/drive/FileGrid';
 import FileTable from '../../components/drive/FileTable';
 import ContextualActionBar from '../../components/drive/ContextualActionBar';
@@ -8,26 +9,34 @@ import EmptyState from '../../components/common/EmptyState';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import InspectorPanel from '../../components/drive/InspectorPanel';
 import fileService from '../../services/fileService';
+import folderService from '../../services/folderService';
 import { useToast } from '../../contexts/ToastContext';
 
 const TrashPage = () => {
+  const [folders, setFolders] = useState([]);
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState(() => localStorage.getItem('drive_view_mode') || 'grid');
   const [emptyTrashConfirm, setEmptyTrashConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   // Studio Inspector state
   const [selectedItem, setSelectedItem] = useState(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
 
+  const navigate = useNavigate();
   const toast = useToast();
 
   const fetchTrash = async () => {
     setLoading(true);
     try {
-      const res = await fileService.getTrashFiles();
-      setFiles(res.data || []);
+      const [fileRes, folderRes] = await Promise.all([
+        fileService.getTrashFiles(),
+        folderService.getTrashFolders()
+      ]);
+      setFiles(fileRes.data || []);
+      setFolders(folderRes.data || []);
     } catch (err) {
       console.error('Lỗi lấy thùng rác:', err);
       toast.error('Không thể tải danh sách thùng rác');
@@ -39,6 +48,9 @@ const TrashPage = () => {
   useEffect(() => {
     fetchTrash();
     setSelectedItem(null);
+    const onRefresh = () => fetchTrash();
+    window.addEventListener('drive:refresh', onRefresh);
+    return () => window.removeEventListener('drive:refresh', onRefresh);
   }, []);
 
   // Toggle Inspector global event
@@ -49,9 +61,15 @@ const TrashPage = () => {
   }, []);
 
   const handleRestore = async (type, item) => {
+    const isFolderItem = type === 'folder' || (item && item.color !== undefined && !item.mimeType);
     try {
-      await fileService.restoreFile(item._id);
-      toast.success(`Đã khôi phục "${item.name}"`);
+      if (isFolderItem) {
+        await folderService.restoreFolder(item._id);
+        toast.success(`Đã khôi phục thư mục "${item.name}"`);
+      } else {
+        await fileService.restoreFile(item._id);
+        toast.success(`Đã khôi phục tệp "${item.name}"`);
+      }
       if (selectedItem?.data?._id === item._id) setSelectedItem(null);
       fetchTrash();
       window.dispatchEvent(new Event('folder:updated'));
@@ -60,18 +78,31 @@ const TrashPage = () => {
     }
   };
 
-  const handlePermanentDelete = async (type, item) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa VĨNH VIỄN "${item.name}"? Thao tác này không thể hoàn tác.`)) {
-      return;
-    }
+  const handlePermanentDelete = (type, item) => {
+    const isFolderItem = type === 'folder' || (item && item.color !== undefined && !item.mimeType);
+    setDeleteTarget({ item, isFolderItem });
+  };
 
+  const handleConfirmPermanentDelete = async () => {
+    if (!deleteTarget) return;
+    const { item, isFolderItem } = deleteTarget;
+    setActionLoading(true);
     try {
-      await fileService.deleteFile(item._id, true);
-      toast.success(`Đã xóa vĩnh viễn "${item.name}"`);
+      if (isFolderItem) {
+        await folderService.deleteFolder(item._id, true);
+        toast.success(`Đã xóa vĩnh viễn thư mục "${item.name}"`);
+      } else {
+        await fileService.deleteFile(item._id, true);
+        toast.success(`Đã xóa vĩnh viễn tệp "${item.name}"`);
+      }
       if (selectedItem?.data?._id === item._id) setSelectedItem(null);
+      setDeleteTarget(null);
       fetchTrash();
+      window.dispatchEvent(new Event('folder:updated'));
     } catch (err) {
-      toast.error('Xóa vĩnh viễn thất bại');
+      toast.error(err.response?.data?.message || 'Xóa vĩnh viễn thất bại');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -97,11 +128,28 @@ const TrashPage = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
             <Trash2 size={20} style={{ color: 'var(--accent-rose)' }} />
             <span>Thùng rác</span>
-            <span className="badge badge-rose">{files.length}</span>
+            <span className="badge badge-rose">{folders.length + files.length}</span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {files.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{
+                padding: '5px 12px',
+                fontSize: '0.8rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              onClick={() => navigate('/drive/cleanup')}
+              title="Mở trang Dọn dẹp dung lượng & tệp trùng lặp"
+            >
+              <Broom size={14} style={{ color: 'var(--primary-600)' }} />
+              <span>Dọn dẹp & Trùng lặp</span>
+            </button>
+
+            {(files.length > 0 || folders.length > 0) && (
               <button
                 className="btn btn-danger"
                 style={{ padding: '5px 12px', fontSize: '0.8rem' }}
@@ -148,7 +196,6 @@ const TrashPage = () => {
         )}
 
         <div
-
           style={{
             padding: '8px 14px',
             backgroundColor: 'var(--bg-surface-hover)',
@@ -162,7 +209,7 @@ const TrashPage = () => {
           }}
         >
           <AlertTriangle size={15} style={{ color: 'var(--accent-amber)', flexShrink: 0 }} />
-          <span>Các tệp trong thùng rác có thể được khôi phục hoặc xóa vĩnh viễn khỏi hệ thống lưu trữ.</span>
+          <span>Các tệp và thư mục trong thùng rác có thể được khôi phục hoặc xóa vĩnh viễn khỏi hệ thống lưu trữ.</span>
         </div>
 
         {loading ? (
@@ -170,15 +217,31 @@ const TrashPage = () => {
             <span className="spinner" style={{ width: 32, height: 32, margin: '0 auto' }} />
             <div style={{ marginTop: '14px', fontSize: '0.835rem' }}>Đang tải danh sách thùng rác...</div>
           </div>
-        ) : files.length === 0 ? (
+        ) : folders.length === 0 && files.length === 0 ? (
           <EmptyState
             icon={Trash2}
             title="Thùng rác trống"
             description="Không có tệp tin hoặc thư mục nào nằm trong thùng rác."
+            action={
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '0.85rem'
+                }}
+                onClick={() => navigate('/drive/cleanup')}
+              >
+                <Broom size={15} style={{ color: 'var(--primary-600)' }} />
+                <span>Dọn dẹp & Trùng lặp</span>
+              </button>
+            }
           />
         ) : viewMode === 'grid' ? (
           <FileGrid
-            folders={[]}
+            folders={folders}
             files={files}
             isTrash={true}
             selectedItem={selectedItem}
@@ -188,7 +251,7 @@ const TrashPage = () => {
           />
         ) : (
           <FileTable
-            folders={[]}
+            folders={folders}
             files={files}
             isTrash={true}
             selectedItem={selectedItem}
@@ -210,8 +273,19 @@ const TrashPage = () => {
       />
 
       <ConfirmDialog
+        isOpen={Boolean(deleteTarget)}
+        onClose={() => !actionLoading && setDeleteTarget(null)}
+        onConfirm={handleConfirmPermanentDelete}
+        title={`Xóa vĩnh viễn ${deleteTarget?.isFolderItem ? 'thư mục' : 'tệp tin'}?`}
+        message={`Bạn có chắc chắn muốn xóa VĨNH VIỄN ${deleteTarget?.isFolderItem ? 'thư mục' : 'tệp'} "${deleteTarget?.item?.name}"? Thao tác này không thể hoàn tác.`}
+        confirmText="Xóa vĩnh viễn"
+        isDanger={true}
+        loading={actionLoading}
+      />
+
+      <ConfirmDialog
         isOpen={emptyTrashConfirm}
-        onClose={() => setEmptyTrashConfirm(false)}
+        onClose={() => !actionLoading && setEmptyTrashConfirm(false)}
         onConfirm={handleEmptyTrash}
         title="Dọn sạch toàn bộ thùng rác?"
         message="Hành động này sẽ xóa VĨNH VIỄN toàn bộ tệp tin trong thùng rác và giải phóng dung lượng. Bạn không thể hoàn tác sau khi thực hiện."

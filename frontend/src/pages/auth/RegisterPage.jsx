@@ -84,8 +84,8 @@ const RegisterPage = () => {
           <div className="auth-logo-badge">
             <Layers size={24} />
           </div>
-          <div className="auth-brand-tag">SmartDocs Workspace</div>
-          <h1 className="auth-title">Đăng ký SmartDocs</h1>
+          <div className="auth-brand-tag">DocuFlow Workspace</div>
+          <h1 className="auth-title">Đăng ký DocuFlow</h1>
           <p className="auth-subtitle">Khởi tạo tài khoản quản lý và lưu trữ tài liệu đám mây</p>
         </div>
 
@@ -232,7 +232,7 @@ const RegisterPage = () => {
             className="auth-submit-btn"
             disabled={loading}
           >
-            {loading ? <span className="spinner" /> : 'Tạo tài khoản SmartDocs'}
+            {loading ? <span className="spinner" /> : 'Tạo tài khoản DocuFlow'}
           </button>
         </form>
 

@@ -114,6 +114,26 @@ const fileSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    // Các trường theo dõi trạng thái lập chỉ mục RAG (Vector Search)
+    ragStatus: {
+      type: String,
+      enum: ['pending', 'indexing', 'indexed', 'failed', 'unsupported'],
+      default: 'pending',
+      index: true
+    },
+    ragChunkCount: {
+      type: Number,
+      default: 0
+    },
+    ragIndexedAt: {
+      type: Date,
+      default: null
+    },
+    ragError: {
+      type: String,
+      default: '',
+      trim: true
+    },
     isTrash: {
       type: Boolean,
       default: false,

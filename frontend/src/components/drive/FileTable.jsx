@@ -2,6 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Folder,
+  FolderOpen,
   Star,
   Download,
   Share2,
@@ -16,9 +17,18 @@ import {
   RefreshCw,
   Clock,
   XCircle,
-  RotateCcw
+  RotateCcw,
+  Pin
 } from 'lucide-react';
 import FileIcon from './FileIcon';
+import {
+  setActiveDragItem,
+  getActiveDragItem,
+  clearActiveDragItem,
+  isExternalFileDrag
+} from '../../utils/dragDropUpload';
+
+const SPRING_OPEN_FOLDER_DELAY_MS = 1000;
 
 /* ── Dropdown menu 3 chấm dùng riêng cho Table qua Portal để chống bị che khuất ── */
 const TableMoreMenu = ({ buttonRef, items, onClose }) => {
@@ -105,7 +115,6 @@ const TableMoreMenu = ({ buttonRef, items, onClose }) => {
   );
 };
 
-
 /* ── Row thư mục ── */
 const FolderRow = ({
   folder,
@@ -117,13 +126,35 @@ const FolderRow = ({
   onMoveItem,
   onDeleteItem,
   isTrash,
-  onRestoreItem
+  onRestoreItem,
+  onDirectDrop,
+  onExternalDrop,
+  onTogglePinFolder
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isDropTarget, setIsDropTarget] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const buttonRef = useRef(null);
+  const springTimerRef = useRef(null);
+
+  const clearSpringTimer = () => {
+    if (springTimerRef.current) {
+      clearTimeout(springTimerRef.current);
+      springTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearSpringTimer();
+  }, []);
 
   const menuItems = [
     onOpenFolder && { icon: <Folder size={14} />, label: 'Mở thư mục', onClick: () => onOpenFolder(folder._id) },
+    onTogglePinFolder && {
+      icon: <Pin size={14} style={{ color: folder.isPinned ? '#f59e0b' : 'inherit' }} />,
+      label: folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục',
+      onClick: () => onTogglePinFolder(folder._id)
+    },
     onShareItem && { icon: <Share2 size={14} />, label: 'Chia sẻ', onClick: () => onShareItem('folder', folder) },
     onRenameItem && { icon: <Edit2 size={14} />, label: 'Đổi tên', onClick: () => onRenameItem('folder', folder) },
     onMoveItem && { icon: <FolderInput size={14} />, label: 'Di chuyển', onClick: () => onMoveItem('folder', folder) },
@@ -131,23 +162,122 @@ const FolderRow = ({
     onDeleteItem && { icon: <Trash2 size={14} />, label: 'Xóa vào thùng rác', danger: true, onClick: () => onDeleteItem('folder', folder) }
   ].filter(Boolean);
 
+  const handleDragStart = (e) => {
+    if (isTrash) return;
+    setIsDragging(true);
+    const payload = {
+      type: 'folder',
+      id: folder._id,
+      name: folder.name,
+      parentId: folder.parentId || 'root'
+    };
+    setActiveDragItem(payload);
+    e.dataTransfer.setData('application/json', JSON.stringify(payload));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    clearSpringTimer();
+    clearActiveDragItem();
+  };
+
+  const handleDragOver = (e) => {
+    if (isTrash) return;
+    const activeDrag = getActiveDragItem();
+    if (isDragging || (activeDrag?.type === 'folder' && String(activeDrag.id) === String(folder._id))) {
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = isExternalFileDrag(e) ? 'copy' : 'move';
+    if (!isDropTarget) {
+      setIsDropTarget(true);
+    }
+
+    // Giữ chuột trên hàng thư mục ~1 giây sẽ tự động mở đi vào thư mục đó
+    if (!springTimerRef.current && onOpenFolder) {
+      springTimerRef.current = setTimeout(() => {
+        springTimerRef.current = null;
+        setIsDropTarget(false);
+        onOpenFolder(folder._id);
+      }, SPRING_OPEN_FOLDER_DELAY_MS);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDropTarget(false);
+      clearSpringTimer();
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDropTarget(false);
+    clearSpringTimer();
+    if (isTrash) return;
+
+    if (isExternalFileDrag(e)) {
+      if (onExternalDrop) {
+        onExternalDrop(e, folder);
+      }
+      return;
+    }
+
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      const item = raw ? JSON.parse(raw) : getActiveDragItem();
+      clearActiveDragItem();
+      if (item && String(item.id) !== String(folder._id) && onDirectDrop) {
+        onDirectDrop(item, folder);
+      }
+    } catch (err) {
+      console.error('Lỗi drop:', err);
+    }
+  };
+
   return (
     <tr
-      className={`${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
+      className={`folder-row ${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDropTarget ? 'drop-target-active' : ''} ${isDragging ? 'is-dragging' : ''}`}
+      draggable={!isTrash}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       onClick={() => onSelectItem && onSelectItem({ type: 'folder', data: folder })}
       onDoubleClick={() => onOpenFolder && onOpenFolder(folder._id)}
     >
       <td className="col-name">
         <div className="table-name-cell">
-          <Folder
-            size={18}
-            style={{
-              color: folder.color || 'var(--primary-600)',
-              fill: folder.color ? `${folder.color}33` : 'var(--primary-200)',
-              flexShrink: 0
-            }}
-          />
+          {isDropTarget ? (
+            <FolderOpen
+              size={18}
+              style={{
+                color: 'var(--primary-600)',
+                fill: 'var(--primary-200)',
+                flexShrink: 0
+              }}
+            />
+          ) : (
+            <Folder
+              size={18}
+              style={{
+                color: folder.color || 'var(--primary-600)',
+                fill: folder.color ? `${folder.color}33` : 'var(--primary-200)',
+                flexShrink: 0
+              }}
+            />
+          )}
           <span title={folder.name}>{folder.name}</span>
+          {folder.isPinned && (
+            <Pin
+              size={12}
+              style={{ color: 'var(--accent-amber, #f59e0b)', fill: 'var(--accent-amber, #f59e0b)', flexShrink: 0 }}
+              title="Thư mục đã ghim"
+            />
+          )}
         </div>
       </td>
       <td className="col-ai">
@@ -164,6 +294,24 @@ const FolderRow = ({
           {!isTrash ? (
             <>
               <div className="table-row-hover-actions">
+                {onTogglePinFolder && (
+                  <button
+                    className={`btn-icon home-quick-btn ${folder.isPinned ? 'is-pinned' : ''}`}
+                    title={folder.isPinned ? 'Bỏ ghim thư mục' : 'Ghim thư mục'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTogglePinFolder(folder._id);
+                    }}
+                  >
+                    <Pin
+                      size={14}
+                      style={{
+                        color: folder.isPinned ? '#f59e0b' : 'inherit',
+                        fill: folder.isPinned ? '#f59e0b' : 'none'
+                      }}
+                    />
+                  </button>
+                )}
                 {onShareItem && (
                   <button
                     className="btn-icon home-quick-btn"
@@ -228,7 +376,6 @@ const FolderRow = ({
           )}
         </div>
       </td>
-
     </tr>
   );
 };
@@ -253,6 +400,7 @@ const FileRow = ({
   onRetryAi
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const buttonRef = useRef(null);
 
   const menuItems = [
@@ -268,6 +416,23 @@ const FileRow = ({
     onMoveItem && { icon: <FolderInput size={14} />, label: 'Di chuyển', onClick: () => onMoveItem('file', file) },
     onCopyItem && { icon: <Copy size={14} />, label: 'Sao chép vào', onClick: () => onCopyItem('file', file) },
     onVersionHistory && { icon: <History size={14} />, label: 'Lịch sử phiên bản', onClick: () => onVersionHistory(file) },
+    !isTrash && {
+      icon: <Sparkles size={14} style={{ color: 'var(--primary-500)' }} />,
+      label: 'Hỏi AI về tệp này',
+      onClick: () => {
+        window.dispatchEvent(
+          new CustomEvent('open-rag-drawer', {
+            detail: {
+              scope: {
+                type: 'file',
+                targetId: file._id,
+                name: file.name
+              }
+            }
+          })
+        );
+      }
+    },
     onRetryAi && (file.aiStatus === 'failed' || file.aiStatus === 'skipped') && {
       icon: <RefreshCw size={14} />,
       label: 'Phân tích lại AI',
@@ -277,10 +442,32 @@ const FileRow = ({
     onDeleteItem && { icon: <Trash2 size={14} />, label: 'Xóa vào thùng rác', danger: true, onClick: () => onDeleteItem('file', file) }
   ].filter(Boolean);
 
+  const handleDragStart = (e) => {
+    if (isTrash) return;
+    setIsDragging(true);
+    const payload = {
+      type: 'file',
+      id: file._id,
+      name: file.name,
+      parentId: file.folderId || 'root'
+    };
+    setActiveDragItem(payload);
+    e.dataTransfer.setData('application/json', JSON.stringify(payload));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    clearActiveDragItem();
+  };
+
   return (
     <tr
       data-file-id={file._id}
-      className={`${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''}`}
+      className={`${isSelected ? 'is-selected' : ''} ${menuOpen ? 'menu-open' : ''} ${isDragging ? 'is-dragging' : ''}`}
+      draggable={!isTrash}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
       onClick={() => onSelectItem && onSelectItem({ type: 'file', data: file })}
       onDoubleClick={() => onPreviewFile && onPreviewFile(file)}
     >
@@ -305,15 +492,15 @@ const FileRow = ({
                   <span
                     key={idx}
                     style={{
-                    fontSize: '0.6875rem',
-                    color: 'var(--text-muted)',
-                    background: 'var(--bg-surface-hover)',
-                    padding: '1px 5px',
-                    borderRadius: '4px'
-                  }}
-                >
-                  #{t}
-                </span>
+                      fontSize: '0.6875rem',
+                      color: 'var(--text-muted)',
+                      background: 'var(--bg-surface-hover)',
+                      padding: '1px 5px',
+                      borderRadius: '4px'
+                    }}
+                  >
+                    #{t}
+                  </span>
                 ))}
               </div>
             )}
@@ -386,7 +573,7 @@ const FileRow = ({
                     title="Chia sẻ"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onShareItem('file', file);
+                      onShareItem(file ? 'file' : 'file', file);
                     }}
                   >
                     <Share2 size={14} />
@@ -471,7 +658,10 @@ const FileTable = ({
   onDeleteItem,
   isTrash = false,
   onRestoreItem,
-  onRetryAi
+  onRetryAi,
+  onDirectDrop,
+  onExternalDrop,
+  onTogglePinFolder
 }) => {
   const formatSize = (bytes) => {
     if (!bytes && bytes !== 0) return '-';
@@ -508,6 +698,9 @@ const FileTable = ({
               onDeleteItem={onDeleteItem}
               isTrash={isTrash}
               onRestoreItem={onRestoreItem}
+              onDirectDrop={onDirectDrop}
+              onExternalDrop={onExternalDrop}
+              onTogglePinFolder={onTogglePinFolder}
             />
           ))}
 

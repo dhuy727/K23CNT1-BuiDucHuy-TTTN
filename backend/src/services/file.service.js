@@ -7,7 +7,7 @@ const Folder = require('../models/folder.model');
 const Share = require('../models/share.model');
 const ApiError = require('../utils/apiError');
 const { calculateFileHash } = require('../utils/fileHash');
-const { UPLOAD_DIR } = require('../middlewares/upload.middleware');
+const { UPLOAD_DIR, fixUtf8Filename } = require('../middlewares/upload.middleware');
 const storageService = require('./storage.service');
 
 /**
@@ -52,11 +52,15 @@ const uploadFile = async (userId, file, body = {}) => {
   // Xác thực thư mục đích
   const targetFolderId = await normalizeAndValidateFolder(userId, body.folderId);
 
-  // Tên hiển thị của file (mặc định lấy theo tên gốc nếu không chỉ định)
-  const ext = path.extname(file.originalname).toLowerCase();
-  let displayName = (body.name && typeof body.name === 'string' && body.name.trim() !== '')
-    ? body.name.trim()
-    : file.originalname;
+  // Ưu tiên: body.fileName (UTF-8 field từ frontend) -> body.name -> file.originalname
+  const rawCandidate = (body.fileName && typeof body.fileName === 'string' && body.fileName.trim() !== '')
+    ? body.fileName.trim()
+    : ((body.name && typeof body.name === 'string' && body.name.trim() !== '')
+      ? body.name.trim()
+      : file.originalname);
+
+  let displayName = fixUtf8Filename(rawCandidate) || fixUtf8Filename(file.originalname);
+  const ext = path.extname(displayName || file.originalname).toLowerCase();
 
   // Nếu tên không chứa extension thì thêm extension gốc vào
   if (ext && !displayName.toLowerCase().endsWith(ext)) {
@@ -92,7 +96,7 @@ const uploadFile = async (userId, file, body = {}) => {
 
   const newFile = new File({
     name: uniqueName,
-    originalName: file.originalname,
+    originalName: fixUtf8Filename(file.originalname),
     user: userId,
     folder: targetFolderId,
     size: file.size,
@@ -135,9 +139,22 @@ const uploadMultipleFiles = async (userId, files, body = {}) => {
   const targetFolderId = await normalizeAndValidateFolder(userId, body.folderId);
   const uploadedFiles = [];
 
-  for (const file of files) {
-    const ext = path.extname(file.originalname).toLowerCase();
-    let displayName = file.originalname;
+  // Hỗ trợ mảng fileName từ frontend nếu có
+  let clientFileNames = [];
+  if (body.fileNames) {
+    try {
+      clientFileNames = typeof body.fileNames === 'string' ? JSON.parse(body.fileNames) : body.fileNames;
+    } catch {
+      clientFileNames = [];
+    }
+  }
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const candidateName = (clientFileNames && clientFileNames[i]) || file.originalname;
+    const fixedOriginal = fixUtf8Filename(candidateName) || fixUtf8Filename(file.originalname);
+    const ext = path.extname(fixedOriginal).toLowerCase();
+    let displayName = fixedOriginal;
 
     let uniqueName = displayName;
     let counter = 1;
@@ -153,7 +170,7 @@ const uploadMultipleFiles = async (userId, files, body = {}) => {
 
     const newFile = new File({
       name: uniqueName,
-      originalName: file.originalname,
+      originalName: fixUtf8Filename(file.originalname),
       user: userId,
       folder: targetFolderId,
       size: file.size,
@@ -219,9 +236,9 @@ const getFiles = async (userId, query = {}) => {
     ];
   }
 
-  // Lọc theo phân loại AI (Category)
-  if (query.aiCategory) {
-    filter.aiCategory = query.aiCategory;
+  // Lọc theo danh mục (Category / AI Category)
+  if (query.category || query.aiCategory) {
+    filter.aiCategory = query.category || query.aiCategory;
   }
 
   // Lọc theo trạng thái yêu thích
@@ -549,7 +566,7 @@ const copyFile = async (userId, fileId, targetFolderId = undefined) => {
     ? await normalizeAndValidateFolder(userId, targetFolderId)
     : originalFile.folder;
 
-  // Bản sao lưu trữ (hỗ trợ cả MinIO và local)
+  // Bản sao lưu trữ 
   const copyStorage = await storageService.copyFile(originalFile, originalFile.name);
 
   // Tạo tên hiển thị cho bản sao (ví dụ: Bản sao của abc.pdf hoặc abc (Copy).pdf)
@@ -606,6 +623,11 @@ const deleteFile = async (userId, fileId, permanent = false) => {
   }
 
   if (permanent) {
+    try {
+      require('./rag-indexing.service').deleteFileChunks(fileId);
+    } catch (ragCleanErr) {
+      console.warn('[RAG Clean] Lỗi xóa chunks của file:', ragCleanErr.message);
+    }
     await storageService.deleteFile(file);
     await File.deleteOne({ _id: fileId, user: userId });
 
@@ -712,8 +734,13 @@ const restoreFile = async (userId, fileId) => {
 const emptyTrash = async (userId) => {
   const trashFiles = await File.find({ user: userId, isTrash: true });
 
-  // Xóa các file vật lý trên hệ thống lưu trữ (MinIO hoặc Local)
+  // Xóa các file vật lý và vector chunks
   for (const file of trashFiles) {
+    try {
+      require('./rag-indexing.service').deleteFileChunks(file._id);
+    } catch (ragCleanErr) {
+      // bỏ qua lỗi xóa chunks
+    }
     await storageService.deleteFile(file);
   }
 

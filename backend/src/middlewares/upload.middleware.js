@@ -40,6 +40,24 @@ const upload = multer({
 });
 
 /**
+ * Khôi phục tên tệp tiếng Việt chuẩn UTF-8 khi bị Busboy/Multer giải mã nhầm theo latin1
+ */
+const fixUtf8Filename = (filename) => {
+  if (!filename || typeof filename !== 'string') return '';
+  try {
+    // Nếu filename chứa chuỗi byte UTF-8 bị đọc nhầm theo latin1 (chứa Ã, áº, vv), chuyển đổi về UTF-8 chuẩn
+    const converted = Buffer.from(filename, 'latin1').toString('utf8');
+    // Kiểm tra xem chuỗi converted có hợp lệ không (không chứa ký tự thay thế lỗi \ufffd)
+    if (!converted.includes('\ufffd')) {
+      return converted;
+    }
+  } catch (err) {
+    // Nếu có lỗi, giữ nguyên
+  }
+  return filename;
+};
+
+/**
  * Middleware bọc upload 1 file đơn lẻ (field: 'file') kèm xử lý lỗi Multer
  */
 const uploadSingle = (req, res, next) => {
@@ -53,6 +71,9 @@ const uploadSingle = (req, res, next) => {
       return next(new ApiError(400, `Lỗi tải tệp: ${err.message}`));
     } else if (err) {
       return next(new ApiError(400, `Lỗi không xác định khi tải tệp: ${err.message}`));
+    }
+    if (req.file) {
+      req.file.originalname = fixUtf8Filename(req.file.originalname);
     }
     next();
   });
@@ -76,12 +97,18 @@ const uploadMultiple = (req, res, next) => {
     } else if (err) {
       return next(new ApiError(400, `Lỗi không xác định khi tải tệp: ${err.message}`));
     }
+    if (req.files && Array.isArray(req.files)) {
+      req.files.forEach((file) => {
+        file.originalname = fixUtf8Filename(file.originalname);
+      });
+    }
     next();
   });
 };
 
 module.exports = {
   UPLOAD_DIR,
+  fixUtf8Filename,
   uploadSingle,
   uploadMultiple
 };

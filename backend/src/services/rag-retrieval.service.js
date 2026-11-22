@@ -1,0 +1,421 @@
+/**
+ * Dịch vụ Truy xuất Lai (Hybrid Retrieval: Vector Search + Keyword Search + RRF)
+ */
+
+const mongoose = require('mongoose');
+const DocumentChunk = require('../models/chunk.model');
+const File = require('../models/file.model');
+const Folder = require('../models/folder.model');
+const Share = require('../models/share.model');
+const embeddingProvider = require('./embedding.provider');
+
+/**
+ * Tính toán độ tương đồng Cosine giữa 2 vectors
+ */
+const cosineSimilarity = (vecA, vecB) => {
+  if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < vecA.length; i++) {
+    dotProduct += vecA[i] * vecB[i];
+    normA += vecA[i] * vecA[i];
+    normB += vecB[i] * vecB[i];
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+};
+
+/**
+ * Xác định danh sách File ID mà người dùng có quyền truy cập theo Scope
+ * Cơ chế bảo vệ đa lớp (Multi-layer Document ACL):
+ * 1. Loại trừ hoàn toàn các tệp tin trong thùng rác (isTrash: true)
+ * 2. Lọc bỏ các liên kết chia sẻ đã hết hạn (expiresAt <= now)
+ * 3. Xác minh quyền sở hữu hoặc quyền chia sẻ hợp lệ theo từng Folder Scope
+ * 4. Double-check xác thực tệp tin tồn tại thực tế trong CSDL
+ */
+const resolveAccessibleFileIds = async (userId, scope = { type: 'all', targetId: null }) => {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const now = new Date();
+
+  // Điều kiện chia sẻ hợp lệ: đúng người nhận và chưa hết hạn (hoặc không đặt hạn)
+  const activeShareCondition = {
+    sharedWith: userObjectId,
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }]
+  };
+
+  // 1. Nếu phạm vi là 1 tệp tin cụ thể (Single File QA)
+  if (scope.type === 'file' && scope.targetId) {
+    if (!mongoose.Types.ObjectId.isValid(scope.targetId)) return [];
+
+    const targetFile = await File.findOne({
+      _id: scope.targetId,
+      isTrash: false
+    }).select('_id user folder');
+
+    if (!targetFile) return [];
+
+    // Trường hợp A: File do chính user sở hữu
+    if (targetFile.user.toString() === userObjectId.toString()) {
+      return [targetFile._id];
+    }
+
+    // Trường hợp B: File được chia sẻ trực tiếp và còn hạn
+    const activeFileShare = await Share.findOne({
+      ...activeShareCondition,
+      file: targetFile._id,
+      itemType: 'file'
+    }).select('_id');
+
+    if (activeFileShare) {
+      return [targetFile._id];
+    }
+
+    // Trường hợp C: Thư mục chứa file (hoặc tổ tiên) được chia sẻ còn hạn
+    if (targetFile.folder) {
+      const parentFolder = await Folder.findOne({ _id: targetFile.folder, isTrash: false });
+      if (parentFolder) {
+        const folderIds = [parentFolder._id];
+        if (parentFolder.path) {
+          const ancestorFolders = await Folder.find({
+            path: { $regex: `^${parentFolder.path.split('/')[0]}` },
+            isTrash: false
+          }).distinct('_id');
+          folderIds.push(...ancestorFolders);
+        }
+
+        const activeFolderShare = await Share.findOne({
+          ...activeShareCondition,
+          folder: { $in: folderIds },
+          itemType: 'folder'
+        }).select('_id');
+
+        if (activeFolderShare) {
+          return [targetFile._id];
+        }
+      }
+    }
+
+    // Không thỏa mãn bất kỳ quyền nào
+    return [];
+  }
+
+  // 2. Nếu phạm vi là 1 thư mục cụ thể (Folder-scoped QA)
+  if (scope.type === 'folder' && scope.targetId) {
+    if (!mongoose.Types.ObjectId.isValid(scope.targetId)) return [];
+
+    const parentFolder = await Folder.findOne({ _id: scope.targetId, isTrash: false });
+    if (!parentFolder) return [];
+
+    const isOwner = parentFolder.user.toString() === userObjectId.toString();
+    let hasAccess = isOwner;
+
+    if (!hasAccess) {
+      // Kiểm tra xem thư mục có được chia sẻ còn hạn cho user không
+      const activeShare = await Share.findOne({
+        ...activeShareCondition,
+        folder: parentFolder._id,
+        itemType: 'folder'
+      }).select('_id');
+      hasAccess = !!activeShare;
+    }
+
+    if (!hasAccess) {
+      return [];
+    }
+
+    // Tìm tất cả thư mục con cháu
+    const descendants = await Folder.find({
+      path: { $regex: `^${parentFolder.path}` },
+      isTrash: false
+    }).select('_id');
+
+    const folderIds = [parentFolder._id, ...descendants.map((d) => d._id)];
+
+    // Lấy tất cả file chưa vào thùng rác trong phạm vi thư mục được phép
+    const files = await File.find({
+      folder: { $in: folderIds },
+      isTrash: false
+    }).select('_id');
+
+    return files.map((f) => f._id);
+  }
+
+  // 3. Phạm vi mặc định: Toàn bộ Drive (Global Multi-document QA)
+  const [ownedFiles, directSharedFiles, sharedFolders] = await Promise.all([
+    // File do chính người dùng sở hữu và không nằm trong thùng rác
+    File.find({ user: userObjectId, isTrash: false }).select('_id'),
+
+    // File được người khác chia sẻ trực tiếp (còn hạn)
+    Share.find({ ...activeShareCondition, itemType: 'file' }).distinct('file'),
+
+    // Thư mục được chia sẻ cho người dùng (còn hạn)
+    Share.find({ ...activeShareCondition, itemType: 'folder' }).distinct('folder')
+  ]);
+
+  let folderSharedFiles = [];
+  if (sharedFolders && sharedFolders.length > 0) {
+    const parentFolders = await Folder.find({ _id: { $in: sharedFolders }, isTrash: false });
+    if (parentFolders.length > 0) {
+      const paths = parentFolders.map((f) => new RegExp(`^${f.path}`));
+      const allDescendantFolders = await Folder.find({ path: { $in: paths }, isTrash: false }).distinct('_id');
+      const allFolderIds = [...sharedFolders, ...allDescendantFolders];
+
+      folderSharedFiles = await File.find({ folder: { $in: allFolderIds }, isTrash: false }).distinct('_id');
+    }
+  }
+
+  const candidateFileIds = new Set([
+    ...ownedFiles.map((f) => f._id.toString()),
+    ...directSharedFiles.map((id) => id.toString()),
+    ...folderSharedFiles.map((id) => id.toString())
+  ]);
+
+  if (candidateFileIds.size === 0) {
+    return [];
+  }
+
+  // DOUBLE-CHECK BẢO MẬT: Xác thực lại tất cả file thực sự tồn tại và KHÔNG nằm trong thùng rác
+  const validFiles = await File.find({
+    _id: { $in: Array.from(candidateFileIds) },
+    isTrash: false
+  }).select('_id');
+
+  return validFiles.map((f) => f._id);
+};
+
+/**
+ * Tìm kiếm Dense Vector (Atlas Vector Search hoặc Local Cosine Fallback)
+ */
+const searchDenseVectors = async (queryEmbedding, accessibleFileIds, topK = 20) => {
+  if (accessibleFileIds.length === 0) return [];
+
+  try {
+    // Thử truy vấn MongoDB Atlas Vector Search ($vectorSearch)
+    const pipeline = [
+      {
+        $vectorSearch: {
+          index: 'vector_index',
+          path: 'embedding',
+          queryVector: queryEmbedding,
+          numCandidates: Math.max(topK * 3, 50),
+          limit: topK,
+          filter: {
+            file: { $in: accessibleFileIds }
+          }
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          file: 1,
+          chunkIndex: 1,
+          content: 1,
+          pageNumber: 1,
+          sectionTitle: 1,
+          score: { $meta: 'vectorSearchScore' }
+        }
+      }
+    ];
+
+    const results = await DocumentChunk.aggregate(pipeline);
+    if (Array.isArray(results) && results.length > 0) {
+      return results;
+    }
+  } catch (atlasErr) {
+    console.warn(`[RAG Retrieval] Atlas $vectorSearch không khả dụng hoặc chưa tạo index (${atlasErr.message}). Chuyển sang Local Cosine Fallback...`);
+  }
+
+  // Local Cosine Fallback (Tính trực tiếp trên bộ nhớ ứng dụng)
+  const candidateChunks = await DocumentChunk.find({
+    file: { $in: accessibleFileIds }
+  })
+    .select('_id file chunkIndex content pageNumber sectionTitle embedding')
+    .limit(300)
+    .lean();
+
+  const scored = candidateChunks.map((chunk) => {
+    const sim = cosineSimilarity(queryEmbedding, chunk.embedding);
+    return {
+      _id: chunk._id,
+      file: chunk.file,
+      chunkIndex: chunk.chunkIndex,
+      content: chunk.content,
+      pageNumber: chunk.pageNumber,
+      sectionTitle: chunk.sectionTitle,
+      score: sim
+    };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, topK);
+};
+
+const VIETNAMESE_STOP_WORDS = new Set([
+  'các', 'những', 'của', 'tôi', 'cho', 'về', 'trong', 'tại', 'với', 'file', 'tệp',
+  'tài liệu', 'được', 'làm', 'có', 'là', 'và', 'này', 'đó', 'gì', 'nào', 'sao', 'thế', 'ở', 'đâu'
+]);
+
+/**
+ * Tìm kiếm Sparse Keyword trên nội dung chunk và tên file
+ */
+const searchSparseKeywords = async (queryText, accessibleFileIds, topK = 20) => {
+  if (accessibleFileIds.length === 0 || !queryText.trim()) return [];
+
+  // Tách từ và loại bỏ stop words tiếng Việt
+  const rawWords = queryText
+    .toLowerCase()
+    .split(/[\s,.;:!?()]+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 2 && !VIETNAMESE_STOP_WORDS.has(w));
+
+  const meaningfulWords = rawWords.length > 0 ? rawWords : queryText.split(/\s+/).filter(w => w.length >= 2);
+  if (meaningfulWords.length === 0) return [];
+
+  const escapedWords = meaningfulWords.slice(0, 5).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const regex = new RegExp(escapedWords.join('|'), 'i');
+
+  try {
+    // 1. Tìm các file khớp tên với từ khóa (File metadata matching)
+    const matchingFiles = await File.find({
+      _id: { $in: accessibleFileIds },
+      name: regex
+    }).select('_id').limit(10).lean();
+
+    const matchingFileIds = matchingFiles.map(f => f._id);
+
+    // Ưu tiên lấy chunks từ các file khớp tên
+    let nameMatchedChunks = [];
+    if (matchingFileIds.length > 0) {
+      nameMatchedChunks = await DocumentChunk.find({
+        file: { $in: matchingFileIds }
+      })
+        .select('_id file chunkIndex content pageNumber sectionTitle')
+        .limit(Math.floor(topK / 2))
+        .lean();
+    }
+
+    // 2. Tìm chunks có nội dung khớp regex
+    const contentMatchedChunks = await DocumentChunk.find({
+      file: { $in: accessibleFileIds },
+      content: regex
+    })
+      .select('_id file chunkIndex content pageNumber sectionTitle')
+      .limit(topK)
+      .lean();
+
+    // Kết hợp và khử trùng lặp
+    const combined = [...nameMatchedChunks, ...contentMatchedChunks];
+    const seen = new Set();
+    const unique = [];
+    for (const item of combined) {
+      const idStr = item._id.toString();
+      if (!seen.has(idStr)) {
+        seen.add(idStr);
+        unique.push(item);
+      }
+    }
+
+    return unique.slice(0, topK).map((r, idx) => ({ ...r, rank: idx + 1 }));
+  } catch (err) {
+    console.warn('[RAG Retrieval] Lỗi trong searchSparseKeywords:', err.message);
+    return [];
+  }
+};
+
+/**
+ * Dung hợp kết quả bằng thuật toán Reciprocal Rank Fusion (RRF)
+ */
+const hybridRetrieve = async (userId, queryText, scope = { type: 'all', targetId: null }, limit = 6) => {
+  const accessibleFileIds = await resolveAccessibleFileIds(userId, scope);
+  if (accessibleFileIds.length === 0) {
+    return [];
+  }
+
+  // 1. Sinh vector query và thực hiện Dense Search
+  const queryEmbedding = await embeddingProvider.getEmbedding(queryText);
+  const denseResults = await searchDenseVectors(queryEmbedding, accessibleFileIds, 20);
+
+  // 2. Thực hiện Sparse Keyword Search
+  const sparseResults = await searchSparseKeywords(queryText, accessibleFileIds, 20);
+
+  // 3. Tính điểm RRF kết hợp
+  const rrfK = 60;
+  const chunkScores = new Map();
+
+  denseResults.forEach((item, index) => {
+    const id = item._id.toString();
+    const denseRrf = 1 / (rrfK + (index + 1));
+    chunkScores.set(id, {
+      chunk: item,
+      rrfScore: denseRrf,
+      rawSimilarity: item.score || 0
+    });
+  });
+
+  sparseResults.forEach((item, index) => {
+    const id = item._id.toString();
+    const sparseRrf = 1 / (rrfK + (index + 1));
+    if (chunkScores.has(id)) {
+      const existing = chunkScores.get(id);
+      existing.rrfScore += sparseRrf;
+    } else {
+      chunkScores.set(id, {
+        chunk: item,
+        rrfScore: sparseRrf,
+        rawSimilarity: 0.5
+      });
+    }
+  });
+
+  // 4. Sắp xếp và lấy Top Chunks
+  let sortedChunks = Array.from(chunkScores.values())
+    .sort((a, b) => b.rrfScore - a.rrfScore);
+
+  // Lọc bớt chunks rác nếu top chunks có điểm cosine rõ rệt
+  if (sortedChunks.length > 0) {
+    const topScore = sortedChunks[0].rawSimilarity || 0;
+    if (topScore > 0.65) {
+      // Giữ lại các chunk có điểm không bị quá thấp so với top score
+      sortedChunks = sortedChunks.filter(c => (c.rawSimilarity || 0) >= Math.max(0.55, topScore - 0.22));
+    }
+  }
+
+  sortedChunks = sortedChunks.slice(0, limit);
+
+  if (sortedChunks.length === 0) {
+    return [];
+  }
+
+  // 5. Populate thông tin File cho từng chunk
+  const fileIds = [...new Set(sortedChunks.map((c) => c.chunk.file.toString()))];
+  const files = await File.find({ _id: { $in: fileIds } })
+    .select('_id name extension size aiCategory mimeType')
+    .lean();
+
+  const fileMap = new Map(files.map((f) => [f._id.toString(), f]));
+
+  return sortedChunks.map(({ chunk, rrfScore, rawSimilarity }) => {
+    const fileData = fileMap.get(chunk.file.toString()) || null;
+    return {
+      chunkId: chunk._id,
+      fileId: chunk.file,
+      fileName: fileData?.name || 'Tài liệu',
+      fileExtension: fileData?.extension || '',
+      fileCategory: fileData?.aiCategory || '',
+      pageNumber: chunk.pageNumber || 1,
+      sectionTitle: chunk.sectionTitle || '',
+      content: chunk.content,
+      rrfScore: parseFloat(rrfScore.toFixed(4)),
+      similarityScore: parseFloat(rawSimilarity.toFixed(4))
+    };
+  });
+};
+
+module.exports = {
+  resolveAccessibleFileIds,
+  cosineSimilarity,
+  searchDenseVectors,
+  searchSparseKeywords,
+  hybridRetrieve
+};

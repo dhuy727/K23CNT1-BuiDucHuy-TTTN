@@ -60,7 +60,7 @@ const ForgotPasswordPage = () => {
           </div>
           <h1 className="auth-title">Quên mật khẩu?</h1>
           <p className="auth-subtitle">
-            Nhập email tài khoản SmartDocs của bạn để nhận liên kết đặt lại mật khẩu mới
+            Nhập email tài khoản DocuFlow của bạn để nhận liên kết đặt lại mật khẩu mới
           </p>
         </div>
 

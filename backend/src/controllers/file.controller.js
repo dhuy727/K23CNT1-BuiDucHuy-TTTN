@@ -1,4 +1,5 @@
 const fileService = require('../services/file.service');
+const activityService = require('../services/activity.service');
 const { sendSuccess, sendCreated } = require('../utils/apiResponse');
 
 /**
@@ -7,6 +8,19 @@ const { sendSuccess, sendCreated } = require('../utils/apiResponse');
 const uploadFile = async (req, res, next) => {
   try {
     const file = await fileService.uploadFile(req.user._id, req.file, req.body);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'file_upload',
+      targetType: 'file',
+      targetId: file._id,
+      targetName: file.name,
+      description: `Đã tải lên tệp tin "${file.name}"`,
+      metadata: { size: file.size, mimeType: file.mimeType },
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendCreated(res, {
       message: 'Tải lên tệp tin thành công',
       data: file
@@ -22,6 +36,23 @@ const uploadFile = async (req, res, next) => {
 const uploadMultipleFiles = async (req, res, next) => {
   try {
     const result = await fileService.uploadMultipleFiles(req.user._id, req.files, req.body);
+
+    if (Array.isArray(result.files)) {
+      result.files.forEach((f) => {
+        activityService.logActivity({
+          userId: req.user._id,
+          action: 'file_upload',
+          targetType: 'file',
+          targetId: f._id,
+          targetName: f.name,
+          description: `Đã tải lên tệp tin "${f.name}"`,
+          metadata: { size: f.size, mimeType: f.mimeType },
+          ip: req.ip,
+          userAgent: req.headers['user-agent']
+        });
+      });
+    }
+
     return sendCreated(res, {
       message: `Tải lên thành công ${result.count} tệp tin`,
       data: result.files,
@@ -79,6 +110,17 @@ const downloadFile = async (req, res, next) => {
       res.setHeader('Content-Length', file.size);
     }
 
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'file_download',
+      targetType: 'file',
+      targetId: file?._id || req.params.id,
+      targetName: downloadName,
+      description: `Đã tải xuống tệp tin "${downloadName}"`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     fileStream.on('error', (err) => {
       if (!res.headersSent) {
         next(err);
@@ -106,6 +148,17 @@ const previewFile = async (req, res, next) => {
       res.setHeader('Content-Length', file.size);
     }
 
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'file_preview',
+      targetType: 'file',
+      targetId: file?._id || req.params.id,
+      targetName: file?.name || '',
+      description: `Đã xem trước tệp tin "${file?.name || ''}"`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     fileStream.on('error', (err) => {
       if (!res.headersSent) {
         next(err);
@@ -124,6 +177,19 @@ const previewFile = async (req, res, next) => {
 const renameFile = async (req, res, next) => {
   try {
     const file = await fileService.renameFile(req.user._id, req.params.id, req.body.name);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'file_rename',
+      targetType: 'file',
+      targetId: file._id,
+      targetName: file.name,
+      description: `Đã đổi tên tệp tin thành "${file.name}"`,
+      metadata: { newName: file.name },
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: 'Đổi tên tệp tin thành công',
       data: file
@@ -139,6 +205,19 @@ const renameFile = async (req, res, next) => {
 const moveFile = async (req, res, next) => {
   try {
     const file = await fileService.moveFile(req.user._id, req.params.id, req.body.targetFolderId);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'file_move',
+      targetType: 'file',
+      targetId: file._id,
+      targetName: file.name,
+      description: `Đã di chuyển tệp tin "${file.name}"`,
+      metadata: { targetFolderId: req.body.targetFolderId },
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: 'Di chuyển tệp tin thành công',
       data: file
@@ -154,6 +233,18 @@ const moveFile = async (req, res, next) => {
 const copyFile = async (req, res, next) => {
   try {
     const file = await fileService.copyFile(req.user._id, req.params.id, req.body.targetFolderId);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'file_copy',
+      targetType: 'file',
+      targetId: file._id,
+      targetName: file.name,
+      description: `Đã sao chép tệp tin "${file.name}"`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendCreated(res, {
       message: 'Sao chép tệp tin thành công',
       data: file
@@ -170,6 +261,20 @@ const deleteFile = async (req, res, next) => {
   try {
     const permanent = req.query.permanent === 'true' || req.path.endsWith('/permanent');
     const result = await fileService.deleteFile(req.user._id, req.params.id, permanent);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: permanent ? 'file_delete_permanent' : 'file_trash',
+      targetType: 'file',
+      targetId: req.params.id,
+      targetName: result?.file?.name || '',
+      description: permanent
+        ? `Đã xóa vĩnh viễn tệp tin "${result?.file?.name || ''}"`
+        : `Đã chuyển tệp tin "${result?.file?.name || ''}" vào thùng rác`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: result.message,
       data: result
@@ -201,6 +306,18 @@ const getTrashFiles = async (req, res, next) => {
 const restoreFile = async (req, res, next) => {
   try {
     const result = await fileService.restoreFile(req.user._id, req.params.id);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'file_restore',
+      targetType: 'file',
+      targetId: req.params.id,
+      targetName: result.file?.name || '',
+      description: `Đã khôi phục tệp tin "${result.file?.name || ''}" từ thùng rác`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: result.message,
       data: result.file
@@ -216,6 +333,16 @@ const restoreFile = async (req, res, next) => {
 const emptyTrash = async (req, res, next) => {
   try {
     const result = await fileService.emptyTrash(req.user._id);
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'file_delete_permanent',
+      targetType: 'file',
+      description: 'Đã dọn sạch toàn bộ thùng rác',
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: result.message,
       data: result
@@ -232,6 +359,20 @@ const toggleStar = async (req, res, next) => {
   try {
     const file = await fileService.toggleStar(req.user._id, req.params.id);
     const msg = file.isStarred ? 'Đã thêm vào danh sách yêu thích' : 'Đã bỏ khỏi danh sách yêu thích';
+
+    activityService.logActivity({
+      userId: req.user._id,
+      action: 'file_star',
+      targetType: 'file',
+      targetId: file._id,
+      targetName: file.name,
+      description: file.isStarred
+        ? `Đã gắn dấu sao cho tệp "${file.name}"`
+        : `Đã bỏ dấu sao của tệp "${file.name}"`,
+      ip: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     return sendSuccess(res, {
       message: msg,
       data: file
@@ -273,4 +414,3 @@ module.exports = {
   toggleStar,
   getStorageStats
 };
-

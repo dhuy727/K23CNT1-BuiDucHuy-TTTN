@@ -5,15 +5,22 @@ import Header from './Header';
 import UploadModal from '../drive/UploadModal';
 import Modal from '../common/Modal';
 import folderService from '../../services/folderService';
+import fileService from '../../services/fileService';
 import { useToast } from '../../contexts/ToastContext';
+import AiCopilotDrawer from '../rag/AiCopilotDrawer';
+import FilePreviewModal from '../drive/FilePreviewModal';
+import BottomNavigation from './BottomNavigation';
+import MobileFAB from './MobileFAB';
 
 const MainLayout = () => {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [uploadMode, setUploadMode] = useState('file');
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderColor, setNewFolderColor] = useState('#3b82f6');
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [previewTargetFile, setPreviewTargetFile] = useState(null);
 
   const { folderId } = useParams();
   const location = useLocation();
@@ -22,6 +29,69 @@ const MainLayout = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     return localStorage.getItem('sidebar_collapsed') === 'true';
   });
+
+  // State quản lý Trợ lý AI DocuFlow Copilot
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [copilotScope, setCopilotScope] = useState({
+    type: 'all',
+    targetId: null,
+    name: 'Toàn bộ Drive'
+  });
+
+  // Lắng nghe sự kiện mở Preview File toàn cục (từ RAG Copilot, Search, Notifications, v.v.)
+  useEffect(() => {
+    const handleOpenPreview = async (e) => {
+      const { fileId, file } = e.detail || {};
+      if (file) {
+        setPreviewTargetFile(file);
+        return;
+      }
+      if (fileId) {
+        try {
+          const res = await fileService.getFileById(fileId, { includeText: true });
+          const fileData = res?.data || res;
+          if (fileData) {
+            setPreviewTargetFile(fileData);
+          }
+        } catch (err) {
+          console.error('Không thể tải tệp để xem trước:', err);
+          toast.error('Không thể mở tài liệu xem trước');
+        }
+      }
+    };
+
+    window.addEventListener('open-preview-file', handleOpenPreview);
+    return () => window.removeEventListener('open-preview-file', handleOpenPreview);
+  }, [toast]);
+
+  // Lắng nghe sự kiện mở Copilot toàn cục và phím tắt Ctrl + J
+  useEffect(() => {
+    const handleOpenCopilot = (e) => {
+      if (e.detail?.scope) {
+        setCopilotScope(e.detail.scope);
+      } else if (folderId) {
+        setCopilotScope({ type: 'folder', targetId: folderId, name: 'Thư mục hiện tại' });
+      } else {
+        setCopilotScope({ type: 'all', targetId: null, name: 'Toàn bộ Drive' });
+      }
+      setIsCopilotOpen(true);
+    };
+
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'j') {
+        e.preventDefault();
+        setIsCopilotOpen((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('open-rag-drawer', handleOpenCopilot);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('open-rag-drawer', handleOpenCopilot);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [folderId]);
 
   // Tự động đóng menu drawer trên mobile khi chuyển trang
   useEffect(() => {
@@ -88,7 +158,14 @@ const MainLayout = () => {
         onToggleCollapse={toggleSidebar}
         isMobileOpen={isMobileDrawerOpen}
         onCloseMobile={handleCloseMobileDrawer}
-        onOpenUpload={() => setIsUploadOpen(true)}
+        onOpenUpload={() => {
+          setUploadMode('file');
+          setIsUploadOpen(true);
+        }}
+        onOpenUploadFolder={() => {
+          setUploadMode('folder');
+          setIsUploadOpen(true);
+        }}
         onOpenCreateFolder={() => setIsCreateFolderOpen(true)}
       />
 
@@ -110,6 +187,7 @@ const MainLayout = () => {
         onClose={() => setIsUploadOpen(false)}
         currentFolderId={folderId || null}
         onUploadSuccess={handleUploadSuccess}
+        initialMode={uploadMode}
       />
 
       {/* Create Folder Modal */}
@@ -173,6 +251,41 @@ const MainLayout = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Global AI Copilot Slide-over Drawer */}
+      <AiCopilotDrawer
+        isOpen={isCopilotOpen}
+        onClose={() => setIsCopilotOpen(false)}
+        initialScope={copilotScope}
+      />
+
+      {/* Global File Preview Modal (hỗ trợ mở file trực tiếp từ RAG Citations và toàn hệ thống) */}
+      <FilePreviewModal
+        file={previewTargetFile}
+        isOpen={Boolean(previewTargetFile)}
+        onClose={() => setPreviewTargetFile(null)}
+        onDownload={async (f) => {
+          try {
+            await fileService.downloadFileBlob(f._id);
+          } catch (err) {
+            toast.error('Không thể tải xuống tệp tin');
+          }
+        }}
+        onFileUpdated={() => {
+          window.dispatchEvent(new Event('drive:refresh'));
+        }}
+      />
+
+      {/* Mobile Floating Action Button (+) */}
+      <MobileFAB
+        onOpenUpload={() => {
+          setUploadMode('file');
+          setIsUploadOpen(true);
+        }}
+      />
+
+      {/* Mobile Bottom Navigation Bar (4 tabs) */}
+      <BottomNavigation />
     </div>
   );
 };

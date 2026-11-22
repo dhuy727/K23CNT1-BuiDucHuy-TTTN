@@ -112,6 +112,7 @@ const MoveCopyModal = ({
             activeFolderId={selectedFolderId}
             onSelectFolder={(id) => setSelectedFolderId(id)}
             includeRoot={true}
+            disabledFolderId={itemType === 'folder' ? item?._id : null}
           />
         )}
       </div>

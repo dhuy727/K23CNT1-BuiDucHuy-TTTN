@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   HardDrive,
   Star,
@@ -8,6 +8,7 @@ import {
   Trash2,
   Plus,
   FolderPlus,
+  FolderUp,
   UploadCloud,
   Layers,
   ChevronDown,
@@ -16,12 +17,26 @@ import {
   PanelLeftClose,
   Zap,
   Broom,
-  X
+  X,
+  ShieldCheck,
+  BarChart3,
+  Pin,
+  Clock,
+  Network,
+  Folder as FolderIcon,
+  FolderOpen
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import folderService from '../../services/folderService';
 import fileService from '../../services/fileService';
 import FolderTree from '../drive/FolderTree';
+import {
+  isExternalFileDrag,
+  uploadDroppedFilesFromEvent,
+  getActiveDragItem,
+  clearActiveDragItem
+} from '../../utils/dragDropUpload';
 
 const Sidebar = ({
   isCollapsed,
@@ -29,12 +44,19 @@ const Sidebar = ({
   isMobileOpen = false,
   onCloseMobile,
   onOpenUpload,
+  onOpenUploadFolder,
   onOpenCreateFolder
 }) => {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const toast = useToast();
   const [showNewMenu, setShowNewMenu] = useState(false);
+  const [folderViewTab, setFolderViewTab] = useState(() => localStorage.getItem('sidebar_folder_tab') || 'pinned');
   const [folderTree, setFolderTree] = useState([]);
+  const [pinnedFolders, setPinnedFolders] = useState([]);
+  const [recentFolders, setRecentFolders] = useState([]);
+  const [dragOverSidebarTarget, setDragOverSidebarTarget] = useState(null);
   const [storageStats, setStorageStats] = useState({
     usedFormatted: '0 B',
     limitFormatted: '10 GB',
@@ -43,23 +65,150 @@ const Sidebar = ({
     limitBytes: 10 * 1024 * 1024 * 1024
   });
   const actionMenuRef = useRef(null);
+  const foldersSectionRef = useRef(null);
+
+  const handleExternalUploadToSidebarFolder = async (e, targetFolder) => {
+    const targetId = targetFolder?._id === 'root' ? 'root' : targetFolder?._id;
+    const targetName = targetFolder?.name || (targetId === 'root' ? 'Drive của tôi' : 'thư mục');
+    await uploadDroppedFilesFromEvent(e, targetId, targetName, toast, () => {
+      fetchAllFolderData();
+      fetchStorage();
+    });
+  };
+
+  const handleSidebarMove = async (sourceItem, targetFolder) => {
+    if (!sourceItem || !targetFolder) return;
+    const targetId = targetFolder._id === 'root' ? 'root' : targetFolder._id;
+    const targetName = targetFolder.name || (targetId === 'root' ? 'Drive của tôi' : 'thư mục');
+
+    if (String(sourceItem.id) === String(targetId)) return;
+
+    try {
+      if (sourceItem.type === 'file') {
+        await fileService.moveFile(sourceItem.id, targetId);
+        toast.success(`Đã chuyển tệp "${sourceItem.name}" vào "${targetName}"`, {
+          action: {
+            label: 'Hoàn tác',
+            onClick: async () => {
+              try {
+                const prevId = sourceItem.parentId || 'root';
+                await fileService.moveFile(sourceItem.id, prevId);
+                toast.info(`Đã hoàn tác di chuyển "${sourceItem.name}"`);
+                fetchAllFolderData();
+                fetchStorage();
+                window.dispatchEvent(new Event('file:updated'));
+                window.dispatchEvent(new Event('drive:refresh'));
+              } catch (err) {
+                toast.error('Không thể hoàn tác');
+              }
+            }
+          }
+        });
+      } else if (sourceItem.type === 'folder') {
+        await folderService.moveFolder(sourceItem.id, targetId);
+        toast.success(`Đã chuyển thư mục "${sourceItem.name}" vào "${targetName}"`, {
+          action: {
+            label: 'Hoàn tác',
+            onClick: async () => {
+              try {
+                const prevId = sourceItem.parentId || 'root';
+                await folderService.moveFolder(sourceItem.id, prevId);
+                toast.info(`Đã hoàn tác di chuyển "${sourceItem.name}"`);
+                fetchAllFolderData();
+                window.dispatchEvent(new Event('folder:updated'));
+                window.dispatchEvent(new Event('drive:refresh'));
+              } catch (err) {
+                toast.error('Không thể hoàn tác');
+              }
+            }
+          }
+        });
+      }
+      fetchAllFolderData();
+      fetchStorage();
+      window.dispatchEvent(new Event('folder:updated'));
+      window.dispatchEvent(new Event('file:updated'));
+      window.dispatchEvent(new Event('drive:refresh'));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Không thể di chuyển đến thư mục này');
+    }
+  };
+
+  const handleSidebarTrashDrop = async (sourceItem) => {
+    if (!sourceItem || !sourceItem.id) return;
+
+    try {
+      if (sourceItem.type === 'folder') {
+        await folderService.deleteFolder(sourceItem.id, false);
+        if (location.pathname.includes(`/drive/folder/${sourceItem.id}`)) {
+          navigate('/drive');
+        }
+        toast.success(`Đã chuyển thư mục "${sourceItem.name}" vào thùng rác`, {
+          action: {
+            label: 'Hoàn tác',
+            onClick: async () => {
+              try {
+                await folderService.restoreFolder(sourceItem.id);
+                toast.info(`Đã khôi phục thư mục "${sourceItem.name}"`);
+                fetchAllFolderData();
+                fetchStorage();
+                window.dispatchEvent(new Event('folder:updated'));
+                window.dispatchEvent(new Event('drive:refresh'));
+              } catch (err) {
+                toast.error('Không thể khôi phục thư mục');
+              }
+            }
+          }
+        });
+      } else {
+        await fileService.deleteFile(sourceItem.id, false);
+        toast.success(`Đã chuyển tệp "${sourceItem.name}" vào thùng rác`, {
+          action: {
+            label: 'Hoàn tác',
+            onClick: async () => {
+              try {
+                await fileService.restoreFile(sourceItem.id);
+                toast.info(`Đã khôi phục tệp "${sourceItem.name}"`);
+                fetchAllFolderData();
+                fetchStorage();
+                window.dispatchEvent(new Event('file:updated'));
+                window.dispatchEvent(new Event('drive:refresh'));
+              } catch (err) {
+                toast.error('Không thể khôi phục tệp');
+              }
+            }
+          }
+        });
+      }
+
+      fetchAllFolderData();
+      fetchStorage();
+      window.dispatchEvent(new Event('folder:updated'));
+      window.dispatchEvent(new Event('file:updated'));
+      window.dispatchEvent(new Event('drive:refresh'));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Không thể chuyển mục này vào thùng rác');
+    }
+  };
 
   useEffect(() => {
-    fetchTree();
+    fetchAllFolderData();
     fetchStorage();
 
     const handleFolderUpdate = () => {
-      fetchTree();
+      fetchAllFolderData();
       fetchStorage();
     };
     const handleFileUpdate = () => fetchStorage();
 
     window.addEventListener('folder:updated', handleFolderUpdate);
+    window.addEventListener('folder:pinned', handleFolderUpdate);
     window.addEventListener('file:updated', handleFileUpdate);
     window.addEventListener('drive:refresh', handleFileUpdate);
 
     return () => {
       window.removeEventListener('folder:updated', handleFolderUpdate);
+      window.removeEventListener('folder:pinned', handleFolderUpdate);
       window.removeEventListener('file:updated', handleFileUpdate);
       window.removeEventListener('drive:refresh', handleFileUpdate);
     };
@@ -76,13 +225,35 @@ const Sidebar = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const fetchTree = async () => {
+  const fetchAllFolderData = async () => {
     try {
-      const res = await folderService.getFolderTree();
-      setFolderTree(res.data || []);
+      const [treeRes, pinnedRes, recentRes] = await Promise.allSettled([
+        folderService.getFolderTree(),
+        folderService.getFolders({ isPinned: true, sortBy: 'updatedAt', sortOrder: 'desc' }),
+        folderService.getFolders({ sortBy: 'updatedAt', sortOrder: 'desc', limit: 8 })
+      ]);
+
+      if (treeRes.status === 'fulfilled') {
+        setFolderTree(treeRes.value.data || []);
+      }
+      if (pinnedRes.status === 'fulfilled') {
+        const raw = pinnedRes.value.data;
+        const list = Array.isArray(raw) ? raw : raw?.folders || raw?.data || [];
+        setPinnedFolders(list);
+      }
+      if (recentRes.status === 'fulfilled') {
+        const raw = recentRes.value.data;
+        const list = Array.isArray(raw) ? raw : raw?.folders || raw?.data || [];
+        setRecentFolders(list.slice(0, 8));
+      }
     } catch (err) {
-      console.error('Không thể lấy cây thư mục:', err);
+      console.error('Không thể lấy danh sách thư mục:', err);
     }
+  };
+
+  const handleTabChange = (tab) => {
+    setFolderViewTab(tab);
+    localStorage.setItem('sidebar_folder_tab', tab);
   };
 
   const fetchStorage = async () => {
@@ -105,8 +276,21 @@ const Sidebar = ({
     }
   };
 
+  // Xác định folderId đang active từ URL hiện tại
+  const currentActiveFolderId = location.pathname.startsWith('/drive/folder/')
+    ? location.pathname.split('/drive/folder/')[1]?.split('/')[0]
+    : location.pathname === '/drive'
+      ? 'root'
+      : null;
+
   return (
-    <aside className={`app-sidebar ${isCollapsed ? 'is-collapsed' : ''} ${isMobileOpen ? 'is-mobile-open' : ''}`}>
+    <aside
+      className={`app-sidebar ${isCollapsed ? 'is-collapsed' : ''} ${isMobileOpen ? 'is-mobile-open' : ''}`}
+      onDragOver={(e) => {
+        // Cho phép giữ chuột kéo ở mọi vùng của Sidebar (kể cả mép trên/dưới) để kích hoạt tự động cuộn mượt
+        e.preventDefault();
+      }}
+    >
       {/* Brand Header */}
       <div className="sidebar-header">
         {!isCollapsed ? (
@@ -114,13 +298,13 @@ const Sidebar = ({
             <NavLink
               to="/drive"
               className="sidebar-brand"
-              title="SmartDocs"
+              title="DocuFlow"
               onClick={() => onCloseMobile && onCloseMobile()}
             >
               <div className="brand-icon">
                 <Layers size={18} />
               </div>
-              <span>SmartDocs</span>
+              <span>DocuFlow</span>
             </NavLink>
             <div className="sidebar-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <button
@@ -147,7 +331,7 @@ const Sidebar = ({
           <div
             className="brand-icon"
             onClick={onToggleCollapse}
-            title="Mở rộng Sidebar (SmartDocs)"
+            title="Mở rộng Sidebar (DocuFlow)"
             style={{ cursor: 'pointer', margin: '0 auto' }}
           >
             <Layers size={18} />
@@ -192,6 +376,16 @@ const Sidebar = ({
               <UploadCloud size={16} style={{ color: 'var(--accent-blue)' }} />
               <span>Tải tệp tin lên</span>
             </button>
+            <button
+              className="studio-action-item"
+              onClick={() => {
+                setShowNewMenu(false);
+                onOpenUploadFolder && onOpenUploadFolder();
+              }}
+            >
+              <FolderUp size={16} style={{ color: 'var(--primary-color)' }} />
+              <span>Tải thư mục lên</span>
+            </button>
           </div>
         )}
       </div>
@@ -218,8 +412,41 @@ const Sidebar = ({
         <NavLink
           to="/drive"
           end
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title="Drive của tôi"
+          className={({ isActive }) =>
+            `nav-item ${isActive ? 'active' : ''} ${dragOverSidebarTarget === 'root' ? 'drop-target-active' : ''}`
+          }
+          title="Drive của tôi (Kéo thả vào đây để đưa về Gốc hoặc tải tệp lên Gốc)"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = isExternalFileDrag(e) ? 'copy' : 'move';
+            if (dragOverSidebarTarget !== 'root') setDragOverSidebarTarget('root');
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            if (!e.currentTarget.contains(e.relatedTarget) && dragOverSidebarTarget === 'root') {
+              setDragOverSidebarTarget(null);
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDragOverSidebarTarget(null);
+            const rootFolder = { _id: 'root', name: 'Drive của tôi' };
+            if (isExternalFileDrag(e)) {
+              handleExternalUploadToSidebarFolder(e, rootFolder);
+              return;
+            }
+            try {
+              const raw = e.dataTransfer.getData('application/json');
+              const sourceItem = raw ? JSON.parse(raw) : getActiveDragItem();
+              clearActiveDragItem();
+              if (sourceItem) {
+                handleSidebarMove(sourceItem, rootFolder);
+              }
+            } catch (err) {
+              console.error('Lỗi drop vào NavLink Drive:', err);
+            }
+          }}
         >
           <HardDrive size={17} />
           <span>Drive của tôi</span>
@@ -232,15 +459,6 @@ const Sidebar = ({
         >
           <Zap size={17} />
           <span>Tự động hóa</span>
-        </NavLink>
-
-        <NavLink
-          to="/drive/cleanup"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title="Dọn dẹp & Trùng lặp"
-        >
-          <Broom size={17} />
-          <span>Dọn dẹp & Trùng lặp</span>
         </NavLink>
 
         <NavLink
@@ -272,8 +490,40 @@ const Sidebar = ({
 
         <NavLink
           to="/trash"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-          title="Thùng rác"
+          className={({ isActive }) =>
+            `nav-item ${isActive ? 'active' : ''} ${dragOverSidebarTarget === 'trash' ? 'drop-target-danger' : ''}`
+          }
+          title="Thùng rác (Kéo thả tệp hoặc thư mục vào đây để xóa)"
+          onDragOver={(e) => {
+            if (isExternalFileDrag(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (dragOverSidebarTarget !== 'trash') {
+              setDragOverSidebarTarget('trash');
+            }
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            if (!e.currentTarget.contains(e.relatedTarget) && dragOverSidebarTarget === 'trash') {
+              setDragOverSidebarTarget(null);
+            }
+          }}
+          onDrop={(e) => {
+            if (isExternalFileDrag(e)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setDragOverSidebarTarget(null);
+            try {
+              const raw = e.dataTransfer.getData('application/json');
+              const sourceItem = raw ? JSON.parse(raw) : getActiveDragItem();
+              clearActiveDragItem();
+              if (sourceItem) {
+                handleSidebarTrashDrop(sourceItem);
+              }
+            } catch (err) {
+              console.error('Lỗi drop vào Thùng rác:', err);
+            }
+          }}
         >
           <Trash2 size={17} />
           <span>Thùng rác</span>
@@ -290,17 +540,220 @@ const Sidebar = ({
               <Shield size={17} />
               <span>Quản trị người dùng</span>
             </NavLink>
+            <NavLink
+              to="/admin/logs"
+              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              title="Nhật ký kiểm toán"
+            >
+              <ShieldCheck size={17} />
+              <span>Nhật ký hệ thống</span>
+            </NavLink>
           </>
         )}
 
-        {/* Cây thư mục */}
-        <div className="sidebar-section-title">Cây thư mục</div>
-        <div className="sidebar-tree-container">
-          <FolderTree
-            tree={folderTree}
-            folders={folderTree}
-            onSelectFolder={handleSelectFolder}
-          />
+        {/* Khu vực thư mục: Đã ghim / Gần đây / Cây đầy đủ */}
+        <div
+          ref={foldersSectionRef}
+          className="sidebar-folders-section"
+          onDragEnter={() => {
+            // Tự động chuyển sang tab "Cây" khi người dùng kéo mục đi vào khu vực Thư mục để duyệt sâu
+            if (folderViewTab !== 'tree') {
+              handleTabChange('tree');
+            }
+            setTimeout(() => {
+              foldersSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }, 50);
+          }}
+        >
+          <div className="sidebar-folders-header">
+            <span className="sidebar-section-title">Thư mục</span>
+            <div className="sidebar-folder-tabs">
+              <button
+                type="button"
+                className={`sidebar-folder-tab-btn ${folderViewTab === 'pinned' ? 'active' : ''}`}
+                onClick={() => handleTabChange('pinned')}
+                title="Thư mục đã ghim"
+              >
+                <Pin size={11} />
+                <span className="tab-label">Ghim</span>
+                {pinnedFolders.length > 0 && <span className="tab-badge">{pinnedFolders.length}</span>}
+              </button>
+              <button
+                type="button"
+                className={`sidebar-folder-tab-btn ${folderViewTab === 'recent' ? 'active' : ''}`}
+                onClick={() => handleTabChange('recent')}
+                title="Thư mục gần đây"
+              >
+                <Clock size={11} />
+                <span className="tab-label">Gần đây</span>
+              </button>
+              <button
+                type="button"
+                className={`sidebar-folder-tab-btn ${folderViewTab === 'tree' ? 'active' : ''}`}
+                onClick={() => handleTabChange('tree')}
+                title="Cây thư mục phân cấp"
+              >
+                <Network size={11} />
+                <span className="tab-label">Cây</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="sidebar-tree-container">
+            {folderViewTab === 'pinned' ? (
+              pinnedFolders.length === 0 ? (
+                <div className="sidebar-folder-empty-hint">
+                  <Pin size={13} style={{ opacity: 0.5, marginBottom: '2px' }} />
+                  <span>Chưa có thư mục ghim. Nhấn 📌 trên thư mục để truy cập nhanh tại đây.</span>
+                </div>
+              ) : (
+                <div className="sidebar-folder-mini-list">
+                  {pinnedFolders.map((folder) => {
+                    const isDragOver = dragOverSidebarTarget === folder._id;
+                    return (
+                      <div
+                        key={folder._id}
+                        className={`sidebar-folder-mini-item ${isDragOver ? 'drop-target-active' : ''}`}
+                        onClick={() => handleSelectFolder(folder._id)}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = isExternalFileDrag(e) ? 'copy' : 'move';
+                          if (dragOverSidebarTarget !== folder._id) setDragOverSidebarTarget(folder._id);
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          if (!e.currentTarget.contains(e.relatedTarget) && dragOverSidebarTarget === folder._id) {
+                            setDragOverSidebarTarget(null);
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDragOverSidebarTarget(null);
+                          if (isExternalFileDrag(e)) {
+                            handleExternalUploadToSidebarFolder(e, folder);
+                            return;
+                          }
+                          try {
+                            const raw = e.dataTransfer.getData('application/json');
+                            const sourceItem = raw ? JSON.parse(raw) : getActiveDragItem();
+                            clearActiveDragItem();
+                            if (sourceItem) {
+                              handleSidebarMove(sourceItem, folder);
+                            }
+                          } catch (err) {
+                            console.error('Lỗi drop vào folder ghim:', err);
+                          }
+                        }}
+                        title={`Thư mục: ${folder.name} (Thả để chuyển hoặc tải lên đây)`}
+                      >
+                        {isDragOver ? (
+                          <FolderOpen
+                            size={15}
+                            style={{
+                              color: 'var(--primary-500)',
+                              fill: 'rgba(99, 102, 241, 0.25)'
+                            }}
+                          />
+                        ) : (
+                          <FolderIcon
+                            size={15}
+                            style={{
+                              color: folder.color || 'var(--primary-500)',
+                              fill: folder.color ? `${folder.color}33` : 'rgba(99, 102, 241, 0.2)'
+                            }}
+                          />
+                        )}
+                        <span className="mini-folder-name">{folder.name}</span>
+                        <Pin size={11} className="mini-folder-pinned-icon" />
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            ) : folderViewTab === 'recent' ? (
+              recentFolders.length === 0 ? (
+                <div className="sidebar-folder-empty-hint">
+                  <Clock size={13} style={{ opacity: 0.5, marginBottom: '2px' }} />
+                  <span>Chưa có thư mục nào</span>
+                </div>
+              ) : (
+                <div className="sidebar-folder-mini-list">
+                  {recentFolders.map((folder) => {
+                    const isDragOver = dragOverSidebarTarget === folder._id;
+                    return (
+                      <div
+                        key={folder._id}
+                        className={`sidebar-folder-mini-item ${isDragOver ? 'drop-target-active' : ''}`}
+                        onClick={() => handleSelectFolder(folder._id)}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = isExternalFileDrag(e) ? 'copy' : 'move';
+                          if (dragOverSidebarTarget !== folder._id) setDragOverSidebarTarget(folder._id);
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          if (!e.currentTarget.contains(e.relatedTarget) && dragOverSidebarTarget === folder._id) {
+                            setDragOverSidebarTarget(null);
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDragOverSidebarTarget(null);
+                          if (isExternalFileDrag(e)) {
+                            handleExternalUploadToSidebarFolder(e, folder);
+                            return;
+                          }
+                          try {
+                            const raw = e.dataTransfer.getData('application/json');
+                            const sourceItem = raw ? JSON.parse(raw) : getActiveDragItem();
+                            clearActiveDragItem();
+                            if (sourceItem) {
+                              handleSidebarMove(sourceItem, folder);
+                            }
+                          } catch (err) {
+                            console.error('Lỗi drop vào folder gần đây:', err);
+                          }
+                        }}
+                        title={`Cập nhật: ${new Date(folder.updatedAt).toLocaleDateString('vi-VN')} (Thả để chuyển hoặc tải lên đây)`}
+                      >
+                        {isDragOver ? (
+                          <FolderOpen
+                            size={15}
+                            style={{
+                              color: 'var(--primary-500)',
+                              fill: 'rgba(99, 102, 241, 0.25)'
+                            }}
+                          />
+                        ) : (
+                          <FolderIcon
+                            size={15}
+                            style={{
+                              color: folder.color || 'var(--primary-500)',
+                              fill: folder.color ? `${folder.color}33` : 'rgba(99, 102, 241, 0.2)'
+                            }}
+                          />
+                        )}
+                        <span className="mini-folder-name">{folder.name}</span>
+                        <span className="mini-folder-file-count">{folder.fileCount ?? 0} tệp</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            ) : (
+              <FolderTree
+                tree={folderTree}
+                folders={folderTree}
+                activeFolderId={currentActiveFolderId}
+                onSelectFolder={handleSelectFolder}
+                onDirectDrop={handleSidebarMove}
+                onExternalDrop={handleExternalUploadToSidebarFolder}
+                includeRoot={true}
+              />
+            )}
+          </div>
         </div>
       </nav>
 
@@ -320,13 +773,13 @@ const Sidebar = ({
         ) : (
           <div
             className="storage-info"
-            onClick={() => navigate('/drive/cleanup')}
+            onClick={() => navigate('/analytics')}
             style={{ cursor: 'pointer' }}
-            title="Nhấn để mở trang Dọn dẹp & Quét trùng lặp AI"
+            title="Nhấn để mở trang Thống kê & Báo cáo lưu trữ"
           >
             <span className="storage-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span>Dung lượng đã dùng</span>
-              <Broom size={13} style={{ opacity: 0.75 }} />
+              <BarChart3 size={13} style={{ opacity: 0.85 }} />
             </span>
             <span className="storage-value tabular-nums">
               {storageStats.usedFormatted || '0 B'} / 10 GB
@@ -338,12 +791,13 @@ const Sidebar = ({
           title={`${storageStats.usedFormatted || '0 B'} / 10 GB (${storageStats.percentage}%)`}
         >
           <div
-            className={`storage-progress-fill ${storageStats.percentage > 90
-              ? 'is-danger'
-              : storageStats.percentage > 75
-                ? 'is-warning'
-                : ''
-              }`}
+            className={`storage-progress-fill ${
+              storageStats.percentage > 90
+                ? 'is-danger'
+                : storageStats.percentage > 75
+                  ? 'is-warning'
+                  : ''
+            }`}
             style={{
               width: '100%',
               transform: `scaleX(${Math.min(
@@ -361,4 +815,3 @@ const Sidebar = ({
 };
 
 export default Sidebar;
-

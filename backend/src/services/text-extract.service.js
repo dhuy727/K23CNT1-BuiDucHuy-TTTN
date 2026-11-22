@@ -1,6 +1,8 @@
 const mammoth = require('mammoth');
 const path = require('path');
 const storageService = require('./storage.service');
+const ocrService = require('./ocr.service');
+const { extractSpreadsheetFromBuffer } = require('../utils/xlsxBuilder');
 
 const MAX_EXTRACT_CHARS = 15000;
 const UNSUPPORTED_MESSAGE = 'Không trích xuất được nội dung';
@@ -15,6 +17,7 @@ class UnsupportedExtractError extends Error {
 
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'markdown']);
 const DOCX_EXTENSIONS = new Set(['docx']);
+const EXCEL_EXTENSIONS = new Set(['xlsx', 'xls', 'csv']);
 const PDF_EXTENSIONS = new Set(['pdf']);
 
 const normalizeExtension = (file) => {
@@ -26,7 +29,13 @@ const normalizeExtension = (file) => {
 
 const isSupportedExtractType = (file) => {
   const ext = normalizeExtension(file);
-  return PDF_EXTENSIONS.has(ext) || DOCX_EXTENSIONS.has(ext) || TEXT_EXTENSIONS.has(ext);
+  return (
+    PDF_EXTENSIONS.has(ext) ||
+    DOCX_EXTENSIONS.has(ext) ||
+    EXCEL_EXTENSIONS.has(ext) ||
+    TEXT_EXTENSIONS.has(ext) ||
+    ocrService.isImageFile(ext)
+  );
 };
 
 const clipText = (text) => {
@@ -58,10 +67,6 @@ const readPlainText = (buffer) => {
   return buffer.toString('utf8');
 };
 
-/**
- * Đọc nội dung tệp tin (hỗ trợ cả MinIO và Local) và trả về văn bản đã cắt độ dài.
- * Ném UnsupportedExtractError nếu không phải PDF / DOCX / TXT / Markdown.
- */
 const extractText = async (file) => {
   if (!file) {
     throw new UnsupportedExtractError(UNSUPPORTED_MESSAGE);
@@ -84,8 +89,13 @@ const extractText = async (file) => {
     raw = await readPdfText(buffer);
   } else if (DOCX_EXTENSIONS.has(ext)) {
     raw = await readDocxText(buffer);
+  } else if (EXCEL_EXTENSIONS.has(ext)) {
+    const parsed = extractSpreadsheetFromBuffer(buffer, ext, '');
+    raw = parsed.plainText || '';
   } else if (TEXT_EXTENSIONS.has(ext)) {
     raw = readPlainText(buffer);
+  } else if (ocrService.isImageFile(ext)) {
+    raw = await ocrService.extractTextFromImageBuffer(buffer);
   } else {
     throw new UnsupportedExtractError(UNSUPPORTED_MESSAGE);
   }
@@ -93,10 +103,103 @@ const extractText = async (file) => {
   return clipText(raw);
 };
 
+const MAX_RAG_EXTRACT_CHARS = 1000000;
+
+const sanitizeText = (text) => {
+  return String(text || '')
+    .replace(/\u0000/g, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
+/**
+ * Trích xuất toàn văn bản kèm thông tin trang phục vụ RAG chunking
+ */
+const extractDocumentForRag = async (file) => {
+  if (!file) {
+    throw new UnsupportedExtractError(UNSUPPORTED_MESSAGE);
+  }
+
+  const ext = normalizeExtension(file);
+  if (!isSupportedExtractType(file)) {
+    throw new UnsupportedExtractError(UNSUPPORTED_MESSAGE);
+  }
+
+  let buffer;
+  try {
+    buffer = await storageService.getFileBuffer(file);
+  } catch (err) {
+    throw new Error(`Không thể đọc dữ liệu file để trích xuất nội dung: ${err.message}`);
+  }
+
+  const pages = [];
+  let fullText = '';
+
+  if (PDF_EXTENSIONS.has(ext)) {
+    const pdfParse = require('pdf-parse');
+    const result = await pdfParse(buffer);
+    const rawPdf = result?.text || '';
+
+    const rawPages = rawPdf.split('\f');
+    rawPages.forEach((pText, idx) => {
+      const clean = sanitizeText(pText);
+      if (clean) {
+        pages.push({
+          pageNumber: idx + 1,
+          text: clean
+        });
+      }
+    });
+
+    fullText = pages.map((p) => p.text).join('\n\n');
+  } else if (DOCX_EXTENSIONS.has(ext)) {
+    const raw = await readDocxText(buffer);
+    fullText = sanitizeText(raw);
+    if (fullText) {
+      pages.push({ pageNumber: 1, text: fullText });
+    }
+  } else if (EXCEL_EXTENSIONS.has(ext)) {
+    const parsed = extractSpreadsheetFromBuffer(buffer, ext, '');
+    fullText = sanitizeText(parsed.plainText || '');
+    if (fullText) {
+      pages.push({ pageNumber: 1, text: fullText });
+    }
+  } else if (TEXT_EXTENSIONS.has(ext)) {
+    const raw = readPlainText(buffer);
+    fullText = sanitizeText(raw);
+    if (fullText) {
+      pages.push({ pageNumber: 1, text: fullText });
+    }
+  } else if (ocrService.isImageFile(ext)) {
+    const raw = await ocrService.extractTextFromImageBuffer(buffer);
+    fullText = sanitizeText(raw);
+    if (fullText) {
+      pages.push({ pageNumber: 1, text: fullText });
+    }
+  } else {
+    throw new UnsupportedExtractError(UNSUPPORTED_MESSAGE);
+  }
+
+  if (fullText.length > MAX_RAG_EXTRACT_CHARS) {
+    fullText = fullText.slice(0, MAX_RAG_EXTRACT_CHARS);
+  }
+
+  return {
+    pages,
+    fullText,
+    totalPages: pages.length || 1,
+    extension: ext
+  };
+};
+
 module.exports = {
   MAX_EXTRACT_CHARS,
+  MAX_RAG_EXTRACT_CHARS,
   UNSUPPORTED_MESSAGE,
   UnsupportedExtractError,
   isSupportedExtractType,
-  extractText
+  extractText,
+  extractDocumentForRag
 };

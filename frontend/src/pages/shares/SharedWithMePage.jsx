@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Eye, Download, Shield, Folder as FolderIcon } from 'lucide-react';
+import { Users, Eye, Download, Folder as FolderIcon, Edit3 } from 'lucide-react';
 import FileIcon from '../../components/drive/FileIcon';
 import EmptyState from '../../components/common/EmptyState';
 import FilePreviewModal from '../../components/drive/FilePreviewModal';
+import { isRealtimeEditableFile } from '../../services/collabService';
 import shareService from '../../services/shareService';
 import fileService from '../../services/fileService';
 import { useToast } from '../../contexts/ToastContext';
@@ -10,7 +11,7 @@ import { useToast } from '../../contexts/ToastContext';
 const SharedWithMePage = () => {
   const [shares, setShares] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [previewFile, setPreviewFile] = useState(null);
+  const [activeShareModal, setActiveShareModal] = useState(null); // { file, canEdit, initialMode }
   const toast = useToast();
 
   const fetchSharedWithMe = async () => {
@@ -68,14 +69,14 @@ const SharedWithMePage = () => {
           description="Các tệp và thư mục do người khác chia sẻ với email của bạn sẽ xuất hiện ở đây."
         />
       ) : (
-        <div className="file-table-container">
-          <table className="file-table">
+        <div className="file-table-container share-table-scroll">
+          <table className="file-table share-management-table">
             <thead>
               <tr>
                 <th style={{ width: '35%' }}>Tên tài liệu</th>
                 <th style={{ width: '20%' }}>Người chia sẻ</th>
-                <th style={{ width: '15%' }}>Quyền hạn</th>
-                <th style={{ width: '15%' }}>Ngày chia sẻ</th>
+                <th style={{ width: '16%' }}>Quyền hạn</th>
+                <th style={{ width: '14%' }}>Ngày chia sẻ</th>
                 <th style={{ width: '15%', textAlign: 'right' }}>Thao tác</th>
               </tr>
             </thead>
@@ -85,13 +86,24 @@ const SharedWithMePage = () => {
                 const isFile = share.itemType === 'file' || Boolean(share.file);
                 const owner = share.sharedBy || share.owner || {};
                 const shareId = share._id || share.shareId;
+                const canEdit = share.role === 'editor';
+                const canRealtimeEdit = Boolean(canEdit && isFile && isRealtimeEditableFile(item));
 
                 return (
-                  <tr key={shareId}>
+                  <tr
+                    key={shareId}
+                    onClick={() =>
+                      isFile &&
+                      setActiveShareModal({
+                        file: item,
+                        canEdit: canRealtimeEdit,
+                        initialMode: canRealtimeEdit ? 'edit' : 'preview'
+                      })
+                    }
+                  >
                     <td>
                       <div
                         className="table-name-cell"
-                        onClick={() => isFile && setPreviewFile(item)}
                         style={{ cursor: isFile ? 'pointer' : 'default' }}
                       >
                         {isFile ? (
@@ -117,29 +129,53 @@ const SharedWithMePage = () => {
                     <td>
                       <span
                         className={`badge ${
-                          share.role === 'editor' ? 'badge-emerald' : 'badge-blue'
+                          canEdit ? 'badge-emerald' : 'badge-blue'
                         }`}
                       >
-                        {share.role === 'editor' ? 'Chỉnh sửa' : 'Xem'}
+                        {canEdit ? 'Chỉnh sửa trực tiếp' : 'Chỉ xem'}
                       </span>
                     </td>
-                    <td>
+                    <td className="tabular-nums">
                       {share.createdAt
                         ? new Date(share.createdAt).toLocaleDateString('vi-VN')
                         : '-'}
                     </td>
-                    <td>
-                      <div className="table-action-btns" style={{ justifyContent: 'flex-end' }}>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <div className="table-action-btns" style={{ display: 'flex', justifyContent: 'flex-end', gap: '4px' }}>
                         {isFile ? (
                           <>
+                            {canRealtimeEdit && (
+                              <button
+                                type="button"
+                                className="btn-icon"
+                                title="Chỉnh sửa thời gian thực"
+                                onClick={() =>
+                                  setActiveShareModal({
+                                    file: item,
+                                    canEdit: true,
+                                    initialMode: 'edit'
+                                  })
+                                }
+                              >
+                                <Edit3 size={16} style={{ color: 'var(--primary-500)' }} />
+                              </button>
+                            )}
                             <button
+                              type="button"
                               className="btn-icon"
                               title="Xem trước"
-                              onClick={() => setPreviewFile(item)}
+                              onClick={() =>
+                                setActiveShareModal({
+                                  file: item,
+                                  canEdit: canRealtimeEdit,
+                                  initialMode: 'preview'
+                                })
+                              }
                             >
                               <Eye size={16} />
                             </button>
                             <button
+                              type="button"
                               className="btn-icon"
                               title="Tải xuống"
                               onClick={() => handleDownloadFile(item)}
@@ -160,12 +196,15 @@ const SharedWithMePage = () => {
         </div>
       )}
 
-      {/* File Preview */}
+      {/* File Preview & Realtime Edit Modal */}
       <FilePreviewModal
-        file={previewFile}
-        isOpen={Boolean(previewFile)}
-        onClose={() => setPreviewFile(null)}
+        file={activeShareModal?.file}
+        isOpen={Boolean(activeShareModal?.file)}
+        canEdit={Boolean(activeShareModal?.canEdit)}
+        initialMode={activeShareModal?.initialMode || 'preview'}
+        onClose={() => setActiveShareModal(null)}
         onDownload={handleDownloadFile}
+        onFileUpdated={() => fetchSharedWithMe()}
       />
     </main>
   );

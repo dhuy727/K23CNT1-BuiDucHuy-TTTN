@@ -350,9 +350,137 @@ input:checked + .switch-slider:before {
     gap: 12px !important;
   }
 
-  .automation-header button {
-    width: 100% !important;
-    justify-content: center !important;
-  }
 }
+
+/* ── Rule Conflict Banner in Modal ── */
+.rule-conflict-banner {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-top: 16px;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.rule-conflict-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #f59e0b;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  margin-bottom: 12px;
+}
+
+.rule-conflict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rule-conflict-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-main);
+  border-left: 4px solid #f59e0b;
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+
+.rule-conflict-card.is-danger {
+  border-left-color: #ef4444;
+}
+
+.rule-conflict-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.rule-conflict-type-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rule-conflict-badge {
+  font-size: 0.6875rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.rule-conflict-badge.is-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.rule-conflict-desc {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin-bottom: 6px;
+}
+
+.rule-conflict-suggestion {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.rule-conflict-footer-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 10px;
+  line-height: 1.4;
+}
+
+/* ── Custom Delete Confirmation Dialog ── */
+.automation-delete-modal {
+  max-width: 440px;
+  width: 90%;
+  text-align: center;
+  padding: 24px;
+}
+
+.automation-delete-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px auto;
+}
+
+.automation-delete-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.automation-delete-text {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.automation-delete-highlight {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 

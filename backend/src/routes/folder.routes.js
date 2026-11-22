@@ -39,11 +39,32 @@ router.get('/root/files', (req, res, next) => {
 });
 
 /**
+ * @route   GET /api/folders/trash
+ * @desc    Lấy danh sách các thư mục đang trong thùng rác
+ * @access  Private
+ */
+router.get('/trash', folderController.getTrashFolders);
+
+/**
+ * @route   POST /api/folders/ensure-path
+ * @desc    Đảm bảo đường dẫn cây thư mục tồn tại (dùng cho upload thư mục)
+ * @access  Private
+ */
+router.post('/ensure-path', folderController.ensureFolderPath);
+
+/**
  * @route   GET /api/folders/:id
  * @desc    Xem chi tiết thông tin thư mục (kèm Breadcrumb và Thống kê)
  * @access  Private
  */
 router.get('/:id', validateObjectId('id'), folderController.getFolderById);
+
+/**
+ * @route   PATCH /api/folders/:id/restore
+ * @desc    Khôi phục thư mục từ thùng rác (đệ quy)
+ * @access  Private
+ */
+router.patch('/:id/restore', validateObjectId('id'), folderController.restoreFolder);
 
 /**
  * @route   PATCH /api/folders/:id/rename (hoặc PUT /api/folders/:id/rename)
@@ -60,6 +81,13 @@ router.put('/:id/rename', validateObjectId('id'), folderController.renameFolder)
  */
 router.patch('/:id/move', validateObjectId('id'), folderController.moveFolder);
 router.put('/:id/move', validateObjectId('id'), folderController.moveFolder);
+
+/**
+ * @route   PATCH /api/folders/:id/pin
+ * @desc    Ghim / Bỏ ghim thư mục
+ * @access  Private
+ */
+router.patch('/:id/pin', validateObjectId('id'), folderController.togglePinFolder);
 
 /**
  * @route   DELETE /api/folders/:id
