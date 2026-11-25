@@ -552,13 +552,14 @@ const PublicSharePage = () => {
 
         {/* ── SECTION 1: Single File Realtime Editor or Preview ── */}
         {isFile && (
-          canRealtimeEdit && viewMode === 'edit' ? (
+          (canRealtimeEdit && viewMode === 'edit') || isExcel ? (
             <section>
               <RealtimeCollaborativeEditor
                 file={item}
                 shareToken={shareToken}
                 password={password || null}
                 currentUser={currentUser}
+                readOnly={!(canRealtimeEdit && viewMode === 'edit')}
                 onSaved={(savedData) => {
                   if (savedData?.size !== undefined) {
                     setData((prev) =>
@@ -574,16 +575,6 @@ const PublicSharePage = () => {
                     );
                   }
                 }}
-              />
-            </section>
-          ) : isExcel ? (
-            <section>
-              <RealtimeCollaborativeEditor
-                file={item}
-                shareToken={shareToken}
-                password={password || null}
-                currentUser={currentUser}
-                readOnly={true}
               />
             </section>
           ) : (
@@ -907,23 +898,15 @@ const PublicSharePage = () => {
                 overflow: 'hidden'
               }}
             >
-              {canEdit && isRealtimeEditableFile(previewModalFile) && modalViewMode === 'edit' ? (
+              {(canEdit && isRealtimeEditableFile(previewModalFile) && modalViewMode === 'edit') ||
+              getRealtimeEditorType(previewModalFile) === 'excel' ? (
                 <div style={{ width: '100%', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                   <RealtimeCollaborativeEditor
                     file={previewModalFile}
                     shareToken={shareToken}
                     password={password || null}
                     currentUser={currentUser}
-                  />
-                </div>
-              ) : getRealtimeEditorType(previewModalFile) === 'excel' ? (
-                <div style={{ width: '100%', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                  <RealtimeCollaborativeEditor
-                    file={previewModalFile}
-                    shareToken={shareToken}
-                    password={password || null}
-                    currentUser={currentUser}
-                    readOnly={true}
+                    readOnly={!(canEdit && isRealtimeEditableFile(previewModalFile) && modalViewMode === 'edit')}
                   />
                 </div>
               ) : modalLoadingPreview ? (

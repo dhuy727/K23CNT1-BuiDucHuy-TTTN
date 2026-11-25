@@ -279,7 +279,8 @@ const RealtimeCollaborativeEditor = ({
 
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState('txt'); // 'docx' | 'txt' | 'md' | 'excel'
-  const [canEdit, setCanEdit] = useState(false);
+  const [serverCanEdit, setServerCanEdit] = useState(false);
+  const canEdit = Boolean(serverCanEdit && !readOnly);
   const [content, setContent] = useState('');
   const [revision, setRevision] = useState(1);
   const [participants, setParticipants] = useState([]);
@@ -302,6 +303,7 @@ const RealtimeCollaborativeEditor = ({
 
   const docxEditorRef = useRef(null);
   const mdTextareaRef = useRef(null);
+  const modeRef = useRef('txt');
   const isLocalTypingRef = useRef(false);
   const syncTimeoutRef = useRef(null);
   const autoSaveTimeoutRef = useRef(null);
@@ -339,7 +341,8 @@ const RealtimeCollaborativeEditor = ({
             : data.content || '';
 
         setMode(nextMode);
-        setCanEdit(Boolean(data.canEdit && !readOnly));
+        modeRef.current = nextMode;
+        setServerCanEdit(Boolean(data.canEdit));
         setContent(cleanedContent);
         latestContentRef.current = cleanedContent;
         setRevision(data.revision || 1);
@@ -396,25 +399,28 @@ const RealtimeCollaborativeEditor = ({
             }
             if (payload.senderSessionId !== sessionId && typeof payload.content === 'string') {
               isLocalTypingRef.current = false;
-              const incoming = sanitizeDocxHtml(payload.content);
+              const incoming =
+                modeRef.current === 'docx' ? sanitizeDocxHtml(payload.content) : payload.content;
               latestContentRef.current = incoming;
               setContent(incoming);
               setRevision(payload.revision || 1);
 
-              if (docxEditorRef.current) {
+              if (modeRef.current === 'docx' && docxEditorRef.current) {
                 docxEditorRef.current.innerHTML = incoming;
               }
-              setSheets((prevSheets) => {
-                try {
-                  const parsed = JSON.parse(payload.content);
-                  if (parsed && Array.isArray(parsed.sheets)) {
-                    return parseWorkbookJson(payload.content);
+              if (modeRef.current === 'excel') {
+                setSheets((prevSheets) => {
+                  try {
+                    const parsed = JSON.parse(payload.content);
+                    if (parsed && Array.isArray(parsed.sheets)) {
+                      return parseWorkbookJson(payload.content);
+                    }
+                  } catch (e) {
+                    // Không phải JSON Excel
                   }
-                } catch (e) {
-                  // Không phải JSON Excel
-                }
-                return prevSheets;
-              });
+                  return prevSheets;
+                });
+              }
             }
           },
           onDocumentSaved: (payload) => {
@@ -430,19 +436,22 @@ const RealtimeCollaborativeEditor = ({
               setParticipants(payload.participants);
             }
             if (payload.senderSessionId !== sessionId && typeof payload.content === 'string') {
-              const incoming = sanitizeDocxHtml(payload.content);
+              const incoming =
+                modeRef.current === 'docx' ? sanitizeDocxHtml(payload.content) : payload.content;
               latestContentRef.current = incoming;
               setContent(incoming);
-              if (docxEditorRef.current) {
+              if (modeRef.current === 'docx' && docxEditorRef.current) {
                 docxEditorRef.current.innerHTML = incoming;
               }
-              try {
-                const parsed = JSON.parse(payload.content);
-                if (parsed && Array.isArray(parsed.sheets)) {
-                  setSheets(parseWorkbookJson(payload.content));
+              if (modeRef.current === 'excel') {
+                try {
+                  const parsed = JSON.parse(payload.content);
+                  if (parsed && Array.isArray(parsed.sheets)) {
+                    setSheets(parseWorkbookJson(payload.content));
+                  }
+                } catch (e) {
+                  // Bỏ qua nếu không phải JSON Excel
                 }
-              } catch (e) {
-                // Bỏ qua nếu không phải JSON Excel
               }
             }
             if (onSaved) {
@@ -1173,7 +1182,11 @@ const RealtimeCollaborativeEditor = ({
               value={activeCellValue}
               readOnly={!canEdit}
               onChange={(e) => handleCellChange(activeCell.r, activeCell.c, e.target.value)}
-              placeholder={`Nhập giá trị cho ô ${activeCellLabel}...`}
+              placeholder={
+                canEdit
+                  ? `Nhập giá trị cho ô ${activeCellLabel}...`
+                  : `Chế độ chỉ xem (ô ${activeCellLabel}) — chuyển sang Chỉnh sửa trực tiếp để sửa`
+              }
             />
           </div>
         </div>

@@ -480,11 +480,12 @@ const FilePreviewModal = ({
             className="preview-media-viewer"
             style={{ alignItems: (viewMode === 'edit' && canRealtimeEdit) || isExcel ? 'stretch' : 'center' }}
           >
-            {viewMode === 'edit' && canRealtimeEdit ? (
+            {(viewMode === 'edit' && canRealtimeEdit) || isExcel ? (
               <div style={{ width: '100%', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
                 <RealtimeCollaborativeEditor
                   file={currentFile}
                   currentUser={currentUser}
+                  readOnly={!(viewMode === 'edit' && canRealtimeEdit)}
                   onSaved={(savedData) => {
                     if (savedData?.formattedSize) {
                       setCurrentFile((prev) => ({
@@ -494,14 +495,6 @@ const FilePreviewModal = ({
                       }));
                     }
                   }}
-                />
-              </div>
-            ) : isExcel ? (
-              <div style={{ width: '100%', height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                <RealtimeCollaborativeEditor
-                  file={currentFile}
-                  currentUser={currentUser}
-                  readOnly={true}
                 />
               </div>
             ) : (

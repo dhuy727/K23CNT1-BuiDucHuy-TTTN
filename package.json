@@ -23,5 +23,15 @@
     "vite"
   ],
   "author": "Bui Duc Huy",
-  "license": "ISC"
+  "license": "ISC",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dhuy727/K23CNT1-BuiDucHuy-TTTN.git"
+  },
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/dhuy727/K23CNT1-BuiDucHuy-TTTN/issues"
+  },
+  "homepage": "https://github.com/dhuy727/K23CNT1-BuiDucHuy-TTTN#readme"
 }
