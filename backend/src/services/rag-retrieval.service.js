@@ -165,23 +165,31 @@ const resolveAccessibleFileIds = async (userId, scope = { type: 'all', targetId:
     }
   }
 
-  const candidateFileIds = new Set([
-    ...ownedFiles.map((f) => f._id.toString()),
-    ...directSharedFiles.map((id) => id.toString()),
-    ...folderSharedFiles.map((id) => id.toString())
-  ]);
-
-  if (candidateFileIds.size === 0) {
-    return [];
+  // Chỉ cần xác thực isTrash: false cho file được chia sẻ trực tiếp (ownedFiles & folderSharedFiles đã lọc isTrash: false)
+  let validDirectSharedIds = [];
+  if (directSharedFiles.length > 0) {
+    const validShared = await File.find({
+      _id: { $in: directSharedFiles },
+      isTrash: false
+    }).select('_id').lean();
+    validDirectSharedIds = validShared.map((f) => f._id);
   }
 
-  // DOUBLE-CHECK BẢO MẬT: Xác thực lại tất cả file thực sự tồn tại và KHÔNG nằm trong thùng rác
-  const validFiles = await File.find({
-    _id: { $in: Array.from(candidateFileIds) },
-    isTrash: false
-  }).select('_id');
+  const seen = new Set();
+  const result = [];
+  for (const id of [
+    ...ownedFiles.map((f) => f._id),
+    ...validDirectSharedIds,
+    ...folderSharedFiles
+  ]) {
+    const str = id.toString();
+    if (!seen.has(str)) {
+      seen.add(str);
+      result.push(id);
+    }
+  }
 
-  return validFiles.map((f) => f._id);
+  return result;
 };
 
 /**
@@ -276,13 +284,19 @@ const searchSparseKeywords = async (queryText, accessibleFileIds, topK = 20) => 
   const regex = new RegExp(escapedWords.join('|'), 'i');
 
   try {
-    // 1. Tìm các file khớp tên với từ khóa (File metadata matching)
-    const matchingFiles = await File.find({
-      _id: { $in: accessibleFileIds },
-      name: regex
-    }).select('_id').limit(10).lean();
+    // Chạy song song tìm file khớp tên và tìm chunk khớp nội dung
+    const [matchingFiles, contentMatchedChunks] = await Promise.all([
+      File.find({ _id: { $in: accessibleFileIds }, name: regex })
+        .select('_id')
+        .limit(10)
+        .lean(),
+      DocumentChunk.find({ file: { $in: accessibleFileIds }, content: regex })
+        .select('_id file chunkIndex content pageNumber sectionTitle')
+        .limit(topK)
+        .lean()
+    ]);
 
-    const matchingFileIds = matchingFiles.map(f => f._id);
+    const matchingFileIds = matchingFiles.map((f) => f._id);
 
     // Ưu tiên lấy chunks từ các file khớp tên
     let nameMatchedChunks = [];
@@ -294,15 +308,6 @@ const searchSparseKeywords = async (queryText, accessibleFileIds, topK = 20) => 
         .limit(Math.floor(topK / 2))
         .lean();
     }
-
-    // 2. Tìm chunks có nội dung khớp regex
-    const contentMatchedChunks = await DocumentChunk.find({
-      file: { $in: accessibleFileIds },
-      content: regex
-    })
-      .select('_id file chunkIndex content pageNumber sectionTitle')
-      .limit(topK)
-      .lean();
 
     // Kết hợp và khử trùng lặp
     const combined = [...nameMatchedChunks, ...contentMatchedChunks];
@@ -327,17 +332,21 @@ const searchSparseKeywords = async (queryText, accessibleFileIds, topK = 20) => 
  * Dung hợp kết quả bằng thuật toán Reciprocal Rank Fusion (RRF)
  */
 const hybridRetrieve = async (userId, queryText, scope = { type: 'all', targetId: null }, limit = 6) => {
-  const accessibleFileIds = await resolveAccessibleFileIds(userId, scope);
+  // Chạy song song kiểm tra quyền file và sinh vector query để giảm độ trễ
+  const [accessibleFileIds, queryEmbedding] = await Promise.all([
+    resolveAccessibleFileIds(userId, scope),
+    embeddingProvider.getEmbedding(queryText, { userId, feature: 'rag_embed_query' })
+  ]);
+
   if (accessibleFileIds.length === 0) {
     return [];
   }
 
-  // 1. Sinh vector query và thực hiện Dense Search
-  const queryEmbedding = await embeddingProvider.getEmbedding(queryText);
-  const denseResults = await searchDenseVectors(queryEmbedding, accessibleFileIds, 20);
-
-  // 2. Thực hiện Sparse Keyword Search
-  const sparseResults = await searchSparseKeywords(queryText, accessibleFileIds, 20);
+  // Chạy song song Dense Vector Search và Sparse Keyword Search
+  const [denseResults, sparseResults] = await Promise.all([
+    searchDenseVectors(queryEmbedding, accessibleFileIds, 15),
+    searchSparseKeywords(queryText, accessibleFileIds, 15)
+  ]);
 
   // 3. Tính điểm RRF kết hợp
   const rrfK = 60;
@@ -400,6 +409,7 @@ const hybridRetrieve = async (userId, queryText, scope = { type: 'all', targetId
     return {
       chunkId: chunk._id,
       fileId: chunk.file,
+      chunkIndex: chunk.chunkIndex ?? 0,
       fileName: fileData?.name || 'Tài liệu',
       fileExtension: fileData?.extension || '',
       fileCategory: fileData?.aiCategory || '',

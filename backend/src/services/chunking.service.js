@@ -6,10 +6,19 @@ const DEFAULT_CHUNK_SIZE = 1200; // ~300 tokens
 const DEFAULT_CHUNK_OVERLAP = 200; // ~50 tokens
 const MIN_CHUNK_SIZE = 100; // bỏ qua các mẩu vụn quá ngắn
 
+// Số ký tự trung bình trên 1 token. Hiệu chỉnh bằng: node scripts/calibrate-token-estimate.js
+// rồi đặt AI_TOKEN_CHARS_RATIO trong .env (không cần sửa code).
+const DEFAULT_CHARS_PER_TOKEN = 3.8;
+
+const getCharsPerToken = () => {
+  const ratio = parseFloat(process.env.AI_TOKEN_CHARS_RATIO);
+  return Number.isFinite(ratio) && ratio > 0.5 ? ratio : DEFAULT_CHARS_PER_TOKEN;
+};
+
 const estimateTokens = (text) => {
   if (!text) return 0;
-  // Ước tính số token cho tiếng Việt và tiếng Anh (~3.5 - 4 ký tự / token)
-  return Math.ceil(text.length / 3.8);
+  // Ước tính số token cho tiếng Việt và tiếng Anh (mặc định ~3.8 ký tự / token)
+  return Math.ceil(String(text).length / getCharsPerToken());
 };
 
 const extractSectionTitle = (text) => {
@@ -152,6 +161,8 @@ const createChunksFromDocument = ({ pages = [], fullText = '' }, options = {}) =
 module.exports = {
   DEFAULT_CHUNK_SIZE,
   DEFAULT_CHUNK_OVERLAP,
+  DEFAULT_CHARS_PER_TOKEN,
+  getCharsPerToken,
   estimateTokens,
   splitTextRecursively,
   createChunksFromDocument

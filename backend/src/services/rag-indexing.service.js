@@ -68,7 +68,12 @@ const indexFileForRag = async (fileId) => {
 
     console.log(`[RAG Indexer] Đang sinh Vector Embeddings cho ${chunks.length} chunks của "${file.name}"...`);
     const chunkTexts = chunks.map((c) => c.content);
-    const embeddings = await embeddingProvider.getEmbeddings(chunkTexts, { batchSize: 15 });
+    const embeddings = await embeddingProvider.getEmbeddings(chunkTexts, {
+      batchSize: 15,
+      userId: file.user,
+      fileId: file._id,
+      feature: 'rag_index'
+    });
 
     if (embeddings.length !== chunks.length) {
       throw new Error(`Số lượng embeddings (${embeddings.length}) không khớp với số chunks (${chunks.length})`);

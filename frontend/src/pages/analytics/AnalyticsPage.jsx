@@ -35,22 +35,31 @@ const AnalyticsPage = () => {
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
 
-  const handleExportCsv = async () => {
+  const handleExportExcel = async () => {
     setExporting(true);
     try {
-      const response = await analyticsService.exportCsv(activeTab);
-      const url = window.URL.createObjectURL(new Blob([response]));
+      const blobData = await analyticsService.exportExcel(activeTab);
+      const excelBlob =
+        blobData instanceof Blob
+          ? blobData
+          : new Blob([blobData], {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          });
+      const url = window.URL.createObjectURL(excelBlob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `Bao_Cao_${activeTab === 'system' ? 'He_Thong' : 'Ca_Nhan'}_${Date.now()}.csv`);
+      link.setAttribute(
+        'download',
+        `Bao_Cao_${activeTab === 'system' ? 'He_Thong' : 'Ca_Nhan'}_${Date.now()}.xlsx`
+      );
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);
       window.URL.revokeObjectURL(url);
-      toast.success('Đã tải xuống tệp thống kê CSV thành công');
+      toast.success('Đã tải xuống báo cáo Excel (.xlsx) thành công');
     } catch (err) {
-      console.error('Lỗi khi xuất CSV:', err);
-      toast.error('Không thể xuất tệp CSV báo cáo');
+      console.error('Lỗi khi xuất Excel:', err);
+      toast.error('Không thể xuất tệp báo cáo Excel');
     } finally {
       setExporting(false);
     }
@@ -121,13 +130,13 @@ const AnalyticsPage = () => {
 
             <button
               className="btn btn-secondary"
-              onClick={handleExportCsv}
+              onClick={handleExportExcel}
               disabled={loading || exporting}
-              title="Xuất danh sách tệp tin dưới dạng CSV/Excel"
+              title="Xuất báo cáo thống kê dưới dạng bảng tính Excel (.xlsx)"
               style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
               <Download size={15} className={exporting ? 'spinner' : ''} />
-              <span>{exporting ? 'Đang xuất...' : 'Xuất CSV'}</span>
+              <span>{exporting ? 'Đang xuất...' : 'Xuất Excel'}</span>
             </button>
 
             <button
@@ -178,9 +187,8 @@ const AnalyticsPage = () => {
 
               <div className="storage-progress-bar" style={{ height: '10px' }}>
                 <div
-                  className={`storage-progress-fill ${
-                    overview.percentage > 90 ? 'is-danger' : overview.percentage > 75 ? 'is-warning' : ''
-                  }`}
+                  className={`storage-progress-fill ${overview.percentage > 90 ? 'is-danger' : overview.percentage > 75 ? 'is-warning' : ''
+                    }`}
                   style={{
                     width: `${Math.min(100, Math.max(1, overview.percentage || 0))}%`
                   }}
@@ -307,10 +315,10 @@ const AnalyticsPage = () => {
                               idx === 0
                                 ? 'var(--primary-600)'
                                 : idx === 1
-                                ? 'var(--accent-blue)'
-                                : idx === 2
-                                ? 'var(--accent-purple)'
-                                : 'var(--text-muted)'
+                                  ? 'var(--accent-blue)'
+                                  : idx === 2
+                                    ? 'var(--accent-purple)'
+                                    : 'var(--text-muted)'
                           }}
                         />
                       </div>

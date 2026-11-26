@@ -13,6 +13,15 @@ const chatStream = async (req, res, next) => {
     const userId = req.user._id;
     const { conversationId, message, scopeType, scopeTargetId } = req.body;
 
+    const maxQuestionChars = parseInt(process.env.RAG_MAX_QUESTION_CHARS, 10) || 2000;
+    const cleanMessage = String(message || '').trim();
+    if (!cleanMessage) {
+      throw new ApiError(400, 'Nội dung tin nhắn không được để trống');
+    }
+    if (cleanMessage.length > maxQuestionChars) {
+      throw new ApiError(400, `Câu hỏi vượt quá giới hạn tối đa ${maxQuestionChars} ký tự`);
+    }
+
     // Thiết lập HTTP headers cho kết nối Server-Sent Events (SSE)
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
@@ -22,7 +31,16 @@ const chatStream = async (req, res, next) => {
       res.flushHeaders();
     }
 
+    // Hủy stream phía LLM ngay khi client đóng tab hoặc ngắt kết nối giữa chừng
+    const abortController = new AbortController();
+    res.on('close', () => {
+      if (!res.writableEnded) {
+        abortController.abort();
+      }
+    });
+
     const sendEvent = (event, data) => {
+      if (res.writableEnded || abortController.signal.aborted) return;
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 
@@ -30,9 +48,10 @@ const chatStream = async (req, res, next) => {
       const result = await ragService.chatStream({
         userId,
         conversationId,
-        message,
+        message: cleanMessage,
         scopeType,
         scopeTargetId,
+        signal: abortController.signal,
         onCitations: (citations) => {
           sendEvent('citations', { citations });
         },
@@ -42,11 +61,11 @@ const chatStream = async (req, res, next) => {
       });
 
       sendEvent('done', result);
-      res.end();
+      if (!res.writableEnded) res.end();
     } catch (streamErr) {
       console.error('[RAG Controller] Lỗi trong quá trình streaming:', streamErr);
       sendEvent('error', { message: streamErr.message || 'Lỗi xử lý phản hồi AI' });
-      res.end();
+      if (!res.writableEnded) res.end();
     }
   } catch (error) {
     next(error);

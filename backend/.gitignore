@@ -2,7 +2,6 @@
 node_modules/
 uploads/
 logs/
-scripts/
 tessdata/
 *.traineddata
 docs/

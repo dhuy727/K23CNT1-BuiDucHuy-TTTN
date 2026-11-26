@@ -12,15 +12,32 @@ const AI_CATEGORIES = [
   'Khác'
 ];
 
-const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
-const GEMINI_CANDIDATES = [
-  'gemini-3.5-flash',
-  'gemini-3.6-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-flash-latest'
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+// Whitelist model dự phòng: chỉ fallback sang model cùng cấp hoặc rẻ hơn để tránh tăng chi phí đột biến
+const DEFAULT_GEMINI_FALLBACKS = [
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest'
 ];
+
+const getGeminiModels = (primaryModel) => {
+  const envList = (process.env.AI_FALLBACK_MODELS || '')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const fallbacks = envList.length > 0 ? envList : DEFAULT_GEMINI_FALLBACKS;
+  return Array.from(new Set([primaryModel, ...fallbacks].filter(Boolean)));
+};
+
+const GEMINI_CANDIDATES = getGeminiModels(DEFAULT_GEMINI_MODEL);
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1';
+
+const {
+  normalizeGeminiUsage,
+  normalizeOpenAiUsage,
+  estimateUsage,
+  recordUsage
+} = require('./aiUsage.service');
 
 const getProviderName = () => (process.env.AI_PROVIDER || 'gemini').trim().toLowerCase();
 
@@ -105,7 +122,7 @@ const parseModelJson = (rawText, originalName) => {
 };
 
 const callGemini = async ({ apiKey, model, prompt }) => {
-  const modelsToTry = Array.from(new Set([model, ...GEMINI_CANDIDATES].filter(Boolean)));
+  const modelsToTry = getGeminiModels(model);
   let lastError = null;
 
   for (const currentModel of modelsToTry) {
@@ -114,6 +131,7 @@ const callGemini = async ({ apiKey, model, prompt }) => {
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -141,7 +159,12 @@ const callGemini = async ({ apiKey, model, prompt }) => {
         continue;
       }
 
-      return text;
+      return {
+        text,
+        usage: normalizeGeminiUsage(payload?.usageMetadata),
+        model: currentModel,
+        finishReason: payload?.candidates?.[0]?.finishReason || ''
+      };
     } catch (err) {
       console.warn(`[Gemini Provider] Thất bại khi gọi model ${currentModel}: ${err.message}`);
       lastError = err;
@@ -180,36 +203,92 @@ const callOpenAiCompatible = async ({ apiKey, model, prompt, baseUrl }) => {
   if (!text) {
     throw new Error('LLM không trả về nội dung phân loại');
   }
-  return text;
+  return {
+    text,
+    usage: normalizeOpenAiUsage(payload?.usage),
+    model: payload?.model || model,
+    finishReason: payload?.choices?.[0]?.finish_reason || ''
+  };
 };
 
 /**
- * Gọi LLM và chuẩn hóa kết quả phân loại tài liệu.
+ * Gọi LLM (Gemini hoặc OpenAI-compatible) cho các tác vụ trả JSON và ghi nhật ký sử dụng.
+ * @param {object} params
+ * @param {string} params.prompt
+ * @param {'classify'|'compare'} params.feature
+ * @param {object} [params.context] - { userId, fileId, meta }
+ * @returns {Promise<string>} văn bản thô do model trả về
  */
-const classifyDocument = async ({ fileName, mimeType, extension, extractedText }) => {
+const callLlmWithUsage = async ({ prompt, feature, context = {} }) => {
   const apiKey = getApiKey();
   if (!apiKey) {
     throw new Error('Thiếu AI_API_KEY nên không gọi được mô hình ngôn ngữ');
   }
 
   const provider = getProviderName();
-  const prompt = buildPrompt({ fileName, mimeType, extension, extractedText });
-  let rawText;
+  const isOpenAi = provider === 'openai' || provider === 'openai-compatible';
+  const requestedModel = process.env.AI_MODEL || (isOpenAi ? DEFAULT_OPENAI_MODEL : DEFAULT_GEMINI_MODEL);
+  const startedAt = Date.now();
+  const logBase = {
+    userId: context.userId || null,
+    fileId: context.fileId || null,
+    feature,
+    provider,
+    meta: { promptChars: prompt.length, ...(context.meta || {}) }
+  };
 
-  if (provider === 'openai' || provider === 'openai-compatible') {
-    rawText = await callOpenAiCompatible({
-      apiKey,
-      model: process.env.AI_MODEL || DEFAULT_OPENAI_MODEL,
-      prompt,
-      baseUrl: process.env.AI_BASE_URL || DEFAULT_OPENAI_BASE_URL
+  let result;
+  try {
+    result = isOpenAi
+      ? await callOpenAiCompatible({
+        apiKey,
+        model: requestedModel,
+        prompt,
+        baseUrl: process.env.AI_BASE_URL || DEFAULT_OPENAI_BASE_URL
+      })
+      : await callGemini({ apiKey, model: requestedModel, prompt });
+  } catch (err) {
+    recordUsage({
+      ...logBase,
+      model: requestedModel,
+      status: 'error',
+      errorMessage: err.message,
+      latencyMs: Date.now() - startedAt
     });
-  } else {
-    rawText = await callGemini({
-      apiKey,
-      model: process.env.AI_MODEL || DEFAULT_GEMINI_MODEL,
-      prompt
-    });
+    throw err;
   }
+
+  recordUsage({
+    ...logBase,
+    model: result.model || requestedModel,
+    usage: result.usage || estimateUsage(prompt, result.text),
+    estimated: !result.usage,
+    latencyMs: Date.now() - startedAt,
+    finishReason: result.finishReason,
+    meta: {
+      ...logBase.meta,
+      fallbackUsed: Boolean(result.model && result.model !== requestedModel)
+    }
+  });
+
+  return result.text;
+};
+
+/**
+ * Gọi LLM và chuẩn hóa kết quả phân loại tài liệu.
+ * @param {object} input - { fileName, mimeType, extension, extractedText }
+ * @param {object} [context] - { userId, fileId } phục vụ ghi nhật ký sử dụng
+ */
+const classifyDocument = async ({ fileName, mimeType, extension, extractedText }, context = {}) => {
+  const prompt = buildPrompt({ fileName, mimeType, extension, extractedText });
+  const rawText = await callLlmWithUsage({
+    prompt,
+    feature: 'classify',
+    context: {
+      ...context,
+      meta: { extractedChars: String(extractedText || '').length }
+    }
+  });
 
   try {
     return parseModelJson(rawText, fileName);
@@ -249,31 +328,20 @@ ${String(fileB.extractedText || '').slice(0, 3000) || '(không có nội dung v�
 
 /**
  * Gọi LLM để so sánh độ tương đồng và phát hiện bản sao/bản sửa đổi giữa 2 tài liệu.
+ * @param {object} input - { fileA, fileB }
+ * @param {object} [context] - { userId }; mặc định lấy chủ sở hữu của fileA
  */
-const compareDocuments = async ({ fileA, fileB }) => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error('Thiếu AI_API_KEY nên không gọi được mô hình ngôn ngữ');
-  }
-
-  const provider = getProviderName();
+const compareDocuments = async ({ fileA, fileB }, context = {}) => {
   const prompt = buildComparePrompt({ fileA, fileB });
-  let rawText;
-
-  if (provider === 'openai' || provider === 'openai-compatible') {
-    rawText = await callOpenAiCompatible({
-      apiKey,
-      model: process.env.AI_MODEL || DEFAULT_OPENAI_MODEL,
-      prompt,
-      baseUrl: process.env.AI_BASE_URL || DEFAULT_OPENAI_BASE_URL
-    });
-  } else {
-    rawText = await callGemini({
-      apiKey,
-      model: process.env.AI_MODEL || DEFAULT_GEMINI_MODEL,
-      prompt
-    });
-  }
+  const rawText = await callLlmWithUsage({
+    prompt,
+    feature: 'compare',
+    context: {
+      userId: context.userId || fileA?.user || null,
+      fileId: fileA?._id || null,
+      meta: { fileBId: fileB?._id ? String(fileB._id) : '' }
+    }
+  });
 
   try {
     const parsed = JSON.parse(stripCodeFence(rawText));
@@ -291,6 +359,8 @@ const compareDocuments = async ({ fileA, fileB }) => {
 
 module.exports = {
   AI_CATEGORIES,
+  GEMINI_CANDIDATES,
+  getGeminiModels,
   classifyDocument,
   compareDocuments
 };

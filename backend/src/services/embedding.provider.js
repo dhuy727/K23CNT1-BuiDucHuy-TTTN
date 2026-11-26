@@ -6,6 +6,13 @@ const DEFAULT_GEMINI_EMBEDDING_MODEL = 'gemini-embedding-001';
 const DEFAULT_OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small';
 const EMBEDDING_DIMENSIONS = 768; // Chiều vector chuẩn tương thích cả 2 nhà cung cấp
 
+const {
+  normalizeGeminiUsage,
+  normalizeOpenAiUsage,
+  estimateUsage,
+  recordUsage
+} = require('./aiUsage.service');
+
 const getApiKey = () => (process.env.AI_API_KEY || '').trim();
 const getProvider = () => (process.env.AI_PROVIDER || 'gemini').trim().toLowerCase();
 
@@ -39,7 +46,7 @@ const callGeminiSingle = async (text, apiKey, model = DEFAULT_GEMINI_EMBEDDING_M
     throw new Error('Gemini không trả về mảng vector embedding');
   }
 
-  return values;
+  return { vectors: [values], usage: normalizeGeminiUsage(payload?.usageMetadata) };
 };
 
 /**
@@ -73,7 +80,7 @@ const callGeminiBatch = async (texts, apiKey, model = DEFAULT_GEMINI_EMBEDDING_M
     throw new Error('Gemini không trả về danh sách vector embeddings');
   }
 
-  return embeddings.map((e) => e.values);
+  return { vectors: embeddings.map((e) => e.values), usage: normalizeGeminiUsage(payload?.usageMetadata) };
 };
 
 /**
@@ -106,13 +113,39 @@ const callOpenAiBatch = async (texts, apiKey, model = DEFAULT_OPENAI_EMBEDDING_M
 
   // Đảm bảo đúng thứ tự index
   data.sort((a, b) => a.index - b.index);
-  return data.map((d) => d.embedding);
+  return { vectors: data.map((d) => d.embedding), usage: normalizeOpenAiUsage(payload?.usage) };
 };
 
 /**
- * Sinh vector embedding cho một câu truy vấn người dùng (Query Embedding)
+ * Cộng dồn usage của nhiều batch
  */
-const getEmbedding = async (text) => {
+const addUsage = (acc, usage) => {
+  if (!usage) return acc;
+  return {
+    promptTokens: acc.promptTokens + (usage.promptTokens || 0),
+    completionTokens: acc.completionTokens + (usage.completionTokens || 0),
+    cachedTokens: acc.cachedTokens + (usage.cachedTokens || 0),
+    totalTokens: acc.totalTokens + (usage.totalTokens || 0)
+  };
+};
+
+const resolveEmbeddingModel = (provider) =>
+  process.env.AI_EMBEDDING_MODEL ||
+  (provider === 'openai' || provider === 'openai-compatible'
+    ? DEFAULT_OPENAI_EMBEDDING_MODEL
+    : DEFAULT_GEMINI_EMBEDDING_MODEL);
+
+/**
+ * Văn bản thực tế được gửi đi (đã cắt 8000 ký tự) dùng để ước lượng token khi API không trả usage
+ */
+const truncatedForApi = (texts) => texts.map((t) => String(t || '').slice(0, 8000));
+
+/**
+ * Sinh vector embedding cho một câu truy vấn người dùng (Query Embedding)
+ * @param {string} text
+ * @param {object} [context] - { userId, feature } phục vụ ghi nhật ký sử dụng
+ */
+const getEmbedding = async (text, context = {}) => {
   const apiKey = getApiKey();
   if (!apiKey) {
     throw new Error('Thiếu AI_API_KEY trong cấu hình hệ thống');
@@ -124,16 +157,44 @@ const getEmbedding = async (text) => {
     throw new Error('Chuỗi văn bản cần embedding không được rỗng');
   }
 
-  if (provider === 'openai' || provider === 'openai-compatible') {
-    const vectors = await callOpenAiBatch([cleanText], apiKey, process.env.AI_EMBEDDING_MODEL || DEFAULT_OPENAI_EMBEDDING_MODEL, process.env.AI_BASE_URL || 'https://api.openai.com/v1');
-    return vectors[0];
-  }
+  const model = resolveEmbeddingModel(provider);
+  const startedAt = Date.now();
+  const logBase = {
+    userId: context.userId || null,
+    feature: context.feature || 'rag_embed_query',
+    provider,
+    model,
+    itemCount: 1
+  };
 
-  return await callGeminiSingle(cleanText, apiKey, process.env.AI_EMBEDDING_MODEL || DEFAULT_GEMINI_EMBEDDING_MODEL);
+  try {
+    const result = provider === 'openai' || provider === 'openai-compatible'
+      ? await callOpenAiBatch([cleanText], apiKey, model, process.env.AI_BASE_URL || 'https://api.openai.com/v1')
+      : await callGeminiSingle(cleanText, apiKey, model);
+
+    recordUsage({
+      ...logBase,
+      usage: result.usage || estimateUsage(truncatedForApi([cleanText]), ''),
+      estimated: !result.usage,
+      latencyMs: Date.now() - startedAt
+    });
+
+    return result.vectors[0];
+  } catch (err) {
+    recordUsage({
+      ...logBase,
+      status: 'error',
+      errorMessage: err.message,
+      latencyMs: Date.now() - startedAt
+    });
+    throw err;
+  }
 };
 
 /**
  * Sinh vector embeddings cho nhiều chunks văn bản với cơ chế chia batch và tự động retry
+ * @param {string[]} texts
+ * @param {object} [options] - { batchSize, userId, fileId, feature }
  */
 const getEmbeddings = async (texts = [], options = {}) => {
   if (!Array.isArray(texts) || texts.length === 0) {
@@ -146,8 +207,32 @@ const getEmbeddings = async (texts = [], options = {}) => {
   }
 
   const provider = getProvider();
+  const model = resolveEmbeddingModel(provider);
   const batchSize = options.batchSize || 15; // Giữ batch nhỏ để tránh 429 rate limit
   const results = [];
+
+  const startedAt = Date.now();
+  let usageTotal = { promptTokens: 0, completionTokens: 0, cachedTokens: 0, totalTokens: 0 };
+  let estimatedAny = false;
+  let failedAttempts = 0;
+  let batchCount = 0;
+
+  const flushUsage = (status, errorMessage = '') => {
+    recordUsage({
+      userId: options.userId || null,
+      fileId: options.fileId || null,
+      feature: options.feature || 'rag_index',
+      provider,
+      model,
+      usage: usageTotal,
+      estimated: estimatedAny,
+      status,
+      errorMessage,
+      latencyMs: Date.now() - startedAt,
+      itemCount: texts.length,
+      meta: { batchSize, batchCount, failedAttempts, embeddedCount: results.length }
+    });
+  };
 
   for (let i = 0; i < texts.length; i += batchSize) {
     const batch = texts.slice(i, i + batchSize);
@@ -158,26 +243,30 @@ const getEmbeddings = async (texts = [], options = {}) => {
     while (attempts < 5 && !success) {
       attempts++;
       try {
-        let batchVectors = [];
+        let batchResult;
         if (provider === 'openai' || provider === 'openai-compatible') {
-          batchVectors = await callOpenAiBatch(
+          batchResult = await callOpenAiBatch(
             batch,
             apiKey,
-            process.env.AI_EMBEDDING_MODEL || DEFAULT_OPENAI_EMBEDDING_MODEL,
+            model,
             process.env.AI_BASE_URL || 'https://api.openai.com/v1'
           );
         } else {
-          batchVectors = await callGeminiBatch(
-            batch,
-            apiKey,
-            process.env.AI_EMBEDDING_MODEL || DEFAULT_GEMINI_EMBEDDING_MODEL
-          );
+          batchResult = await callGeminiBatch(batch, apiKey, model);
         }
 
-        results.push(...batchVectors);
+        results.push(...batchResult.vectors);
+        batchCount++;
+        if (batchResult.usage) {
+          usageTotal = addUsage(usageTotal, batchResult.usage);
+        } else {
+          estimatedAny = true;
+          usageTotal = addUsage(usageTotal, estimateUsage(truncatedForApi(batch), ''));
+        }
         success = true;
       } catch (err) {
         lastError = err;
+        failedAttempts++;
         console.warn(`[Embedding] Lỗi batch (${i} - ${i + batch.length}), thử lại lần ${attempts}: ${err.message}`);
         if (attempts < 5) {
           const isRateLimit = /quota|rate|429|exhausted/i.test(err.message);
@@ -194,7 +283,9 @@ const getEmbeddings = async (texts = [], options = {}) => {
     }
 
     if (!success) {
-      throw lastError || new Error(`Không thể sinh embeddings cho batch ${i}`);
+      const finalError = lastError || new Error(`Không thể sinh embeddings cho batch ${i}`);
+      flushUsage('error', finalError.message);
+      throw finalError;
     }
 
     // Nghỉ nhẹ 500ms giữa các batch để giữ ổn định quota
@@ -203,6 +294,7 @@ const getEmbeddings = async (texts = [], options = {}) => {
     }
   }
 
+  flushUsage('success');
   return results;
 };
 

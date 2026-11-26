@@ -420,10 +420,23 @@
     display: none !important;
   }
 
-  body, html {
+  :root,
+  [data-theme="dark"],
+  body,
+  html {
+    --text-primary: #111827 !important;
+    --text-secondary: #374151 !important;
+    --text-muted: #6b7280 !important;
+    --bg-app: #ffffff !important;
+    --bg-surface: #ffffff !important;
+    --bg-surface-hover: #f3f4f6 !important;
+    --border-main: #d1d5db !important;
+    --border-subtle: #e5e7eb !important;
     background: #ffffff !important;
     color: #111827 !important;
     font-size: 10.5pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .main-layout,
@@ -435,6 +448,8 @@
     width: 100% !important;
     max-width: 100% !important;
     background: transparent !important;
+    overflow: visible !important;
+    height: auto !important;
   }
 
   .analytics-header {
@@ -443,6 +458,8 @@
     margin-bottom: 18px !important;
   }
 
+  .analytics-quota-banner,
+  .analytics-kpi-card,
   .analytics-stat-card,
   .analytics-chart-panel,
   .analytics-table-card {

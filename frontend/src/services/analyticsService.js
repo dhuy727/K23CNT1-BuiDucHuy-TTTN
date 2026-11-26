@@ -16,12 +16,23 @@ const analyticsService = {
   },
 
   /**
-   * Tải về tệp CSV thống kê
+   * Tải về tệp CSV thống kê (trả về Blob chuẩn)
    */
   exportCsv: async (scope = 'personal') => {
-    return await axiosClient.get(`/analytics/export/csv?scope=${scope}`, {
+    const response = await axiosClient.get(`/analytics/export/csv?scope=${scope}`, {
       responseType: 'blob'
     });
+    return response.data;
+  },
+
+  /**
+   * Tải về tệp báo cáo Excel (.xlsx) định dạng chuẩn
+   */
+  exportExcel: async (scope = 'personal') => {
+    const response = await axiosClient.get(`/analytics/export/excel?scope=${scope}`, {
+      responseType: 'blob'
+    });
+    return response.data;
   }
 };
 

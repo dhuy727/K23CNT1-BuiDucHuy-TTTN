@@ -51,9 +51,36 @@ const exportCsv = async (req, res, next) => {
       scope
     );
 
+    const csvBuffer = Buffer.from(csvContent, 'utf8');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    return res.status(200).send(csvContent);
+    res.setHeader('Content-Length', csvBuffer.length);
+    return res.status(200).send(csvBuffer);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Xuất dữ liệu thống kê báo cáo dưới dạng tệp Excel (.xlsx) định dạng gọn gàng
+ * GET /api/analytics/export/excel?scope=personal|system
+ */
+const exportExcel = async (req, res, next) => {
+  try {
+    const scope = req.query.scope === 'system' && req.user.role === 'admin' ? 'system' : 'personal';
+    const { xlsxBuffer, filename } = await analyticsService.exportFilesExcel(
+      req.user._id,
+      req.user.role,
+      scope
+    );
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', xlsxBuffer.length);
+    return res.status(200).send(xlsxBuffer);
   } catch (error) {
     next(error);
   }
@@ -62,5 +89,6 @@ const exportCsv = async (req, res, next) => {
 module.exports = {
   getMyAnalytics,
   getSystemAnalytics,
-  exportCsv
+  exportCsv,
+  exportExcel
 };

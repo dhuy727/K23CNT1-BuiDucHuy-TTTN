@@ -3,6 +3,7 @@ const File = require('../models/file.model');
 const Folder = require('../models/folder.model');
 const User = require('../models/user.model');
 const { formatFileSize } = require('./file.service');
+const { buildFormattedReportXlsx } = require('../utils/xlsxBuilder');
 
 const LIMIT_BYTES = 10 * 1024 * 1024 * 1024; // 10 GB
 
@@ -395,8 +396,9 @@ const exportFilesCsv = async (userId, role = 'user', scope = 'personal') => {
     return row.join(',');
   });
 
-  // Ký tự BOM (\uFEFF) giúp Excel tự động nhận diện UTF-8 tiếng Việt chuẩn
-  const csvContent = '\uFEFF' + headers.join(',') + '\n' + rows.join('\n');
+  // Ký tự BOM (\uFEFF) và CRLF (\r\n) giúp Excel nhận diện chuẩn UTF-8 tiếng Việt và tách cột chính xác
+  const headerLine = headers.map(escapeCsv).join(',');
+  const csvContent = '\uFEFF' + [headerLine, ...rows].join('\r\n');
   const filename = isSystem
     ? `Bao_Cao_He_Thong_${Date.now()}.csv`
     : `Bao_Cao_Tai_Lieu_${Date.now()}.csv`;
@@ -408,8 +410,192 @@ const exportFilesCsv = async (userId, role = 'user', scope = 'personal') => {
   };
 };
 
+const AI_STATUS_LABELS = {
+  completed: 'Hoàn tất',
+  processing: 'Đang xử lý',
+  pending: 'Chờ xử lý',
+  failed: 'Thất bại',
+  skipped: 'Bỏ qua'
+};
+
+const RAG_STATUS_LABELS = {
+  indexed: 'Đã lập chỉ mục',
+  indexing: 'Đang lập chỉ mục',
+  pending: 'Chờ lập chỉ mục',
+  failed: 'Thất bại',
+  unsupported: 'Không hỗ trợ'
+};
+
+/**
+ * Xuất báo cáo thống kê dưới dạng tệp Excel (.xlsx) chuẩn,
+ * chia cột gọn gàng, có tiêu đề, độ rộng cột tự động, màu nền và 2 sheet (Danh sách tệp tin & Tổng quan)
+ */
+const exportFilesExcel = async (userId, role = 'user', scope = 'personal') => {
+  const isSystem = role === 'admin' && scope === 'system';
+  const filter = isSystem ? {} : { user: userId };
+
+  const query = File.find(filter)
+    .populate('folder', 'name')
+    .sort({ createdAt: -1 });
+
+  if (isSystem) {
+    query.populate('user', 'name email');
+  }
+
+  const files = await query.lean();
+
+  const formatDate = (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    return d.toLocaleString('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const totalBytes = files.reduce((sum, f) => sum + (Number(f.size) || 0), 0);
+  const activeCount = files.filter((f) => !f.isTrash).length;
+  const trashCount = files.filter((f) => f.isTrash).length;
+  const starredCount = files.filter((f) => f.isStarred && !f.isTrash).length;
+
+  const columns = [
+    { header: 'STT', width: 7, align: 'center', type: 'number' },
+    { header: 'Tên tệp tin', width: 38, align: 'left' },
+    { header: 'Định dạng', width: 11, align: 'center' },
+    { header: 'Kích thước', width: 13, align: 'right' },
+    { header: 'Dung lượng (Bytes)', width: 18, align: 'right', type: 'number' },
+    { header: 'Thư mục', width: 18, align: 'left' },
+    { header: 'Phân loại AI', width: 18, align: 'left' },
+    { header: 'Thẻ nhãn AI', width: 38, align: 'left' },
+    { header: 'Trạng thái AI', width: 15, align: 'center' },
+    { header: 'Trạng thái RAG', width: 17, align: 'center' },
+    { header: 'Gắn sao', width: 10, align: 'center' },
+    { header: 'Thùng rác', width: 11, align: 'center' },
+    { header: 'Ngày tạo', width: 19, align: 'center' },
+    { header: 'Cập nhật lần cuối', width: 19, align: 'center' }
+  ];
+
+  if (isSystem) {
+    columns.push(
+      { header: 'Email chủ sở hữu', width: 26, align: 'left' },
+      { header: 'Họ tên chủ sở hữu', width: 22, align: 'left' }
+    );
+  }
+
+  const rows = files.map((file, idx) => {
+    const row = [
+      idx + 1,
+      file.name || '',
+      (file.extension || '').toUpperCase(),
+      formatFileSize(file.size || 0),
+      Number(file.size) || 0,
+      file.folder?.name || 'Thư mục gốc',
+      file.aiCategory || 'Chưa phân loại',
+      Array.isArray(file.aiTags) ? file.aiTags.join(', ') : '',
+      AI_STATUS_LABELS[file.aiStatus] || 'Chưa xử lý',
+      RAG_STATUS_LABELS[file.ragStatus] || 'Chưa lập chỉ mục',
+      file.isStarred ? 'Có' : 'Không',
+      file.isTrash ? 'Có' : 'Không',
+      formatDate(file.createdAt),
+      formatDate(file.updatedAt)
+    ];
+
+    if (isSystem) {
+      row.push(file.user?.email || '', file.user?.name || '');
+    }
+
+    return row;
+  });
+
+  const summaryRow = [
+    '',
+    `Tổng cộng: ${files.length} tệp tin`,
+    '',
+    formatFileSize(totalBytes),
+    totalBytes,
+    '',
+    '',
+    '',
+    '',
+    '',
+    `${starredCount} sao`,
+    `${trashCount} rác`,
+    '',
+    ''
+  ];
+  if (isSystem) {
+    summaryRow.push('', '');
+  }
+
+  // Tổng hợp theo phân loại AI cho Sheet 2 (Tổng quan)
+  const categoryMap = new Map();
+  for (const f of files) {
+    if (f.isTrash) continue;
+    const cat = f.aiCategory || 'Chưa phân loại';
+    const cur = categoryMap.get(cat) || { count: 0, size: 0 };
+    cur.count += 1;
+    cur.size += Number(f.size) || 0;
+    categoryMap.set(cat, cur);
+  }
+  const categoryRows = Array.from(categoryMap.entries())
+    .sort((a, b) => b[1].count - a[1].count)
+    .map(([name, stat], idx) => [
+      idx + 1,
+      name,
+      stat.count,
+      formatFileSize(stat.size),
+      activeCount > 0 ? `${Math.round((stat.count / activeCount) * 100)}%` : '0%'
+    ]);
+
+  const exportedAt = formatDate(new Date());
+  const reportTitle = isSystem
+    ? 'BÁO CÁO THỐNG KÊ TÀI LIỆU TOÀN HỆ THỐNG - DOCUFLOW'
+    : 'BÁO CÁO THỐNG KÊ TÀI LIỆU CÁ NHÂN - DOCUFLOW';
+  const reportSubtitle = `Ngày xuất: ${exportedAt}  |  Tổng số tệp: ${files.length} (${activeCount} hoạt động, ${trashCount} thùng rác)  |  Tổng dung lượng: ${formatFileSize(totalBytes)}`;
+
+  const xlsxBuffer = buildFormattedReportXlsx([
+    {
+      name: 'Danh sách tệp tin',
+      title: reportTitle,
+      subtitle: reportSubtitle,
+      columns,
+      rows,
+      summaryRow
+    },
+    {
+      name: 'Tổng quan danh mục',
+      title: 'TỔNG HỢP PHÂN BỔ THEO DANH MỤC AI',
+      subtitle: reportSubtitle,
+      columns: [
+        { header: 'STT', width: 8, align: 'center', type: 'number' },
+        { header: 'Danh mục AI', width: 30, align: 'left' },
+        { header: 'Số lượng tệp', width: 16, align: 'right', type: 'number' },
+        { header: 'Tổng dung lượng', width: 18, align: 'right' },
+        { header: 'Tỷ lệ', width: 12, align: 'center' }
+      ],
+      rows: categoryRows,
+      summaryRow: ['', 'Tổng tài liệu đang hoạt động', activeCount, formatFileSize(totalBytes), '100%']
+    }
+  ]);
+
+  const filename = isSystem
+    ? `Bao_Cao_He_Thong_${Date.now()}.xlsx`
+    : `Bao_Cao_Tai_Lieu_${Date.now()}.xlsx`;
+
+  return {
+    xlsxBuffer,
+    filename,
+    totalCount: files.length
+  };
+};
+
 module.exports = {
   getUserAnalytics,
   getSystemAnalytics,
-  exportFilesCsv
+  exportFilesCsv,
+  exportFilesExcel
 };

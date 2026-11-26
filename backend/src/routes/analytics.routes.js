@@ -27,4 +27,11 @@ router.get('/system', authorize('admin'), analyticsController.getSystemAnalytics
  */
 router.get('/export/csv', analyticsController.exportCsv);
 
+/**
+ * @route   GET /api/analytics/export/excel
+ * @desc    Xuất báo cáo thống kê định dạng Excel (.xlsx) chuẩn cột & có định dạng bảng
+ * @access  Private
+ */
+router.get('/export/excel', analyticsController.exportExcel);
+
 module.exports = router;

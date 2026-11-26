@@ -78,7 +78,7 @@ const processFile = async (fileId) => {
       mimeType: file.mimeType,
       extension: file.extension,
       extractedText
-    });
+    }, { userId: file.user, fileId: file._id });
 
     const suggestedFolder = await matchFolderByCategory(file.user, classification.category);
 

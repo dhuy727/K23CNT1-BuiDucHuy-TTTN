@@ -24,6 +24,15 @@ const startServer = async () => {
       console.log(`==================================================`);
     });
 
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Cổng ${PORT} đang được sử dụng bởi một tiến trình khác (EADDRINUSE). Vui lòng tắt tiến trình cũ hoặc đổi PORT trong .env.`);
+      } else {
+        console.error(`❌ Lỗi HTTP server: ${err.message}`);
+      }
+      process.exit(1);
+    });
+
     // Bắt các lỗi unhandledRejection để tránh crash bất ngờ
     process.on('unhandledRejection', (err) => {
       console.error('LỖI UNHANDLED REJECTION! Đang tắt server...', err.message);
